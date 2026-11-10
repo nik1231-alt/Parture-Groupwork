@@ -53,6 +53,12 @@ Lokal liefert sie 503, das ist richtig so.
 - Schema-Wünsche an `pm.db` (neue Spalte, neue Tabelle) als Issue beschreiben; der Export auf dem Server
   wird dann angepasst. Direkt in `pm.db` schreiben bringt nichts, sie wird nachts überschrieben.
 
+## eBay-Zugangsdaten (nur Admin)
+
+Die eBay-API-Keys (`EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_REFRESH_TOKEN`) liegen **nur beim Admin**, in dessen lokaler
+`.env` und in der `.env` auf dem Server. Sie gehören nie ins Repo, auch nicht in Issues, Pull Requests oder Chats.
+Wer die Keys braucht, fragt den Admin. Einmal committete Keys bleiben im Git-Verlauf und müssten bei eBay neu ausgestellt werden.
+
 ## Server
 
 Auf dem Parture-Server läuft die App unter `C:\parture-pm` auf Port 5060 (nur lokal, noch kein Hostname).

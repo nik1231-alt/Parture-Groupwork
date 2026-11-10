@@ -9,3 +9,6 @@ node_modules/
 # Laufzeit
 *.log
 pm.pid
+# Alle Varianten von .env ausschliessen (z. B. .env.local), nur die Vorlage bleibt
+.env.*
+!.env.beispiel
