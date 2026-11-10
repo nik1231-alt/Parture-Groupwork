@@ -19,15 +19,17 @@ Die App arbeitet auf **`daten/pm.db`** (SQLite, ~1,3 MB). Das ist eine Kopie mit
 Kunden, Bestellungen, Adressen. Preise und Stückzahlen sind öffentlich (stehen so bei eBay), Kosten nicht.
 Aufgaben werden deshalb über **Menge, Preis und Rangfolge** formuliert, nicht über Gewinn.
 
-`daten/` ist git-ignoriert. Die Datei kommt vom Server (dort wird sie jede Nacht 04:30 neu gebaut) oder
-als Kopie aus dem Team. Daten gehen nie über Git.
+Die **Team-Kopie** liegt im Repo unter `daten-team/pm.db` (Stand: eBay-API, Konto partureshop, nur Katalog, Menge, Preis, Traffic, Bilder).
+Sie ist bewusst eingecheckt, damit alle ohne Zugangsdaten arbeiten können. Die App nutzt sie, wenn es keine `daten/pm.db` gibt.
+`daten/` ist git-ignoriert: dort liegt auf dem Server die Nachtlauf-Datei (04:30), lokal ein eigener Export.
+**Nur der Admin** aktualisiert die Team-Kopie mit `npm run export:team` (braucht die eBay-Keys) und committet sie. Keys, `.env` und alles mit Kosten oder Kundendaten gehören nie ins Repo.
 
 ## Lokal starten
 
 ```bash
 npm install
 cp .env.beispiel .env        # Windows: copy .env.beispiel .env
-# daten/pm.db aus dem Team holen
+# fertig: ohne daten/pm.db nutzt die App die Team-Kopie daten-team/pm.db
 npm start                    # http://127.0.0.1:5060
 ```
 
@@ -38,7 +40,9 @@ npm start                    # http://127.0.0.1:5060
 ```
 app/server.mjs     HTTP-Server ohne Framework: /api/stand, /api/produkte?q=, /api/produkt?nr=, /api/kanaele, /api/live
 public/index.html  Oberfläche (Suche, Kanal-Kacheln, Produktliste)
-daten/pm.db        die Daten (nicht im Repo)
+daten-team/pm.db   Team-Kopie der Daten (im Repo, vom Admin aktualisiert)
+daten/pm.db        eigener Export bzw. Server-Nachtlauf (nicht im Repo)
+app/export-ebay.mjs  baut pm.db aus der eBay-API (nur Admin, braucht Keys)
 ```
 
 `/api/live` funktioniert nur auf dem Server (holt den aktuellen Stand vom Hub über einen eigenen Token).
@@ -49,7 +53,7 @@ Lokal liefert sie 503, das ist richtig so.
 - **Nie direkt auf `main` pushen.** Branch je Aufgabe (`git switch -c thema/kurzname`), Pull Request gegen `main`, eine
   andere Person schaut drüber und merged. GitHub erzwingt das auf einem privaten Gratis-Repo nicht (Branch-Schutz braucht
   GitHub Pro, gibt es für Studierende kostenlos im GitHub Student Developer Pack), also gilt es als Absprache.
-- Kein `node_modules`, keine `.env`, keine `.db` im Commit (die `.gitignore` fängt das ab).
+- Kein `node_modules`, keine `.env`, keine `.db` im Commit außer `daten-team/pm.db` (die `.gitignore` fängt das ab).
 - Schema-Wünsche an `pm.db` (neue Spalte, neue Tabelle) als Issue beschreiben; der Export auf dem Server
   wird dann angepasst. Direkt in `pm.db` schreiben bringt nichts, sie wird nachts überschrieben.
 

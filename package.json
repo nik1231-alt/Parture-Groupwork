@@ -8,7 +8,8 @@
     "start": "node app/server.mjs",
     "dev": "node --watch app/server.mjs",
     "test": "node app/test.mjs",
-    "export": "node app/export-ebay.mjs"
+    "export": "node app/export-ebay.mjs",
+    "export:team": "PM_DB=daten-team/pm.db node app/export-ebay.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0"

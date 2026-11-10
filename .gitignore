@@ -1,7 +1,10 @@
-# Daten kommen vom Server (Nachtlauf), nie ueber Git
+# Lokale Daten (Server-Nachtlauf bzw. eigener Export) bleiben ausserhalb von Git
 daten/
 *.db
 *.db.neu
+# Ausnahme: die Team-Kopie der Daten (eBay-Stand, ohne Kosten/Kunden) liegt bewusst im Repo
+!daten-team/
+!daten-team/pm.db
 # Geheimnisse
 .env
 # Node

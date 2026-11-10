@@ -10,7 +10,8 @@ import Database from "better-sqlite3";
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
 const PORT = Number(process.env.PM_PORT || 5060);
-const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || "daten/pm.db");
+// Reihenfolge: PM_DB aus der .env, sonst daten/pm.db (Server-Nachtlauf / eigener Export), sonst die Team-Kopie aus dem Repo.
+const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || (fs.existsSync(path.join(WURZEL, "daten/pm.db")) ? "daten/pm.db" : "daten-team/pm.db"));
 const HUB_URL = process.env.HUB_URL || "";
 const PM_TOKEN = process.env.PM_TOKEN || "";
 // Außenzugang (Server): Cloudflare Access stellt vor jede Anfrage ein signiertes JWT (Cf-Access-Jwt-Assertion).
