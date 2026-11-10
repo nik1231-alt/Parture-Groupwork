@@ -46,7 +46,9 @@ Lokal liefert sie 503, das ist richtig so.
 
 ## Zusammenarbeit
 
-- Branch je Aufgabe, Pull Request gegen `main`, eine Person schaut drüber.
+- **Nie direkt auf `main` pushen.** Branch je Aufgabe (`git switch -c thema/kurzname`), Pull Request gegen `main`, eine
+  andere Person schaut drüber und merged. GitHub erzwingt das auf einem privaten Gratis-Repo nicht (Branch-Schutz braucht
+  GitHub Pro, gibt es für Studierende kostenlos im GitHub Student Developer Pack), also gilt es als Absprache.
 - Kein `node_modules`, keine `.env`, keine `.db` im Commit (die `.gitignore` fängt das ab).
 - Schema-Wünsche an `pm.db` (neue Spalte, neue Tabelle) als Issue beschreiben; der Export auf dem Server
   wird dann angepasst. Direkt in `pm.db` schreiben bringt nichts, sie wird nachts überschrieben.
