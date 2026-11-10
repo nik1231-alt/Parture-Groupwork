@@ -54,4 +54,6 @@ Lokal liefert sie 503, das ist richtig so.
 ## Server
 
 Auf dem Parture-Server läuft die App unter `C:\parture-pm` auf Port 5060 (nur lokal, noch kein Hostname).
-`ensure_pm_running.ps1` hält sie am Leben, Logs in `pm.log`.
+`ensure_pm_running.ps1` hält sie am Leben (Aufgabe anlegen: `aufgabe_anlegen.ps1`), Logs in `pm.log`.
+Sobald ein Hostname davor liegt, prüft die App das Cloudflare-Access-Token (`CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` in der
+Server-.env). Ohne gültiges Token antwortet sie 401, egal wie der Hostname konfiguriert ist.

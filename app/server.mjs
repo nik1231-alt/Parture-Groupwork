@@ -13,6 +13,11 @@ const PORT = Number(process.env.PM_PORT || 5060);
 const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || "daten/pm.db");
 const HUB_URL = process.env.HUB_URL || "";
 const PM_TOKEN = process.env.PM_TOKEN || "";
+// Außenzugang (Server): Cloudflare Access stellt vor jede Anfrage ein signiertes JWT (Cf-Access-Jwt-Assertion).
+// Sind CF_ACCESS_TEAM_DOMAIN und CF_ACCESS_AUD gesetzt, nimmt die App NUR Anfragen mit gültigem Token an —
+// auch dann, wenn jemand den Hostname einmal ohne Access-Regel anlegt. Lokal (beide leer) ist alles offen.
+const CF_TEAM = process.env.CF_ACCESS_TEAM_DOMAIN || "";
+const CF_AUD = process.env.CF_ACCESS_AUD || "";
 
 function ladeEnv(p) {
   if (!fs.existsSync(p)) return;
@@ -20,6 +25,22 @@ function ladeEnv(p) {
     const m = z.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
     if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2];
   }
+}
+
+let _jwks = { at: 0, keys: [] };
+async function accessOk(req) {
+  if (!CF_TEAM || !CF_AUD) return true;
+  const tok = String(req.headers["cf-access-jwt-assertion"] || "");
+  if (!tok) return false;
+  try {
+    const [h, p, sig] = tok.split(".");
+    const kopf = JSON.parse(Buffer.from(h, "base64url")); const last = JSON.parse(Buffer.from(p, "base64url"));
+    if (kopf.alg !== "RS256" || !(Array.isArray(last.aud) ? last.aud : [last.aud]).includes(CF_AUD) || last.exp * 1000 < Date.now()) return false;
+    if (Date.now() - _jwks.at > 3600e3) { const r = await fetch(`https://${CF_TEAM}/cdn-cgi/access/certs`); _jwks = { at: Date.now(), keys: (await r.json()).keys || [] }; }
+    const jwk = _jwks.keys.find((k) => k.kid === kopf.kid); if (!jwk) return false;
+    const { createPublicKey, verify } = await import("node:crypto");
+    return verify("RSA-SHA256", Buffer.from(h + "." + p), createPublicKey({ key: jwk, format: "jwk" }), Buffer.from(sig, "base64url"));
+  } catch { return false; }
 }
 
 // Datenbank bei jeder Anfrage frisch öffnen: pm.db wird nachts atomar ersetzt, eine offene Verbindung
@@ -63,6 +84,7 @@ const server = http.createServer(async (req, res) => {
   const json = (code, body) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(body)); };
   try {
     if (url.pathname === "/healthz") return json(200, { ok: true });
+    if (!(await accessOk(req))) return json(401, { ok: false, error: "kein gültiger Zugang (Cloudflare Access)" });
     const route = ROUTEN[url.pathname];
     if (route) return json(200, { ok: true, daten: await route(url.searchParams) });
     // statische Dateien aus public/
