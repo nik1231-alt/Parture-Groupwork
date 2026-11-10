@@ -12,81 +12,68 @@
     <div class="marke">
       <span class="marke-zeichen" aria-hidden="true">P</span>
       <span class="marke-name">Parture</span>
-      <span class="marke-zusatz">Product management</span>
     </div>
-    <nav class="nav" aria-label="Views">
-      <button class="nav-knopf" id="nav-produkte" type="button" aria-current="page">Products</button>
-      <button class="nav-knopf" id="nav-log" type="button">Change log <span class="zaehler" id="log-zaehler" hidden></span></button>
+    <nav class="nav" aria-label="Main">
+      <a class="nav-knopf" id="nav-listings" href="#listings">Listings</a>
+      <a class="nav-knopf" id="nav-tests" href="#tests">Tests <span class="zaehler" id="tests-zaehler" hidden></span></a>
+      <a class="nav-knopf" id="nav-settings" href="#settings">Settings</a>
     </nav>
-    <div class="kopf-rechts">
-      <span class="leise" id="stand"></span>
-      <button class="knopf knopf-leise" id="regeln-auf" type="button">How recommendations work</button>
-    </div>
+    <span class="leise" id="stand"></span>
   </div>
 </header>
 
 <main class="seite">
   <div id="fehler" class="hinweis hinweis-fehler" role="alert" hidden></div>
 
-  <div id="ansicht-produkte">
-    <section class="einstieg">
-      <h1>Get more impressions for your eBay listings</h1>
-      <p class="leise">The focus is visibility: listings that buyers rarely see, whether they sell or not. Each one gets a ready-made next step for the title. You decide, publish it on eBay and log it here. Click rates and sales come later.</p>
-      <div class="fortschritt" id="fortschritt" hidden>
-        <div class="fortschritt-balken"><span id="fortschritt-fuellung"></span></div>
-        <span class="leise" id="fortschritt-text"></span>
-      </div>
-    </section>
-
-    <section class="gruppen" id="gruppen" aria-label="Groups"></section>
-
-    <section class="werkzeuge">
+  <!-- Listings -->
+  <section id="ansicht-listings">
+    <div class="einstieg">
+      <h1>Listings</h1>
+      <p class="leise">Which of your eBay listings buyers rarely see, and what to do about it. The focus is impressions.</p>
+    </div>
+    <div class="tabs" id="tabs" role="tablist" aria-label="Filter"></div>
+    <div class="werkzeuge">
       <label class="suche">
-        <span class="nur-screenreader">Search products</span>
-        <input id="suche" type="search" placeholder="Search products by title or number" autocomplete="off" maxlength="100">
+        <span class="nur-screenreader">Search listings</span>
+        <input id="suche" type="search" placeholder="Search by name or number" autocomplete="off" maxlength="100">
       </label>
       <label class="auswahl">
         <span class="nur-screenreader">Sort order</span>
         <select id="sortierung">
-          <option value="potential">Highest potential (sales per impression)</option>
-          <option value="verkaeufe">Most sales (90 days)</option>
-          <option value="aufrufe">Most views (90 days)</option>
-          <option value="zuletzt">Recently sold</option>
-          <option value="neueste">Newest products</option>
+          <option value="potential">Highest potential</option>
+          <option value="verkaeufe">Most sales</option>
+          <option value="impressionen_auf">Fewest impressions</option>
+          <option value="impressionen_ab">Most impressions</option>
+          <option value="preis">Highest price</option>
+          <option value="neueste">Newest</option>
         </select>
       </label>
-      <label class="auswahl">
-        <span class="nur-screenreader">Decision</span>
-        <select id="entscheidungsfilter">
-          <option value="alle">All products</option>
-          <option value="offen">Still open</option>
-          <option value="entschieden">Already decided</option>
-        </select>
-      </label>
-    </section>
-
+    </div>
     <p class="leise ergebnis-zeile" id="ergebnis" aria-live="polite"></p>
-    <section class="liste" id="liste" aria-label="Products"></section>
+    <div class="tabelle">
+      <div class="spalten kopfzeile" aria-hidden="true">
+        <span></span><span>Name</span><span class="zahl">Price</span><span class="zahl">Sales 90 d</span><span class="zahl">Impressions 90 d</span><span>Recommendation</span><span></span>
+      </div>
+      <div id="liste"></div>
+    </div>
     <div class="mehr"><button class="knopf" id="mehr" type="button" hidden>Show more</button></div>
-  </div>
+  </section>
 
-  <div id="ansicht-log" hidden>
-    <section class="einstieg">
-      <h1>Change log</h1>
-      <p class="leise">Every change you published is stored here with the old value, the new value, the date and the numbers at the start. After 30 days the app compares the listing with all unchanged listings and tells you whether the change helped. Only one change per listing at a time.</p>
-    </section>
-    <p class="leise ergebnis-zeile" id="log-ergebnis" aria-live="polite"></p>
-    <section class="liste" id="log-liste" aria-label="Changes"></section>
-  </div>
+  <!-- Tests -->
+  <section id="ansicht-tests" hidden>
+    <div id="tests-uebersicht"></div>
+    <div id="test-detail" hidden></div>
+  </section>
+
+  <!-- Einstellungen -->
+  <section id="ansicht-settings" hidden>
+    <div class="einstieg">
+      <h1>Settings</h1>
+      <p class="leise">All rules in one place. Change a value, save, and the listings are re-evaluated. The exact values can be agreed on by the team later.</p>
+    </div>
+    <div id="einstellungen"></div>
+  </section>
 </main>
-
-<dialog id="regeln" aria-labelledby="regeln-titel">
-  <form method="dialog" class="dialog-kopf">
-    <h2 id="regeln-titel">How recommendations work</h2>
-    <button class="knopf knopf-leise" aria-label="Close">Close</button>
-  </form>
-  <div class="dialog-inhalt" id="regeln-inhalt"></div>
-</dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script src="/app.js"></script>

@@ -7,22 +7,29 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { ladeProdukte, baueBewertung } from "./bewertung.mjs";
-import * as entscheidungen from "./entscheidungen.mjs";
-import * as protokoll from "./protokoll.mjs";
-import { ladeEntwuerfe } from "./entwuerfe.mjs";
+import { leiteSchwellenAb } from "./regeln.mjs";
+import * as einstellungen from "./einstellungen.mjs";
+import * as experimente from "./experimente.mjs";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
 const PORT = Number(process.env.PM_PORT || 5060);
 // Reihenfolge: PM_DB aus der .env, sonst daten/pm.db (Server-Nachtlauf / eigener Export), sonst die Team-Kopie aus dem Repo.
 const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || (fs.existsSync(path.join(WURZEL, "daten/pm.db")) ? "daten/pm.db" : "daten-team/pm.db"));
-// Eigene Entscheidungen (Aktion + Notiz) liegen getrennt von pm.db, weil pm.db nachts überschrieben wird.
-const ENTSCHEIDUNGEN_PFAD = path.resolve(WURZEL, process.env.PM_ENTSCHEIDUNGEN || "daten/entscheidungen.db");
-let _entscheidungenDb = null;
-// Dieselbe Datei enthält auch das Protokoll der Änderungen (Tabellen aenderung und momentaufnahme).
-const entscheidungenDb = () => (_entscheidungenDb ||= (() => { const d = entscheidungen.oeffne(ENTSCHEIDUNGEN_PFAD); protokoll.bereiteVor(d); return d; })());
-// KI-Titelentwürfe (von Menschen zu prüfen). Fehlt die Datei, läuft die App ohne sie.
-const ENTWUERFE_PFAD = path.resolve(WURZEL, process.env.PM_ENTWUERFE || "entwuerfe/titel.json");
+// Eigene Daten der App (Einstellungen und Tests) liegen getrennt von pm.db, weil pm.db nachts überschrieben wird.
+const APPDB_PFAD = path.resolve(WURZEL, process.env.PM_APPDB || "daten/app.db");
+let _appDb = null;
+function appDb() {
+  if (_appDb) return _appDb;
+  fs.mkdirSync(path.dirname(APPDB_PFAD), { recursive: true });
+  const d = new Database(APPDB_PFAD);
+  d.pragma("journal_mode = WAL");
+  einstellungen.bereiteVor(d);
+  experimente.bereiteVor(d);
+  return (_appDb = d);
+}
+const einst = () => einstellungen.effektiv(appDb());
+const produkteLaden = () => mitDb((db) => ladeProdukte(db));
 const HUB_URL = process.env.HUB_URL || "";
 const PM_TOKEN = process.env.PM_TOKEN || "";
 // Außenzugang (Server): Cloudflare Access stellt vor jede Anfrage ein signiertes JWT (Cf-Access-Jwt-Assertion).
@@ -65,10 +72,21 @@ function mitDb(fn) {
 
 const ROUTEN = {
   "/api/stand": () => mitDb((db) => db.prepare("SELECT * FROM stand").get()),
-  // Alle Produkte mit Gruppe, Empfehlung, Begründung und gespeicherter Entscheidung (siehe regeln.mjs).
-  "/api/bewertung": () => baueBewertung(mitDb((db) => ladeProdukte(db)), entscheidungen.alle(entscheidungenDb()), new Date(), protokoll.laufende(entscheidungenDb()), ladeEntwuerfe(ENTWUERFE_PFAD)),
-  // Protokoll der umgesetzten Änderungen mit Prüfstatus (läuft / bereit mit Urteil / abgeschlossen).
-  "/api/aenderungen": () => protokoll.liste(entscheidungenDb(), mitDb((db) => ladeProdukte(db))),
+  // Alle Angebote mit Bereich, Empfehlung und Begründung (siehe regeln.mjs), dazu ob sie in einem Test stecken.
+  "/api/bewertung": () => baueBewertung(produkteLaden(), einst(), new Date(), experimente.imTest(appDb())),
+  // Einstellungen: Formularbeschreibung, aktuelle Werte, Startwerte und die aus den Daten berechnete Grenze.
+  "/api/einstellungen": () => {
+    const e = einst();
+    return { abschnitte: einstellungen.ABSCHNITTE, schema: einstellungen.SCHEMA, werte: Object.fromEntries(einstellungen.SCHEMA.map((f) => [f.key, e[f.key]])), standard: einstellungen.STANDARD,
+      abgeleitet: { wenigImpressionen90d: leiteSchwellenAb(produkteLaden(), e, new Date()).wenigImpressionen90d } };
+  },
+  // Tests
+  "/api/experimente": () => ({ tests: experimente.liste(appDb(), produkteLaden(), new Date(), einst()), moeglich: experimente.kandidaten(appDb(), produkteLaden(), einst(), new Date()).length, testGroesse: einst().testGroesse }),
+  "/api/experiment": (q) => {
+    const r = experimente.detail(appDb(), Number(q.get("id")), produkteLaden(), new Date(), einst());
+    if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status });
+    return r.wert;
+  },
   "/api/produkte": (q) => mitDb((db) => {
     const suche = q.get("q") ? "%" + q.get("q").toLowerCase() + "%" : null;
     // Traffic-Tabelle ist optional (eine pm.db vom Server hat sie evtl. nicht): dann bleiben die Felder leer.
@@ -120,28 +138,16 @@ function leseJson(req) {
   });
 }
 
-// Entscheidung speichern: { number, aktion, notiz }. Leere Aktion und Notiz = Entscheidung löschen.
-async function speichereEntscheidung(req) {
-  const p = entscheidungen.pruefe(await leseJson(req));
-  if (!p.ok) throw Object.assign(new Error(p.fehler), { status: 400 });
-  const gibtEs = mitDb((db) => !!db.prepare("SELECT 1 FROM produkt WHERE number = ?").get(p.wert.number));
-  if (!gibtEs) throw Object.assign(new Error("Product " + p.wert.number + " not found"), { status: 404 });
-  return entscheidungen.speichere(entscheidungenDb(), p.wert);
-}
-
-// Änderung ins Protokoll eintragen: { number, hebel, neu }. Alt-Wert und Ausgangszahlen holt der Server selbst, nicht der Browser.
-async function legeAenderungAn(req) {
-  const eingabe = await leseJson(req);
-  const r = protokoll.legeAn(entscheidungenDb(), eingabe, mitDb((db) => ladeProdukte(db)));
-  if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status });
-  return r.wert;
-}
-async function schliesseAenderung(req) {
-  const r = protokoll.schliesse(entscheidungenDb(), await leseJson(req));
-  if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status });
-  return r.wert;
-}
-const POST_ROUTEN = { "/api/entscheidung": speichereEntscheidung, "/api/aenderung": legeAenderungAn, "/api/aenderung/abschluss": schliesseAenderung };
+// Jede Funktion prüft die Eingabe selbst (Typen, Grenzen, Zustand) und liefert { ok, wert } oder { ok: false, status, fehler }.
+const antwort = (r) => { if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status || 400 }); return r.wert; };
+const POST_ROUTEN = {
+  "/api/einstellungen": async (req) => antwort(einstellungen.speichere(appDb(), (await leseJson(req))?.werte)),
+  "/api/einstellungen/zuruecksetzen": async (req) => { await leseJson(req); return antwort(einstellungen.zuruecksetzen(appDb())); },
+  "/api/experiment": async (req) => antwort(experimente.legeAn(appDb(), await leseJson(req), produkteLaden(), einst())),
+  "/api/experiment/titel": async (req) => antwort(experimente.setzeTitel(appDb(), await leseJson(req), einst())),
+  "/api/experiment/start": async (req) => antwort(experimente.starte(appDb(), await leseJson(req), produkteLaden())),
+  "/api/experiment/abschluss": async (req) => antwort(experimente.schliesse(appDb(), await leseJson(req))),
+};
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
@@ -149,12 +155,12 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === "/healthz") return json(200, { ok: true });
     if (!(await accessOk(req))) return json(401, { ok: false, error: "kein gültiger Zugang (Cloudflare Access)" });
-    if (Object.hasOwn(POST_ROUTEN, url.pathname)) {
-      if (req.method !== "POST") return json(405, { ok: false, error: "POST only." });
-      return json(200, { ok: true, daten: await POST_ROUTEN[url.pathname](req) });
-    }
-    const route = ROUTEN[url.pathname];
-    if (route) return json(200, { ok: true, daten: await route(url.searchParams) });
+    // Dieselbe Adresse darf lesen (GET) und schreiben (POST): die Methode entscheidet
+    if (req.method === "POST" && Object.hasOwn(POST_ROUTEN, url.pathname)) return json(200, { ok: true, daten: await POST_ROUTEN[url.pathname](req) });
+    const route = Object.hasOwn(ROUTEN, url.pathname) ? ROUTEN[url.pathname] : null;
+    if (route && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: await route(url.searchParams) });
+    if (route) return json(405, { ok: false, error: "GET only." });
+    if (Object.hasOwn(POST_ROUTEN, url.pathname)) return json(405, { ok: false, error: "POST only." });
     // statische Dateien aus public/
     const rel = url.pathname === "/" ? "/index.html" : url.pathname;
     const datei = path.join(WURZEL, "public", path.normalize(rel).replace(/^(\.\.[/\\])+/, ""));
