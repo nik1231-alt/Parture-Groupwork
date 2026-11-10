@@ -1,0 +1,11 @@
+# Daten kommen vom Server (Nachtlauf), nie ueber Git
+daten/
+*.db
+*.db.neu
+# Geheimnisse
+.env
+# Node
+node_modules/
+# Laufzeit
+*.log
+pm.pid

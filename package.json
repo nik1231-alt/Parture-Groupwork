@@ -1,0 +1,15 @@
+{
+  "name": "parture-groupwork",
+  "version": "0.1.0",
+  "description": "Produktmanagement fuer den Parture-Shop — Uni-Gruppenarbeit. Arbeitet auf einer Whitelist-Kopie (pm.db), nie auf der Firmendatenbank.",
+  "type": "module",
+  "main": "app/server.mjs",
+  "scripts": {
+    "start": "node app/server.mjs",
+    "dev": "node --watch app/server.mjs",
+    "test": "node app/test.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0"
+  }
+}
