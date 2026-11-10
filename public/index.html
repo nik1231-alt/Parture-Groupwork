@@ -27,15 +27,17 @@
   <h1>Parture Produktmanagement</h1>
   <div class="leise" id="stand">lade …</div>
   <div class="reihe" id="kanaele"></div>
+  <div class="reihe" id="traffic"></div>
   <input id="suche" placeholder="Produkt suchen (Titel oder Nummer)">
   <table>
-    <thead><tr><th>Produkt</th><th>Status</th><th class="z">Preis Ø</th><th class="z">Stück 90 T</th><th class="z">Stück gesamt</th><th>Zuletzt verkauft</th></tr></thead>
+    <thead><tr><th>Produkt</th><th>Status</th><th class="z">Preis Ø</th><th class="z">Stück 90 T</th><th class="z">Stück gesamt</th><th class="z">Impr. 30 T</th><th class="z">Aufrufe 30 T</th><th class="z">Klickrate</th><th>Zuletzt verkauft</th></tr></thead>
     <tbody id="liste"></tbody>
   </table>
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
 const eur = (v) => v == null ? "–" : Number(v).toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+const zahl = (v) => v == null ? "–" : Number(v).toLocaleString("de-DE");
 const datum = (s) => s ? new Date(s).toLocaleDateString("de-DE") : "–";
 async function api(p) { const r = await fetch(p); const j = await r.json(); if (!j.ok) throw new Error(j.error); return j.daten; }
 async function stand() {
@@ -43,12 +45,14 @@ async function stand() {
     const s = await api("/api/stand");
     $("#stand").textContent = `Stand ${new Date(s.exportiert_at).toLocaleString("de-DE")} · ${s.produkte} Produkte · ${s.kanaele} Kanal-Einträge · ${s.bilder} Bilder`;
     const k = await api("/api/kanaele");
+    const t = await api("/api/traffic");
+    $("#traffic").innerHTML = t.map((x) => `<div class="kachel"><span class="leise">Traffic ${x.tage} Tage</span><b>${zahl(x.impressionen)}</b><span class="leise">Impressionen · ${zahl(x.aufrufe)} Aufrufe · ${x.impressionen ? (100 * x.aufrufe / x.impressionen).toFixed(2).replace(".", ",") : "–"} % Klickrate · ${zahl(x.transaktionen)} Verkäufe</span></div>`).join("");
     $("#kanaele").innerHTML = k.map((x) => `<div class="kachel"><span class="leise">${x.channel}</span><b>${x.produkte}</b><span class="leise">${x.gelistet} gelistet · ${x.stueck_90d ?? 0} Stück / 90 T</span></div>`).join("");
   } catch (e) { $("#stand").textContent = e.message; }
 }
 async function liste(q) {
   const p = await api("/api/produkte" + (q ? "?q=" + encodeURIComponent(q) : ""));
-  $("#liste").innerHTML = p.map((x) => `<tr><td>${x.image_url ? `<img src="${x.image_url}" alt="">` : ""}<span class="leise">${x.number}</span> ${x.title}</td><td>${x.status ?? ""}</td><td class="z">${eur(x.avg_price)}</td><td class="z">${x.units_90d ?? 0}</td><td class="z">${x.units_total ?? 0}</td><td>${datum(x.last_sold_at)}</td></tr>`).join("");
+  $("#liste").innerHTML = p.map((x) => `<tr><td>${x.image_url ? `<img src="${x.image_url}" alt="">` : ""}<span class="leise">${x.number}</span> ${x.title}</td><td>${x.status ?? ""}</td><td class="z">${eur(x.avg_price)}</td><td class="z">${x.units_90d ?? 0}</td><td class="z">${x.units_total ?? 0}</td><td class="z">${zahl(x.impressionen_30d)}</td><td class="z">${zahl(x.aufrufe_30d)}</td><td class="z">${x.impressionen_30d ? (100 * x.aufrufe_30d / x.impressionen_30d).toFixed(2).replace(".", ",") + " %" : "–"}</td><td>${datum(x.last_sold_at)}</td></tr>`).join("");
 }
 let t; $("#suche").addEventListener("input", (e) => { clearTimeout(t); t = setTimeout(() => liste(e.target.value.trim()), 200); });
 stand(); liste("");

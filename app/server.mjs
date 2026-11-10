@@ -10,7 +10,8 @@ import Database from "better-sqlite3";
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
 const PORT = Number(process.env.PM_PORT || 5060);
-const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || "daten/pm.db");
+// Reihenfolge: PM_DB aus der .env, sonst daten/pm.db (Server-Nachtlauf / eigener Export), sonst die Team-Kopie aus dem Repo.
+const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || (fs.existsSync(path.join(WURZEL, "daten/pm.db")) ? "daten/pm.db" : "daten-team/pm.db"));
 const HUB_URL = process.env.HUB_URL || "";
 const PM_TOKEN = process.env.PM_TOKEN || "";
 // Außenzugang (Server): Cloudflare Access stellt vor jede Anfrage ein signiertes JWT (Cf-Access-Jwt-Assertion).
@@ -55,9 +56,17 @@ const ROUTEN = {
   "/api/stand": () => mitDb((db) => db.prepare("SELECT * FROM stand").get()),
   "/api/produkte": (q) => mitDb((db) => {
     const suche = q.get("q") ? "%" + q.get("q").toLowerCase() + "%" : null;
-    const sql = "SELECT number, title, image_url, status, grams, print_s, ship_method, units_total, units_90d, avg_price, last_sold_at FROM produkt"
-      + (suche ? " WHERE lower(title) LIKE ? OR number LIKE ?" : "") + " ORDER BY units_90d DESC, units_total DESC LIMIT 500";
+    // Traffic-Tabelle ist optional (eine pm.db vom Server hat sie evtl. nicht): dann bleiben die Felder leer.
+    const hatTraffic = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic'").get();
+    const tr = (spalte, tage) => hatTraffic ? `(SELECT SUM(${spalte}) FROM traffic t WHERE t.number = produkt.number AND t.tage = ${tage})` : "NULL";
+    const sql = "SELECT number, title, image_url, status, grams, print_s, ship_method, units_total, units_90d, avg_price, last_sold_at, "
+      + `${tr("impressionen", 30)} impressionen_30d, ${tr("aufrufe", 30)} aufrufe_30d, ${tr("transaktionen", 30)} transaktionen_30d, ${tr("impressionen", 90)} impressionen_90d, ${tr("aufrufe", 90)} aufrufe_90d `
+      + "FROM produkt" + (suche ? " WHERE lower(title) LIKE ? OR number LIKE ?" : "") + " ORDER BY units_90d DESC, units_total DESC LIMIT 500";
     return suche ? db.prepare(sql).all(suche, suche) : db.prepare(sql).all();
+  }),
+  "/api/traffic": () => mitDb((db) => {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic'").get()) return [];
+    return db.prepare("SELECT tage, SUM(impressionen) impressionen, SUM(aufrufe) aufrufe, SUM(transaktionen) transaktionen FROM traffic GROUP BY tage ORDER BY tage").all();
   }),
   "/api/produkt": (q) => mitDb((db) => {
     const nr = q.get("nr");
