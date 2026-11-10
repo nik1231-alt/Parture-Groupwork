@@ -108,13 +108,40 @@ async function verkaeufe(token) {
   return je;
 }
 
+// Traffic je Listing (Analytics-API). Datumsfilter laufen in Los-Angeles-Zeit. Die API liefert je Aufruf nur die Top 200
+// und ignoriert offset, deshalb werden die Listing-IDs in Paketen zu 200 abgefragt (Filter listing_ids).
+const laTag = (tageZurueck) => new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Los_Angeles" }).format(new Date(Date.now() - tageZurueck * 864e5)).replace(/-/g, "");
+async function traffic(token, tage, ids) {
+  const je = new Map();
+  for (let i = 0; i < ids.length; i += 200) {
+    const paket = ids.slice(i, i + 200);
+    const filter = `date_range:[${laTag(tage)}..${laTag(1)}],marketplace_ids:{EBAY_DE},listing_ids:{${paket.join("|")}}`;
+    const url = "https://api.ebay.com/sell/analytics/v1/traffic_report?" + new URLSearchParams({
+      dimension: "LISTING", filter, sort: "-TOTAL_IMPRESSION_TOTAL", limit: "200",
+      metric: "CLICK_THROUGH_RATE,TOTAL_IMPRESSION_TOTAL,LISTING_VIEWS_TOTAL,SALES_CONVERSION_RATE,TRANSACTION",
+    });
+    const r = await fetch(url, { headers: { Authorization: "Bearer " + token, "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE" } });
+    if (!r.ok) { console.warn(`  Traffic ${tage} Tage, Paket ${i / 200 + 1}: HTTP ${r.status} ${(await r.text()).slice(0, 120)}`); continue; }
+    const j = await r.json();
+    const keys = (j.header?.metrics || []).map((m) => m.key);
+    const wert = (mv, k) => { const x = keys.indexOf(k); return x >= 0 ? Number(mv?.[x]?.value) || 0 : 0; };
+    for (const rec of j.records || []) {
+      const id = rec.dimensionValues?.[0]?.value;
+      if (!id || je.has(id)) continue;
+      const mv = rec.metricValues || [];
+      je.set(id, { impressionen: wert(mv, "TOTAL_IMPRESSION_TOTAL"), aufrufe: wert(mv, "LISTING_VIEWS_TOTAL"), klickrate: wert(mv, "CLICK_THROUGH_RATE"), conversion: wert(mv, "SALES_CONVERSION_RATE"), transaktionen: wert(mv, "TRANSACTION") });
+    }
+  }
+  return je;
+}
+
 // Artikelnummer = führende Ziffern der SKU ("234 -  -" -> 234, "1254_Gr" -> 1254). Variantenlistings: erste Varianten-SKU.
 function artikelnummer(it) {
   for (const s of [it.sku, ...it.varianten.map((v) => v.sku)]) { const m = s && s.match(/^\s*(\d{1,6})/); if (m) return m[1]; }
   return null;
 }
 
-function schreibe(items, vk) {
+function schreibe(items, vk, tr30, tr90) {
   const produkte = new Map();
   for (const it of items) {
     const nr = artikelnummer(it) ?? "ID" + it.itemId;
@@ -137,14 +164,16 @@ function schreibe(items, vk) {
     CREATE TABLE produkt (number TEXT PRIMARY KEY, title TEXT, image_url TEXT, variants TEXT, variant_meta TEXT, grams REAL, print_s REAL, ship_method TEXT, status TEXT, created_at TEXT, units_total INTEGER, units_90d INTEGER, avg_price REAL, last_sold_at TEXT);
     CREATE TABLE kanal (number TEXT, channel TEXT, listed INTEGER, external_id TEXT, title TEXT, skus TEXT, preis_aktuell REAL, kanal_status TEXT, geplant_ab TEXT, units_total INTEGER, units_90d INTEGER, avg_price REAL, last_sold_at TEXT);
     CREATE TABLE bild (number TEXT, url TEXT, position INTEGER, kind TEXT);
+    CREATE TABLE traffic (item_id TEXT, number TEXT, tage INTEGER, impressionen INTEGER, aufrufe INTEGER, klickrate REAL, conversion REAL, transaktionen INTEGER);
     CREATE TABLE stand (exportiert_at TEXT, quelle TEXT, produkte INTEGER, kanaele INTEGER, bilder INTEGER);
-    CREATE INDEX kanal_nr ON kanal(number); CREATE INDEX bild_nr ON bild(number);
+    CREATE INDEX kanal_nr ON kanal(number); CREATE INDEX traffic_nr ON traffic(number); CREATE INDEX bild_nr ON bild(number);
   `);
   const iso = (t) => (t ? new Date(t).toISOString() : null);
   const insP = db.prepare("INSERT INTO produkt VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   const insK = db.prepare("INSERT INTO kanal VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
   const insB = db.prepare("INSERT INTO bild VALUES (?,?,?,?)");
-  let nK = 0, nB = 0;
+  const insT = db.prepare("INSERT INTO traffic VALUES (?,?,?,?,?,?,?,?)");
+  let nK = 0, nB = 0, nT = 0;
   db.transaction(() => {
     for (const p of produkte.values()) {
       const mittel = p.stkPreis ? p.summe / p.stkPreis : p.preise.length ? p.preise.reduce((a, b) => a + b, 0) / p.preise.length : null;
@@ -155,12 +184,13 @@ function schreibe(items, vk) {
         nK++;
       }
       if (p.bild) { insB.run(p.number, p.bild, 0, "galerie"); nB++; }
+      for (const { it } of p.kanaele) for (const [tage, tr] of [[30, tr30], [90, tr90]]) { const t = tr.get(it.itemId); if (t) { insT.run(it.itemId, p.number, tage, t.impressionen, t.aufrufe, t.klickrate, t.conversion, t.transaktionen); nT++; } }
     }
     db.prepare("INSERT INTO stand VALUES (?,?,?,?,?)").run(new Date().toISOString(), "eBay-API (partureshop), lokal gebaut", produkte.size, nK, nB);
   })();
   db.close();
   fs.renameSync(neu, DB_PFAD);
-  return { produkte, nK, nB };
+  return { produkte, nK, nB, nT };
 }
 
 const t0 = Date.now();
@@ -171,7 +201,11 @@ console.log(`  ${items.length} aktive Listings`);
 console.log("Lese Bestellungen (nur zählen) …");
 const vk = await verkaeufe(token);
 console.log(`  ${vk.size} Artikel mit Verkäufen in ${TAGE_HISTORIE} Tagen`);
-const { produkte, nK, nB } = schreibe(items, vk);
+console.log("Lese Traffic (30 und 90 Tage) …");
+const ids = items.map((i) => i.itemId);
+const tr30 = await traffic(token, 30, ids), tr90 = await traffic(token, 90, ids);
+console.log(`  Traffic: ${tr30.size} Listings (30 T), ${tr90.size} Listings (90 T)`);
+const { produkte, nK, nB, nT } = schreibe(items, vk, tr30, tr90);
 const ohneNr = [...produkte.keys()].filter((k) => k.startsWith("ID")).length;
-console.log(`Fertig in ${Math.round((Date.now() - t0) / 1000)} s: ${produkte.size} Produkte, ${nK} Kanal-Zeilen, ${nB} Bilder -> ${DB_PFAD}`);
+console.log(`Fertig in ${Math.round((Date.now() - t0) / 1000)} s: ${produkte.size} Produkte, ${nK} Kanal-Zeilen, ${nB} Bilder, ${nT} Traffic-Zeilen -> ${DB_PFAD}`);
 if (ohneNr) console.log(`Hinweis: ${ohneNr} Listings ohne erkennbare Artikelnummer in der SKU (als "ID<ItemID>" angelegt).`);
