@@ -6,12 +6,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { ladeProdukte, baueBewertung } from "./bewertung.mjs";
+import * as entscheidungen from "./entscheidungen.mjs";
+import * as protokoll from "./protokoll.mjs";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
 const PORT = Number(process.env.PM_PORT || 5060);
 // Reihenfolge: PM_DB aus der .env, sonst daten/pm.db (Server-Nachtlauf / eigener Export), sonst die Team-Kopie aus dem Repo.
 const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || (fs.existsSync(path.join(WURZEL, "daten/pm.db")) ? "daten/pm.db" : "daten-team/pm.db"));
+// Eigene Entscheidungen (Aktion + Notiz) liegen getrennt von pm.db, weil pm.db nachts überschrieben wird.
+const ENTSCHEIDUNGEN_PFAD = path.resolve(WURZEL, process.env.PM_ENTSCHEIDUNGEN || "daten/entscheidungen.db");
+let _entscheidungenDb = null;
+// Dieselbe Datei enthält auch das Protokoll der Änderungen (Tabellen aenderung und momentaufnahme).
+const entscheidungenDb = () => (_entscheidungenDb ||= (() => { const d = entscheidungen.oeffne(ENTSCHEIDUNGEN_PFAD); protokoll.bereiteVor(d); return d; })());
 const HUB_URL = process.env.HUB_URL || "";
 const PM_TOKEN = process.env.PM_TOKEN || "";
 // Außenzugang (Server): Cloudflare Access stellt vor jede Anfrage ein signiertes JWT (Cf-Access-Jwt-Assertion).
@@ -54,6 +62,10 @@ function mitDb(fn) {
 
 const ROUTEN = {
   "/api/stand": () => mitDb((db) => db.prepare("SELECT * FROM stand").get()),
+  // Alle Produkte mit Gruppe, Empfehlung, Begründung und gespeicherter Entscheidung (siehe regeln.mjs).
+  "/api/bewertung": () => baueBewertung(mitDb((db) => ladeProdukte(db)), entscheidungen.alle(entscheidungenDb()), new Date(), protokoll.laufende(entscheidungenDb())),
+  // Protokoll der umgesetzten Änderungen mit Prüfstatus (läuft / bereit mit Urteil / abgeschlossen).
+  "/api/aenderungen": () => protokoll.liste(entscheidungenDb(), mitDb((db) => ladeProdukte(db))),
   "/api/produkte": (q) => mitDb((db) => {
     const suche = q.get("q") ? "%" + q.get("q").toLowerCase() + "%" : null;
     // Traffic-Tabelle ist optional (eine pm.db vom Server hat sie evtl. nicht): dann bleiben die Felder leer.
@@ -88,12 +100,56 @@ const ROUTEN = {
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" };
 
+const MAX_BODY = 10 * 1024;
+function leseJson(req) {
+  return new Promise((resolve, reject) => {
+    const fehler = (status, msg) => reject(Object.assign(new Error(msg), { status }));
+    if (!String(req.headers["content-type"] || "").startsWith("application/json")) return fehler(415, "Expected application/json.");
+    // Schutz vor fremden Webseiten: ein Origin-Header muss zum eigenen Host passen.
+    const origin = req.headers.origin;
+    let herkunft = null;
+    try { herkunft = origin ? new URL(origin).host : null; } catch { return fehler(403, "Request from a foreign origin rejected."); }
+    if (herkunft && herkunft !== req.headers.host) return fehler(403, "Request from a foreign origin rejected.");
+    let n = 0; const teile = [];
+    req.on("data", (c) => { n += c.length; if (n > MAX_BODY) fehler(413, "Request too large."); else teile.push(c); });
+    req.on("end", () => { try { resolve(JSON.parse(Buffer.concat(teile).toString("utf8"))); } catch { fehler(400, "Not valid JSON."); } });
+    req.on("error", () => fehler(400, "Request aborted."));
+  });
+}
+
+// Entscheidung speichern: { number, aktion, notiz }. Leere Aktion und Notiz = Entscheidung löschen.
+async function speichereEntscheidung(req) {
+  const p = entscheidungen.pruefe(await leseJson(req));
+  if (!p.ok) throw Object.assign(new Error(p.fehler), { status: 400 });
+  const gibtEs = mitDb((db) => !!db.prepare("SELECT 1 FROM produkt WHERE number = ?").get(p.wert.number));
+  if (!gibtEs) throw Object.assign(new Error("Product " + p.wert.number + " not found"), { status: 404 });
+  return entscheidungen.speichere(entscheidungenDb(), p.wert);
+}
+
+// Änderung ins Protokoll eintragen: { number, hebel, neu }. Alt-Wert und Ausgangszahlen holt der Server selbst, nicht der Browser.
+async function legeAenderungAn(req) {
+  const eingabe = await leseJson(req);
+  const r = protokoll.legeAn(entscheidungenDb(), eingabe, mitDb((db) => ladeProdukte(db)));
+  if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status });
+  return r.wert;
+}
+async function schliesseAenderung(req) {
+  const r = protokoll.schliesse(entscheidungenDb(), await leseJson(req));
+  if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status });
+  return r.wert;
+}
+const POST_ROUTEN = { "/api/entscheidung": speichereEntscheidung, "/api/aenderung": legeAenderungAn, "/api/aenderung/abschluss": schliesseAenderung };
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const json = (code, body) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(body)); };
   try {
     if (url.pathname === "/healthz") return json(200, { ok: true });
     if (!(await accessOk(req))) return json(401, { ok: false, error: "kein gültiger Zugang (Cloudflare Access)" });
+    if (Object.hasOwn(POST_ROUTEN, url.pathname)) {
+      if (req.method !== "POST") return json(405, { ok: false, error: "POST only." });
+      return json(200, { ok: true, daten: await POST_ROUTEN[url.pathname](req) });
+    }
     const route = ROUTEN[url.pathname];
     if (route) return json(200, { ok: true, daten: await route(url.searchParams) });
     // statische Dateien aus public/

@@ -1,61 +1,93 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Parture Produktmanagement</title>
-<style>
-  :root { --bg: #f8fafc; --karte: #fff; --text: #0f172a; --leise: #64748b; --linie: #e2e8f0; --akzent: #ea580c; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0f172a; --karte: #1e293b; --text: #e2e8f0; --leise: #94a3b8; --linie: #334155; } }
-  body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  .leise { color: var(--leise); font-size: 14px; }
-  .reihe { display: flex; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
-  .kachel { background: var(--karte); border: 1px solid var(--linie); border-radius: 12px; padding: 12px 16px; min-width: 140px; }
-  .kachel b { font-size: 22px; display: block; }
-  input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--linie); border-radius: 10px; background: var(--karte); color: var(--text); font-size: 15px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 14px; background: var(--karte); border-radius: 12px; overflow: hidden; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--linie); font-size: 14px; }
-  th { color: var(--leise); font-weight: 600; }
-  td.z { text-align: right; font-variant-numeric: tabular-nums; }
-  img { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; vertical-align: middle; margin-right: 8px; }
-</style>
+<title>Parture Product Management</title>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<main>
-  <h1>Parture Produktmanagement</h1>
-  <div class="leise" id="stand">lade …</div>
-  <div class="reihe" id="kanaele"></div>
-  <div class="reihe" id="traffic"></div>
-  <input id="suche" placeholder="Produkt suchen (Titel oder Nummer)">
-  <table>
-    <thead><tr><th>Produkt</th><th>Status</th><th class="z">Preis Ø</th><th class="z">Stück 90 T</th><th class="z">Stück gesamt</th><th class="z">Impr. 30 T</th><th class="z">Aufrufe 30 T</th><th class="z">Klickrate</th><th>Zuletzt verkauft</th></tr></thead>
-    <tbody id="liste"></tbody>
-  </table>
+<header class="kopf">
+  <div class="kopf-innen">
+    <div class="marke">
+      <span class="marke-zeichen" aria-hidden="true">P</span>
+      <span class="marke-name">Parture</span>
+      <span class="marke-zusatz">Product management</span>
+    </div>
+    <nav class="nav" aria-label="Views">
+      <button class="nav-knopf" id="nav-produkte" type="button" aria-current="page">Products</button>
+      <button class="nav-knopf" id="nav-log" type="button">Change log <span class="zaehler" id="log-zaehler" hidden></span></button>
+    </nav>
+    <div class="kopf-rechts">
+      <span class="leise" id="stand"></span>
+      <button class="knopf knopf-leise" id="regeln-auf" type="button">How recommendations work</button>
+    </div>
+  </div>
+</header>
+
+<main class="seite">
+  <div id="fehler" class="hinweis hinweis-fehler" role="alert" hidden></div>
+
+  <div id="ansicht-produkte">
+    <section class="einstieg">
+      <h1>What is selling, what is not, and what is the next step?</h1>
+      <p class="leise">Every product gets a recommendation with a reason, based on sales and views of the last 90 days. For listings that need work you get one ready-made next step. You decide, publish it on eBay and log it here.</p>
+      <div class="fortschritt" id="fortschritt" hidden>
+        <div class="fortschritt-balken"><span id="fortschritt-fuellung"></span></div>
+        <span class="leise" id="fortschritt-text"></span>
+      </div>
+    </section>
+
+    <section class="gruppen" id="gruppen" aria-label="Groups"></section>
+
+    <section class="werkzeuge">
+      <label class="suche">
+        <span class="nur-screenreader">Search products</span>
+        <input id="suche" type="search" placeholder="Search products by title or number" autocomplete="off" maxlength="100">
+      </label>
+      <label class="auswahl">
+        <span class="nur-screenreader">Sort order</span>
+        <select id="sortierung">
+          <option value="verkaeufe">Most sales (90 days)</option>
+          <option value="aufrufe">Most views (90 days)</option>
+          <option value="zuletzt">Recently sold</option>
+          <option value="neueste">Newest products</option>
+        </select>
+      </label>
+      <label class="auswahl">
+        <span class="nur-screenreader">Decision</span>
+        <select id="entscheidungsfilter">
+          <option value="alle">All products</option>
+          <option value="offen">Still open</option>
+          <option value="entschieden">Already decided</option>
+        </select>
+      </label>
+    </section>
+
+    <p class="leise ergebnis-zeile" id="ergebnis" aria-live="polite"></p>
+    <section class="liste" id="liste" aria-label="Products"></section>
+    <div class="mehr"><button class="knopf" id="mehr" type="button" hidden>Show more</button></div>
+  </div>
+
+  <div id="ansicht-log" hidden>
+    <section class="einstieg">
+      <h1>Change log</h1>
+      <p class="leise">Every change you published is stored here with the old value, the new value, the date and the numbers at the start. After 30 days the app compares the listing with all unchanged listings and tells you whether the change helped. Only one change per listing at a time.</p>
+    </section>
+    <p class="leise ergebnis-zeile" id="log-ergebnis" aria-live="polite"></p>
+    <section class="liste" id="log-liste" aria-label="Changes"></section>
+  </div>
 </main>
-<script>
-const $ = (s) => document.querySelector(s);
-const eur = (v) => v == null ? "–" : Number(v).toLocaleString("de-DE", { style: "currency", currency: "EUR" });
-const zahl = (v) => v == null ? "–" : Number(v).toLocaleString("de-DE");
-const datum = (s) => s ? new Date(s).toLocaleDateString("de-DE") : "–";
-async function api(p) { const r = await fetch(p); const j = await r.json(); if (!j.ok) throw new Error(j.error); return j.daten; }
-async function stand() {
-  try {
-    const s = await api("/api/stand");
-    $("#stand").textContent = `Stand ${new Date(s.exportiert_at).toLocaleString("de-DE")} · ${s.produkte} Produkte · ${s.kanaele} Kanal-Einträge · ${s.bilder} Bilder`;
-    const k = await api("/api/kanaele");
-    const t = await api("/api/traffic");
-    $("#traffic").innerHTML = t.map((x) => `<div class="kachel"><span class="leise">Traffic ${x.tage} Tage</span><b>${zahl(x.impressionen)}</b><span class="leise">Impressionen · ${zahl(x.aufrufe)} Aufrufe · ${x.impressionen ? (100 * x.aufrufe / x.impressionen).toFixed(2).replace(".", ",") : "–"} % Klickrate · ${zahl(x.transaktionen)} Verkäufe</span></div>`).join("");
-    $("#kanaele").innerHTML = k.map((x) => `<div class="kachel"><span class="leise">${x.channel}</span><b>${x.produkte}</b><span class="leise">${x.gelistet} gelistet · ${x.stueck_90d ?? 0} Stück / 90 T</span></div>`).join("");
-  } catch (e) { $("#stand").textContent = e.message; }
-}
-async function liste(q) {
-  const p = await api("/api/produkte" + (q ? "?q=" + encodeURIComponent(q) : ""));
-  $("#liste").innerHTML = p.map((x) => `<tr><td>${x.image_url ? `<img src="${x.image_url}" alt="">` : ""}<span class="leise">${x.number}</span> ${x.title}</td><td>${x.status ?? ""}</td><td class="z">${eur(x.avg_price)}</td><td class="z">${x.units_90d ?? 0}</td><td class="z">${x.units_total ?? 0}</td><td class="z">${zahl(x.impressionen_30d)}</td><td class="z">${zahl(x.aufrufe_30d)}</td><td class="z">${x.impressionen_30d ? (100 * x.aufrufe_30d / x.impressionen_30d).toFixed(2).replace(".", ",") + " %" : "–"}</td><td>${datum(x.last_sold_at)}</td></tr>`).join("");
-}
-let t; $("#suche").addEventListener("input", (e) => { clearTimeout(t); t = setTimeout(() => liste(e.target.value.trim()), 200); });
-stand(); liste("");
-</script>
+
+<dialog id="regeln" aria-labelledby="regeln-titel">
+  <form method="dialog" class="dialog-kopf">
+    <h2 id="regeln-titel">How recommendations work</h2>
+    <button class="knopf knopf-leise" aria-label="Close">Close</button>
+  </form>
+  <div class="dialog-inhalt" id="regeln-inhalt"></div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script src="/app.js"></script>
 </body>
 </html>
