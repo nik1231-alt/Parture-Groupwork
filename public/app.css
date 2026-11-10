@@ -167,3 +167,10 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
 .pruefung ul { margin: 6px 0; padding-left: 20px; }
 .pruefung-knoepfe { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .alt-bild { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+
+/* Stufen, die später dran sind, dezenter darstellen (Fokus: Impressionen) */
+.gruppe.spaeter { opacity: .6; background: transparent; box-shadow: none; }
+.gruppe.spaeter:hover, .gruppe.spaeter[aria-pressed="true"] { opacity: 1; }
+
+/* Das hidden-Attribut muss immer gewinnen (sonst zeigen Elemente mit eigenem display trotzdem an) */
+[hidden] { display: none !important; }

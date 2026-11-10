@@ -23,7 +23,7 @@ const prozent = (v, stellen = 1) => (v == null ? "–" : (100 * v).toLocaleStrin
 const veraenderung = (v) => (v == null ? "n/a" : (v >= 0 ? "+" : "") + Math.round(100 * v) + " %");
 const datum = (s) => (s && !Number.isNaN(Date.parse(s)) ? new Date(s).toLocaleDateString(LOCALE) : "–");
 
-const zustand = { daten: null, log: [], ansicht: "produkte", gruppe: null, suche: "", sortierung: "verkaeufe", filter: "alle", sichtbar: 40 };
+const zustand = { daten: null, log: [], ansicht: "produkte", gruppe: "sichtbarkeit", suche: "", sortierung: "potential", filter: "alle", sichtbar: 40 };
 const SEITENGROESSE = 40;
 
 async function api(pfad, optionen) {
@@ -77,7 +77,9 @@ function gefiltert() {
   });
   const num = (v) => (v == null ? -1 : Number(v));
   const zeit = (v) => (Number.isNaN(Date.parse(v)) ? 0 : Date.parse(v));
+  const potenzial = (p) => (Number(p.units_90d) || 0) / ((Number(p.impressionen_90d) || 0) + 1);
   const sortierer = {
+    potential: (a, b) => potenzial(b) - potenzial(a) || num(b.units_total) - num(a.units_total),
     verkaeufe: (a, b) => num(b.units_90d) - num(a.units_90d) || num(b.units_total) - num(a.units_total),
     aufrufe: (a, b) => num(b.aufrufe_90d) - num(a.aufrufe_90d),
     zuletzt: (a, b) => zeit(b.last_sold_at) - zeit(a.last_sold_at),
@@ -105,15 +107,15 @@ function zeichneFortschritt() {
 
 function zeichneGruppen() {
   const { gruppen, uebersicht, summe, aktionen } = zustand.daten;
-  const kachel = (schluessel, name, anzahl, zusatz, punkt) => {
+  const kachel = (schluessel, name, anzahl, zusatz, punkt, spaeter = false) => {
     const aktiv = zustand.gruppe === schluessel;
-    return el("button", { class: "gruppe", type: "button", "aria-pressed": String(aktiv), onclick: () => { zustand.gruppe = aktiv ? null : schluessel; zustand.sichtbar = SEITENGROESSE; zeichneGruppen(); zeichneListe(); } },
+    return el("button", { class: "gruppe" + (spaeter ? " spaeter" : ""), type: "button", "aria-pressed": String(aktiv), onclick: () => { zustand.gruppe = aktiv ? null : schluessel; zustand.sichtbar = SEITENGROESSE; zeichneGruppen(); zeichneListe(); } },
       el("span", { class: "gruppe-name" }, punkt ? el("span", { class: "punkt", style: `--punkt: var(--g-${punkt})` }) : null, name),
       el("span", { class: "gruppe-zahl", text: zahl(anzahl) }),
       el("span", { class: "gruppe-aktion", text: zusatz }));
   };
   const knoten = [kachel(null, "All products", summe.produkte, "no restriction", null)];
-  for (const [k, g] of Object.entries(gruppen)) knoten.push(kachel(k, g.label, uebersicht[k], "Recommendation: " + aktionen[g.empfehlung], k));
+  for (const [k, g] of Object.entries(gruppen)) knoten.push(kachel(k, g.label, uebersicht[k], "Recommendation: " + aktionen[g.empfehlung], k, g.fokus === false));
   $("#gruppen").replaceChildren(...knoten);
 }
 
@@ -179,7 +181,7 @@ function vorschlag(p) {
   const inhalt = [el("p", { class: "vorschlag-anweisung", text: v.anweisung })];
   if (v.hebel === "titel") {
     inhalt.push(kasten("Old title", v.alt, false));
-    if (v.neu) inhalt.push(kasten(`New title (${v.laenge} of 80 characters)`, v.neu, true));
+    if (v.neu) inhalt.push(kasten(`New title (${v.laenge} of 80 characters)${v.quelle === "claude" ? " · AI draft, please check" : ""}`, v.neu, true));
   } else if (v.neu) inhalt.push(kasten("Text to paste (German, as your listings are)", v.neu, true));
   if (v.schritte.length) inhalt.push(el(v.hebel === "bild" ? "ol" : "ul", { class: "vorschlag-liste" }, v.schritte.map((t) => el("li", { text: t }))));
   if (v.gruende.length) inhalt.push(el("div", { class: "vorschlag-gruende" }, el("div", { class: "leise", text: "Why" }), el("ul", {}, v.gruende.map((t) => el("li", { text: t })))));
@@ -300,7 +302,7 @@ function abschlussKnoepfe(a, empfohlen) {
 function zeichneRegeln() {
   const { gruppen, aktionen, einstellungen: e } = zustand.daten;
   $("#regeln-inhalt").replaceChildren(
-    el("p", { text: "Every sale passes three stages: impressions (is the listing shown?), clicks (is it opened?) and sales (is it bought?). For products that sell too little, the weakest stage decides what to try first. Change one thing at a time, then wait for new data." }),
+    el("p", { text: "Every sale passes three stages: impressions (is the listing shown?), clicks (is it opened?) and sales (is it bought?). The current focus is stage 1: every listing in the bottom quarter of the shop for impressions is shown there, including listings that already sell, because those gain the most from being seen more. Stages 2 and 3 come later and are shown dimmed. Change one thing at a time, then wait for new data." }),
     el("p", { text: "Left out on purpose: advertising (it needs a budget) and price (it needs a margin target). Delisting is never recommended automatically, a person decides. Only eBay data is used. The app cannot change listings on eBay, you publish the change yourself and log it." }),
     el("p", { text: `Current values: grace period ${e.schonfristTage} days · top from ${e.topVerkaeufe90d} sales · steady from ${(e.schwacheConversion * 100).toLocaleString(LOCALE)} % conversion · stage 1 below ${zahl(Math.round(e.wenigImpressionen90d))} impressions · stage 2 below ${prozent(e.schwacheKlickrate, 2)} click rate. The stage limits are the bottom quarter of your shop and are recalculated from the data.` }),
     el("p", { text: `Review of a change: after ${e.pruefungNachTagen} days, only with at least ${e.mindestImpressionen30} impressions in the window. It counts as better if the main figure is at least ${Math.round(e.besserAb * 100)} % better than in the unchanged listings and the protected figure does not fall by more than ${Math.round(e.schutzGrenze * 100)} %. All values are starting points to be agreed on by the team.` }),

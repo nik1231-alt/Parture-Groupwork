@@ -51,13 +51,60 @@ export function zerlegeTitel(titel, einst = EINSTELLUNGEN) {
   return { produkt: raeume(m[1]), ziel: raeume(m[2]) };
 }
 
+// ---------- Lernen von ähnlichen Produkten (Fokus: Impressionen) ----------
+// Idee: Angebote mit gleicher Produktart und vielen Impressionen verwenden im PRODUKTTEIL ihres Titels oft Wörter,
+// die bei einem Angebot mit wenig Impressionen fehlen. Nur der Produktteil zählt ("Wandhalterung Zubehör"), nie der
+// Geräteteil nach "passend für" (Marken und Modelle). Sonst würde die App eine falsche Passung behaupten.
+const STOP = new Set(["passend", "kompatibel", "für", "fuer", "mit", "von", "und", "neu", "original", "parture", "stück", "stueck", "set", "inkl"]);
+const produktWoerter = (produktTeil) => new Set((String(produktTeil || "").toLowerCase().match(/[\p{L}\p{N}-]+/gu) || []).filter((w) => w.length >= 4 && !/\d/.test(w) && !STOP.has(w)));
+
+// Bereitet einmal für alle Produkte vor: Produktteil-Wörter und ob das Angebot viele Impressionen hat (ab Median des Shops).
+export function bereiteAehnlichkeit(produkte, einst = EINSTELLUNGEN, jetzt = new Date()) {
+  const reif = produkte.filter((p) => !istNeu(p.created_at, jetzt, einst.schonfristTage) && p.impressionen_90d != null);
+  if (reif.length < 30) return { reif: [], median: null };
+  const sortiert = reif.map((p) => Number(p.impressionen_90d)).sort((a, b) => a - b);
+  const median = sortiert[Math.floor(0.5 * (sortiert.length - 1))];
+  return { median, reif: reif.map((p) => ({ number: p.number, woerter: produktWoerter(zerlegeTitel(p.title, einst).produkt), hoch: Number(p.impressionen_90d) >= median })) };
+}
+
+// Wörter, die ähnliche Angebote mit vielen Impressionen im Produktteil nutzen und im eigenen Titel fehlen (höchstens 3).
+export function ergaenzungen(p, ctx, einst = EINSTELLUNGEN) {
+  if (!ctx || !ctx.reif.length) return [];
+  const meine = produktWoerter(zerlegeTitel(p.title, einst).produkt);
+  const typ = [...meine].filter((w) => w.length >= 5);
+  if (!typ.length) return [];
+  const peers = ctx.reif.filter((r) => r.number !== p.number && r.hoch && typ.some((w) => r.woerter.has(w)));
+  if (peers.length < einst.aehnlichMin) return [];
+  const titelKlein = sauber(p.title).toLowerCase();
+  const zaehler = new Map();
+  for (const r of peers) for (const w of r.woerter) zaehler.set(w, (zaehler.get(w) || 0) + 1);
+  return [...zaehler]
+    .filter(([w, k]) => k >= 3 && k / peers.length >= einst.aehnlichAnteil && !titelKlein.includes(w) && ![...meine].some((m) => m.length >= 5 && (w.includes(m) || m.includes(w))))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3)
+    .map(([w, k]) => ({ wort: w[0].toUpperCase() + w.slice(1), anzahl: k, von: peers.length }));
+}
+
 // Erzeugt einen neuen Titel nur aus belegten Änderungen. Gibt { neu, gruende } zurück; neu ist null, wenn nichts Sicheres anzuwenden ist.
-export function neuerTitel(titel, stat, einst = EINSTELLUNGEN) {
+export function neuerTitel(titel, stat, einst = EINSTELLUNGEN, zusaetze = []) {
   const alt = sauber(titel);
   let t = alt;
   const gruende = [];
   const max = einst.titelMaxZeichen;
   const wort = (w) => stat.woerter?.get(w);
+
+  // 0. Wörter von ähnlichen Angeboten mit vielen Impressionen, direkt hinter den Produktnamen (vor "passend für ...")
+  if (zusaetze.length) {
+    const anker = t.search(/\s+(?:passend\s+(?:für|zu|zum|zur)|kompatibel\s+(?:mit|zu|für))\s+/i);
+    let kopf = anker >= 0 ? t.slice(0, anker) : t; // Produktname
+    const schwanz = anker >= 0 ? t.slice(anker) : ""; // " passend für ..." usw.
+    for (const z of zusaetze) {
+      if (`${kopf} ${z.wort}${schwanz}`.length > max) continue;
+      kopf = `${kopf} ${z.wort}`;
+      gruende.push(`"${z.wort}" added: it appears in the product name of ${z.anzahl} of ${z.von} similar listings with many impressions (above the shop median). Only keep it if it truly describes the product.`);
+    }
+    t = kopf + schwanz;
+  }
 
   // 1. "kompatibel mit/zu/für" -> "passend für", wenn die eigenen Zahlen "passend" klar besser zeigen
   // Nur wenn "passend" noch nicht im Titel steht, sonst entsteht "passend für ... passend für ..."
@@ -92,9 +139,17 @@ export function neuerTitel(titel, stat, einst = EINSTELLUNGEN) {
 
 const HINWEIS = "Change only this one thing, then wait for new data before changing anything else.";
 
-function titelVorschlag(p, stat, einst) {
+function titelVorschlag(p, stat, einst, aehnlich, entwurf = null) {
   const alt = sauber(p.title);
-  const { neu, gruende } = neuerTitel(alt, stat, einst);
+  // Ein KI-Entwurf (entwuerfe/titel.json) hat Vorrang, aber nur, wenn er für genau diesen Titel geschrieben wurde
+  if (entwurf && entwurf.fuer === String(p.title ?? "") && entwurf.neu !== alt && entwurf.neu.length <= einst.titelMaxZeichen) {
+    return {
+      hebel: "titel", anweisung: "Replace the title with this draft:", alt, neu: entwurf.neu, laenge: entwurf.neu.length, quelle: "claude", schritte: [],
+      gruende: [...(entwurf.aenderung ? [entwurf.aenderung] : []), "An AI assistant wrote this draft. Read it and check that every word is true for the product before you publish it."],
+      hinweis: HINWEIS,
+    };
+  }
+  const { neu, gruende } = neuerTitel(alt, stat, einst, ergaenzungen(p, aehnlich, einst));
   if (neu) {
     return { hebel: "titel", anweisung: "Replace the title with this text:", alt, neu, laenge: neu.length, schritte: [], gruende, hinweis: HINWEIS };
   }
@@ -140,9 +195,9 @@ function angebotVorschlag(p, einst) {
 }
 
 // p: Produkt mit .gruppe (aus bewerte). Gibt null zurück, wenn keine Maßnahme nötig ist.
-export function schlageVor(p, stat, einst = EINSTELLUNGEN) {
+export function schlageVor(p, stat, einst = EINSTELLUNGEN, aehnlich = null, entwurf = null) {
   switch (p.gruppe) {
-    case "sichtbarkeit": return titelVorschlag(p, stat, einst);
+    case "sichtbarkeit": return titelVorschlag(p, stat, einst, aehnlich, entwurf);
     case "klicks": return bildVorschlag(p, einst);
     case "kaufentscheidung": return angebotVorschlag(p, einst);
     default: return null;

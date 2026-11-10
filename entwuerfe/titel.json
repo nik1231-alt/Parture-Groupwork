@@ -1,0 +1,688 @@
+{
+ "hinweis": "Titelentwuerfe fuer Angebote mit wenig Impressionen (Stufe 1). Von einer KI (Claude) geschrieben, NICHT geprueft. Ein Mensch muss jeden Titel lesen und pruefen, dass jedes Wort fuer das Produkt stimmt, bevor er auf eBay veroeffentlicht wird. 'fuer' ist der Originaltitel, fuer den der Entwurf geschrieben wurde: Hat sich der Titel inzwischen geaendert, wird der Entwurf ignoriert.",
+ "autor": "Claude (KI-Entwurf)",
+ "erstellt": "2026-11-10",
+ "regeln": "Hoechstens 80 Zeichen. Alle Zahlen- und Modellcodes aus dem Originaltitel bleiben erhalten, es kommen keine neuen dazu. Keine neuen Marken, Modelle, Masse oder Materialangaben. Erlaubt: Wichtiges nach vorn, Fuellzeichen streichen, 'kompatibel mit' -> 'passend fuer', sichere Synonyme der Produktart, Tippfehler und fehlende Leerzeichen korrigieren.",
+ "eintraege": {
+  "18": {
+   "fuer": "Wandschlauchhalter passend für SIENA GARDEN für 25m Schlauch 13 mm (1/2\")",
+   "neu": "Wandschlauchhalter passend für Siena Garden 25m Schlauch 13 mm (1/2\")",
+   "aenderung": "Removed the second \"für\"; fixed capitalisation."
+  },
+  "23": {
+   "fuer": "Endkappe passend für Trampolinpfosten mit Netzhalter",
+   "neu": "Endkappe Abdeckkappe passend für Trampolinpfosten mit Netzhalter",
+   "aenderung": "Added the synonym \"Abdeckkappe\"."
+  },
+  "43": {
+   "fuer": "Halterung passend für Gitarre  Gitarrenwandhalterung Gitarrenaufhängung",
+   "neu": "Gitarrenwandhalterung Gitarrenaufhängung Halterung passend für Gitarre",
+   "aenderung": "Removed the double space; product names first."
+  },
+  "49": {
+   "fuer": "Wandhalterung kompatibel mit Meta Quest 3s Ständer VR Virtual Reality",
+   "neu": "Wandhalterung Ständer passend für Meta Quest 3s VR Brille Virtual Reality",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Brille\" (the Quest is a VR headset)."
+  },
+  "60": {
+   "fuer": "Wandhalter passend für Druckluft Zubehör Kupplung Halter Pneumatik Geräte",
+   "neu": "Wandhalterung Wandhalter passend für Druckluft Kupplung Pneumatik Zubehör",
+   "aenderung": "Added the synonym \"Wandhalterung\"; removed the repeated words \"Halter\" and \"Geräte\"."
+  },
+  "78": {
+   "fuer": "3er Set Ersatzclips kompatibel mit IKEA LOCK Deckenlampe",
+   "neu": "3er Set Ersatzclips Clips passend für IKEA LOCK Deckenlampe",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Clips\"."
+  },
+  "87": {
+   "fuer": "Messschieber Halterung passend für Skadis Lochwand",
+   "neu": "Messschieber Halterung passend für IKEA Skadis Skådis Lochwand",
+   "aenderung": "Added the brand \"IKEA\" and the second spelling \"Skådis\"."
+  },
+  "98": {
+   "fuer": "Anschlagschiene passend für Locher 5180",
+   "neu": "Anschlagschiene Ersatzteil passend für Locher 5180",
+   "aenderung": "Added \"Ersatzteil\"."
+  },
+  "118": {
+   "fuer": "Tischständer passend für 6 Dartpfeile (Steel oder Soft) - Darttischständer",
+   "neu": "Tischständer Darttischständer passend für 6 Dartpfeile (Steel oder Soft)",
+   "aenderung": "Product names first; removed the dash."
+  },
+  "119": {
+   "fuer": "Schreibtisch Organizer für USB Kabel und Stecker",
+   "neu": "Schreibtisch Organizer Kabelhalter für USB Kabel und Stecker",
+   "aenderung": "Added the synonym \"Kabelhalter\"."
+  },
+  "160": {
+   "fuer": "Wandhalterung passend für Ubiquiti Unifi Switch USW Flex Mini Halterung Wand",
+   "neu": "Wandhalterung Halterung passend für Ubiquiti UniFi Switch USW Flex Mini",
+   "aenderung": "Removed the repeated word \"Wand\"; fixed capitalisation."
+  },
+  "163": {
+   "fuer": "Wandhalterung passend für tp-link TL-SG105 Switch Halterung",
+   "neu": "Wandhalterung Halterung passend für TP-Link TL-SG105 Switch Wandmontage",
+   "aenderung": "Fixed the brand spelling \"TP-Link\"; added \"Wandmontage\"."
+  },
+  "164": {
+   "fuer": "Wandhalterung kompatibel mit Netgear ProSafe-GS108E Switch - Halterung",
+   "neu": "Wandhalterung Halterung passend für Netgear ProSafe-GS108E Switch Wandmontage",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Wandmontage\"."
+  },
+  "165": {
+   "fuer": "Winkelhalter passend für Ubiquiti UniFi Protect G3 Instant - 45 Grad Adapter",
+   "neu": "Winkelhalter 45 Grad Adapter passend für Ubiquiti UniFi Protect G3 Instant",
+   "aenderung": "Product names first; moved \"45 Grad Adapter\" in front of the compatibility part."
+  },
+  "178": {
+   "fuer": "Halterung kompatibel mit IKEA PAX passend für Dyson DC33C Cinetic Absolute",
+   "neu": "Halterung passend für Dyson DC33C Cinetic Absolute und IKEA PAX",
+   "aenderung": "Merged the two compatibility phrases into one."
+  },
+  "183": {
+   "fuer": "4x Halterung zum Stapeln passend für IKEA TROFAST Boxen Regal Winkel Clips",
+   "neu": "Halterung zum Stapeln 4x passend für IKEA TROFAST Boxen Regal Winkel Clips",
+   "aenderung": "Product name first, quantity after it."
+  },
+  "184": {
+   "fuer": "Schuhanzieher Halterung passend für IKEA OMTÄNKSAM Schuhanzieher Schuhlöffel",
+   "neu": "Schuhanzieher Schuhlöffel Halterung passend für IKEA OMTÄNKSAM",
+   "aenderung": "Removed the repeated word \"Schuhanzieher\"."
+  },
+  "201": {
+   "fuer": "Ersatz Drehregler passend für Webasto Multicontroller 9030911B Thermo Wasser",
+   "neu": "Drehregler Ersatzteil passend für Webasto Multicontroller 9030911B Thermo Wasser",
+   "aenderung": "Product name first; \"Ersatz\" became \"Ersatzteil\" (the common search word)."
+  },
+  "210": {
+   "fuer": "5x Ersatz Power Knöpfe passend für Garmin Etrex Fahrradcomputer Rennrad",
+   "neu": "Ersatzknöpfe Power Knöpfe 5x passend für Garmin Etrex Fahrradcomputer Rennrad",
+   "aenderung": "Added the synonym \"Ersatzknöpfe\"; quantity after the product names."
+  },
+  "211": {
+   "fuer": "Ersatz Abdeckung passend für Olympus OM-1 1n OM-2 2n Cover Cap Kappe Drive",
+   "neu": "Abdeckung Kappe Cap Cover Ersatzteil passend für Olympus OM-1 1n OM-2 2n Drive",
+   "aenderung": "Product names first; added \"Ersatzteil\"."
+  },
+  "213": {
+   "fuer": "2x Regenschutz Cover passend für Blink Outdoor Kamera Hülle Überwachungskamera",
+   "neu": "Regenschutz Cover Hülle 2x passend für Blink Outdoor Kamera Überwachungskamera",
+   "aenderung": "Product names first, quantity after them."
+  },
+  "236": {
+   "fuer": "Knopf Drehzahlregler Verriegelungshebel passend für KitchenAid 5KSM 90 185",
+   "neu": "KitchenAid 5KSM 90 185 Knopf Drehzahlregler Verriegelungshebel Ersatzteil",
+   "aenderung": "Brand and model first; added \"Ersatzteil\"."
+  },
+  "266": {
+   "fuer": "Arm­lehnen­blende Kappe Abdeckung passend für VW T4 California/Westfalia",
+   "neu": "Armlehnenblende Kappe Abdeckung passend für VW T4 California Westfalia",
+   "aenderung": "Removed hidden soft hyphens that split the word; removed the slash."
+  },
+  "271": {
+   "fuer": "1x Besteck-Einsatz Set passend für VW Vanagon/Westfalia",
+   "neu": "Besteck-Einsatz Besteckeinsatz Set 1x passend für VW Vanagon Westfalia",
+   "aenderung": "Added the one-word spelling \"Besteckeinsatz\"."
+  },
+  "287": {
+   "fuer": "2x Halter Endkappe Stütze passend für Xiaomi M365 M365 Pro Ersatzteil Zubehör",
+   "neu": "Halter Endkappe Stütze 2x passend für Xiaomi M365 / M365 Pro Ersatzteil Zubehör",
+   "aenderung": "Quantity after the product names; fixed the repeated \"M365 M365 Pro\" to \"M365 / M365 Pro\"."
+  },
+  "290": {
+   "fuer": "Werkzeug kompatibel mit Dyson V6 Akku zum Öffnen des Batteriefachs Demontage",
+   "neu": "Werkzeug passend für Dyson V6 Akku zum Öffnen des Batteriefachs Demontage",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "293": {
+   "fuer": "Saugrohr-Verlängerung kompatibel mit Miele Staubsauger 35mm Anschluss",
+   "neu": "Saugrohr-Verlängerung passend für Miele Staubsauger 35mm Anschluss",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "296": {
+   "fuer": "Ersatzklappfuß kompatibel mit Logitech K270 Tastatur, Ersatzteil Klappbein",
+   "neu": "Ersatzklappfuß Klappbein Ersatzteil passend für Logitech K270 Tastatur",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; removed the comma."
+  },
+  "297": {
+   "fuer": "Ersatz Kickstand und MicroSD-Abdeckung kompatibel mit Nintendo Switch",
+   "neu": "Ersatz Kickstand und MicroSD-Abdeckung passend für Nintendo Switch",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "298": {
+   "fuer": "Ersatzclip kompatibel mit Dometic Wohnmobil Kühlschrank",
+   "neu": "Ersatzclip Clip passend für Dometic Wohnmobil Kühlschrank",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Clip\"."
+  },
+  "302": {
+   "fuer": "Ersatzteil Schlüssel Öffner kompatibel mit Thermomix von Parture",
+   "neu": "Ersatzteil Schlüssel Öffner passend für Thermomix von Parture",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "304": {
+   "fuer": "Ersatz Knopf-Abdeckung kompatibel mit Dometic Kühlschrank Weiß Lüftungsgitter",
+   "neu": "Ersatz Knopf-Abdeckung passend für Dometic Kühlschrank Weiß Lüftungsgitter",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "305": {
+   "fuer": "Ersatz-Lüftergehäuse 50mm kompatibel mit Dometic Camping Kühlschrank Gitter",
+   "neu": "Ersatz-Lüftergehäuse 50mm passend für Dometic Camping Kühlschrank Gitter",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "307": {
+   "fuer": "Kamera Sonnenschutz kompatibel mit DJI Mavic Pro – Ersatzteil von Parture",
+   "neu": "Kamera Sonnenschutz passend für DJI Mavic Pro Ersatzteil von Parture",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; removed the dash."
+  },
+  "312": {
+   "fuer": "Ersatzteile passend für Tormek WM-200 Winkellehre, 422024 - von Parture",
+   "neu": "Ersatzteile passend für Tormek WM-200 Winkellehre 422024 von Parture",
+   "aenderung": "Removed the comma and the dash."
+  },
+  "321": {
+   "fuer": "10x Abdeckung-Kappe passend für IKEA Variera / BILLY Regale",
+   "neu": "Abdeckkappe Abdeckung Kappe 10x passend für IKEA Variera / BILLY Regale",
+   "aenderung": "Added the synonym \"Abdeckkappe\"; quantity after the product names."
+  },
+  "322": {
+   "fuer": "Abdeckung-Cover passend für 230 V Campingstecker / CEE Anschluss",
+   "neu": "Abdeckung Cover Schutzkappe passend für 230 V Campingstecker CEE Anschluss",
+   "aenderung": "Added the synonym \"Schutzkappe\"; removed the slash."
+  },
+  "328": {
+   "fuer": "Sonnenbrillen‑Clip passend für Sonnenblende im Auto",
+   "neu": "Sonnenbrillen-Clip Brillenhalter passend für Sonnenblende im Auto",
+   "aenderung": "Replaced a special hyphen character that breaks search; added the synonym \"Brillenhalter\"."
+  },
+  "344": {
+   "fuer": "Rückdeckel kompatibel mit Nikon F-Bajonett Objektiven",
+   "neu": "Rückdeckel Objektivdeckel passend für Nikon F-Bajonett Objektive",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Objektivdeckel\"."
+  },
+  "348": {
+   "fuer": "Wandhalterung kompatibel mit Xbox One Controller, inkl. Kabelhalter, zum Kleben",
+   "neu": "Wandhalterung Controller passend für Xbox One inkl. Kabelhalter zum Kleben",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; removed the commas."
+  },
+  "349": {
+   "fuer": "Ersatzteil Set Verbindungselemente kompatibel mit GoPro Mount Verlängerungen",
+   "neu": "Ersatzteil Set Verbindungselemente passend für GoPro Mount Verlängerungen",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "351": {
+   "fuer": "Schultergurt-Halterung kompatibel mit GoPro für Rucksack von Parture",
+   "neu": "Schultergurt-Halterung Rucksack passend für GoPro von Parture",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; product names first."
+  },
+  "353": {
+   "fuer": "Ersatzhalterung kompatibel mit GoPro, zur Befestigung mit Kabelbindern",
+   "neu": "Halterung Ersatzhalterung passend für GoPro zur Befestigung mit Kabelbindern",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Halterung\"."
+  },
+  "354": {
+   "fuer": "Wandhalterung kompatibel mit Google Home Mini, unsichtbare Montage - Parture",
+   "neu": "Wandhalterung passend für Google Home Mini unsichtbare Montage Parture",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; removed the comma and the dash."
+  },
+  "355": {
+   "fuer": "Wandhalterung Set passend für Xbox One S/X von Parture",
+   "neu": "Wandhalterung Konsole Set passend für Xbox One S/X von Parture",
+   "aenderung": "Added \"Konsole\" (the Xbox One is a console)."
+  },
+  "356": {
+   "fuer": "Halterung kompatibel mit Weingläsern bis 8,4 cm Basis-Durchmesser",
+   "neu": "Weinglashalter Halterung für Weingläser bis 8,4 cm Basis-Durchmesser",
+   "aenderung": "Added \"Weinglashalter\"; \"kompatibel mit\" became \"für\"."
+  },
+  "357": {
+   "fuer": "Wandhalterung kompatibel mit Sonos One Lautsprecher mit Kabelführung von Parture",
+   "neu": "Wandhalterung passend für Sonos One Lautsprecher mit Kabelführung von Parture",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "358": {
+   "fuer": "USB- und SD-Kartenhalter kompatibel mit IKEA Skadis Lochwand, 13 Steckplätze",
+   "neu": "USB- und SD-Kartenhalter passend für IKEA Skadis Skådis Lochwand 13 Steckplätze",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the second spelling \"Skådis\"; removed the comma."
+  },
+  "359": {
+   "fuer": "Standfuß kompatibel mit Google Home Mini, zweiteilig, zur Kabelführung",
+   "neu": "Standfuß Ständer passend für Google Home Mini zweiteilig zur Kabelführung",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Ständer\"; removed commas."
+  },
+  "405": {
+   "fuer": "Wandhalterung passend für Dewalt Circular Saw 7 1/4, Halterung, Halter, Werkzeug",
+   "neu": "Wandhalterung Halter passend für Dewalt Kreissäge Circular Saw 7 1/4 Werkzeug",
+   "aenderung": "Added the German word \"Kreissäge\"; removed the commas."
+  },
+  "407": {
+   "fuer": "Objektivblende passend für DJI Mavic Pro, Blende, Sonnenschutz, Drohnenkamera",
+   "neu": "Objektivblende Blende Sonnenschutz passend für DJI Mavic Pro Drohnenkamera",
+   "aenderung": "Product names first, then the compatibility part; removed the commas."
+  },
+  "411": {
+   "fuer": "4x Bag Clip Rex passend für Snacktüten",
+   "neu": "Bag Clip Rex Tütenclip 4x passend für Snacktüten",
+   "aenderung": "Added the German word \"Tütenclip\"; quantity after the product names."
+  },
+  "413": {
+   "fuer": "Hygrometerhalter - Präzise und Praktische Hygrometer-Halterung, Wandhalterung",
+   "neu": "Hygrometerhalter Hygrometer-Halterung Hygrometer Wandhalterung",
+   "aenderung": "Removed the filler words \"Präzise und Praktische\"."
+  },
+  "418": {
+   "fuer": "Skimmerkorb Ersatzgriff passend für Hayward, kompatibel mit weitere Marken",
+   "neu": "Skimmerkorb Ersatzgriff passend für Hayward und weitere Marken",
+   "aenderung": "Merged the two compatibility phrases into one."
+  },
+  "419": {
+   "fuer": "Adapter kompatibel mit Kirami Skimmer passend für Bestway FlowClearIII-AC-Filter",
+   "neu": "Adapter passend für Kirami Skimmer und Bestway FlowClearIII-AC-Filter",
+   "aenderung": "Merged the two compatibility phrases into one."
+  },
+  "428": {
+   "fuer": "Akkuhalter kompatibel mit Einhell Power X-Change 18V, Wandhalterung",
+   "neu": "Akkuhalter Wandhalterung passend für Einhell Power X-Change 18V",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; removed the comma."
+  },
+  "431": {
+   "fuer": "Schlüsselhalterung als Clip kompatibel mit BMW 1-4 Serie",
+   "neu": "Schlüsselhalterung Schlüsselclip passend für BMW 1-4 Serie",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Schlüsselclip\"."
+  },
+  "435": {
+   "fuer": "Wandhalterung kompatibel für Topcase passend für BMW R 1200 GS LC K50",
+   "neu": "Wandhalterung Topcase passend für BMW R 1200 GS LC K50 Motorrad",
+   "aenderung": "Merged the two compatibility phrases; added \"Motorrad\" (the R 1200 GS is a motorcycle)."
+  },
+  "436": {
+   "fuer": "Öleinfülltrichter kompatibel mit BMW R1200GSA",
+   "neu": "Öleinfülltrichter Einfülltrichter passend für BMW R1200GSA Motorrad",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Einfülltrichter\" and \"Motorrad\" (the R1200GSA is a motorcycle)."
+  },
+  "440": {
+   "fuer": "Unter-Sitz-Aufbewahrungslösung kompatibel mit der BMW R1200GS",
+   "neu": "Unter-Sitz-Aufbewahrungslösung Staufach passend für BMW R1200GS Motorrad",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Staufach\" and \"Motorrad\"."
+  },
+  "442": {
+   "fuer": "Stifthalterung passend für Standardstifte oder Pinsel",
+   "neu": "Stifthalterung Stifthalter passend für Standardstifte oder Pinsel",
+   "aenderung": "Added the synonym \"Stifthalter\"."
+  },
+  "445": {
+   "fuer": "6x Kabelmanagement-Clips passend für IKEA IVAR Regalsystem",
+   "neu": "Kabelmanagement-Clips Kabelclips 6x passend für IKEA IVAR Regalsystem",
+   "aenderung": "Added the synonym \"Kabelclips\"; quantity after the product names."
+  },
+  "449": {
+   "fuer": "2x Bürstenhalter passend für Gardena Sileno Husqvarna Automower R100/R130",
+   "neu": "Bürstenhalter 2x passend für Gardena Sileno Husqvarna Automower R100/R130",
+   "aenderung": "Quantity after the product name."
+  },
+  "450": {
+   "fuer": "Pflanzenkübel zu Aufhängen in Diamantform Blumentopf",
+   "neu": "Pflanzenkübel Blumentopf Hängetopf zum Aufhängen in Diamantform",
+   "aenderung": "Fixed the typo \"zu Aufhängen\" to \"zum Aufhängen\"; added \"Hängetopf\"."
+  },
+  "451": {
+   "fuer": "Geometrischer Pflanzenkübel - Vier Größen",
+   "neu": "Geometrischer Pflanzenkübel Blumentopf Vier Größen",
+   "aenderung": "Added the synonym \"Blumentopf\"; removed the dash."
+  },
+  "454": {
+   "fuer": "Benzintankdeckel kompatibel mit Gardener Rasenmäher",
+   "neu": "Benzintankdeckel Tankdeckel passend für Gardener Rasenmäher",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Tankdeckel\"."
+  },
+  "457": {
+   "fuer": "Ausgießer passend für  Behälter / Kanister, 1,8cm Durchmesser, Kanister Zubehör",
+   "neu": "Ausgießer passend für Behälter Kanister 1,8cm Durchmesser Kanister Zubehör",
+   "aenderung": "Removed the double space, the commas and the slash."
+  },
+  "458": {
+   "fuer": "Stoßfänger kompatibel mit Gardena Sileno Life / City",
+   "neu": "Stoßfänger Bumper passend für Gardena Sileno Life / City Mähroboter",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Bumper\" and \"Mähroboter\"."
+  },
+  "461": {
+   "fuer": "Helfende Hand kompatibel mit IKEA SKADIS Pegboard Halterung",
+   "neu": "Helfende Hand Halterung passend für IKEA SKADIS Skådis Pegboard Lochwand",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the second spelling \"Skådis\" and \"Lochwand\"."
+  },
+  "462": {
+   "fuer": "Rasenmäher Ersatzrad kompatibel mit Worx Landroid für mehr Traktion Mähroboter",
+   "neu": "Rasenmäher Ersatzrad passend für Worx Landroid für mehr Traktion Mähroboter",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "467": {
+   "fuer": "Überkopf Halterung passend für iPad kompatibel mit VW T5 California",
+   "neu": "Überkopf Halterung iPad passend für VW T5 California Tablet Halter",
+   "aenderung": "Removed the second compatibility phrase; added \"Tablet\" and \"Halter\"."
+  },
+  "469": {
+   "fuer": "Küchenspülensieb passend für VW California T5/T6",
+   "neu": "Küchenspülensieb Spülensieb Abflusssieb passend für VW California T5/T6",
+   "aenderung": "Added the synonyms \"Spülensieb\" and \"Abflusssieb\"."
+  },
+  "475": {
+   "fuer": "Luftauslass kompatibel mit VW T5 MULTIVAN und Webasto Air Top",
+   "neu": "Luftauslass passend für VW T5 Multivan Webasto Air Top Standheizung",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Standheizung\" (the Webasto Air Top is a parking heater)."
+  },
+  "476": {
+   "fuer": "Haken kompatibel mit Weber Spirit II E-330 Halterung Grillzange",
+   "neu": "Haken Halterung Grillzange passend für Weber Spirit II E-330 Grill",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Grill\"."
+  },
+  "477": {
+   "fuer": "Ersatzrad kompatibel mit Bosch Indego 400 Connect Mähroboter",
+   "neu": "Ersatzrad passend für Bosch Indego 400 Connect Mähroboter",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "478": {
+   "fuer": "6x Rad Clip kompatibel mit Bosch Indego 350 400 Connect Mähroboter",
+   "neu": "Rad Clip 6x passend für Bosch Indego 350 400 Connect Mähroboter",
+   "aenderung": "Quantity after the product names; \"kompatibel mit\" became \"passend für\"."
+  },
+  "479": {
+   "fuer": "Ersatzrad kompatibel mit Bosch Indego 350/400 Mähroboter",
+   "neu": "Ersatzrad passend für Bosch Indego 350/400 Mähroboter",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "480": {
+   "fuer": "Sortiereinsatz passend für Bosch Sortimo L-Boxx 3x2",
+   "neu": "Sortiereinsatz Einsatz passend für Bosch Sortimo L-Boxx 3x2",
+   "aenderung": "Added the synonym \"Einsatz\"."
+  },
+  "485": {
+   "fuer": "Driver- und Halterungsaufbewahrung kompatibel mit Bosch Flexiclick",
+   "neu": "Driver- und Halterungsaufbewahrung passend für Bosch Flexiclick",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "486": {
+   "fuer": "Staubsauger Adapter kompatibel mit Bosch 18V GKS-57",
+   "neu": "Staubsauger Adapter passend für Bosch 18V GKS-57 Handkreissäge",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Handkreissäge\" (the GKS series is a circular saw)."
+  },
+  "487": {
+   "fuer": "Screw Bit Box Aufbewahrung Bits",
+   "neu": "Screw Bit Box Bitbox Aufbewahrung Bits",
+   "aenderung": "Added the one-word spelling \"Bitbox\"."
+  },
+  "1072": {
+   "fuer": "2xWandhalterung passend für Gardena Anschlüsse Düsen robust platzsparend Zubehör",
+   "neu": "Wandhalterung 2x passend für Gardena Anschlüsse Düsen platzsparend Zubehör",
+   "aenderung": "Fixed \"2xWandhalterung\": written together nobody can find it by searching \"Wandhalterung\"; removed \"robust\" to fit 80 characters."
+  },
+  "1077": {
+   "fuer": "Pilzregner Viereckregner passend für Gardena - Boden oder Zaunmontage",
+   "neu": "Pilzregner Viereckregner passend für Gardena Boden oder Zaunmontage",
+   "aenderung": "Removed the dash."
+  },
+  "1078": {
+   "fuer": "25x Micro Drip System Rohr Halterung passend für Gardena - 4,6 mm Verteilerrohr",
+   "neu": "Rohr Halterung 25x Micro Drip System passend für Gardena 4,6 mm Verteilerrohr",
+   "aenderung": "Product name first, quantity after it."
+  },
+  "1079": {
+   "fuer": "Schnellkupplung Schlauchverbinder 1/2\" KN Gartenkupplung kompatibel mit GARDENA",
+   "neu": "Schnellkupplung Schlauchverbinder Gartenkupplung 1/2\" KN passend für Gardena",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; fixed capitalisation."
+  },
+  "1091": {
+   "fuer": "3X Blumenhalter Topfhalter Blumentopfhalter Wandhalterung Pflanzenhalter",
+   "neu": "Blumentopfhalter Blumenhalter Topfhalter Wandhalterung Pflanzenhalter 3x",
+   "aenderung": "Quantity moved to the end (\"3X\" in front hid the first product name)."
+  },
+  "1156": {
+   "fuer": "Fenster Scharnier, Kellerfenster, passend für Schöck Inset / Schüco Ersatzteil",
+   "neu": "Fenster Scharnier Kellerfenster Ersatzteil passend für Schöck Inset / Schüco",
+   "aenderung": "Removed commas; moved \"Ersatzteil\" next to the product name."
+  },
+  "1184": {
+   "fuer": "Schubladenverstärkung passend für Hymer 564 (1995) Wohnmobile",
+   "neu": "Schubladenverstärkung Schublade passend für Hymer 564 (1995) Wohnmobile",
+   "aenderung": "Added the word \"Schublade\" as a separate search word."
+  },
+  "1188": {
+   "fuer": "Badezimmerschrank-Verschluss passend für Hymer 564 (1995)",
+   "neu": "Badezimmerschrank-Verschluss Schrankverschluss passend für Hymer 564 (1995)",
+   "aenderung": "Added the synonym \"Schrankverschluss\" for the product type."
+  },
+  "1189": {
+   "fuer": "Luftauslass passend für Hymer Classic Fiat Ducato",
+   "neu": "Luftauslass Ersatzteil passend für Hymer Classic Fiat Ducato",
+   "aenderung": "Added \"Ersatzteil\"."
+  },
+  "1191": {
+   "fuer": "Küchenspülenablaufventil kompatibel mit Hymer B544 (1988)",
+   "neu": "Küchenspülenablaufventil Ablaufventil Spüle passend für Hymer B544 (1988)",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Ablaufventil Spüle\"."
+  },
+  "1308": {
+   "fuer": "Decken- / Wandhalterung passend für Google Home Mini & Nest Mini",
+   "neu": "Wandhalterung Deckenhalterung passend für Google Home Mini & Nest Mini",
+   "aenderung": "Split \"Decken- / Wandhalterung\" into two full words so both are searchable."
+  },
+  "2000": {
+   "fuer": "Dartpfeilhalter Wandhalter 3 Darts (22 Farben)",
+   "neu": "Dartpfeilhalter Dart Halter Wandhalter für 3 Darts (22 Farben)",
+   "aenderung": "Added the search words \"Dart Halter\"."
+  },
+  "2004": {
+   "fuer": "Halter / Ständer passend für PS5 Controller - 3D Druck Zubehör",
+   "neu": "Controller Halter Ständer passend für PS5 PlayStation 5 3D Druck Zubehör",
+   "aenderung": "Product name first; added \"PlayStation 5\"."
+  },
+  "2005": {
+   "fuer": "DC Schutzkappe Ladeanschluss Port Deckel passend für Tesla Model 3/X/Y/S",
+   "neu": "Schutzkappe Ladeanschluss DC Port Deckel passend für Tesla Model 3/X/Y/S",
+   "aenderung": "Product name first."
+  },
+  "2009": {
+   "fuer": "Wandhalterung passend für Lautsprecher Sonos Beam, Wallmount, schwarz",
+   "neu": "Wandhalterung Wallmount passend für Sonos Beam Lautsprecher schwarz",
+   "aenderung": "Removed commas; product names first."
+  },
+  "2012": {
+   "fuer": "Endstücke Paar passend für Dometic Rollo 2000, Wohnmobil/Caravan/Boot Ersatzteil",
+   "neu": "Endstücke Paar Ersatzteil passend für Dometic Rollo 2000 Wohnmobil Caravan Boot",
+   "aenderung": "Moved \"Ersatzteil\" next to the product name; removed commas and slash."
+  },
+  "2013": {
+   "fuer": "Halterung für Sonnenblende, passend für Hörmann HSM4 Handsender",
+   "neu": "Halterung für Sonnenblende passend für Hörmann HSM4 Handsender Halter",
+   "aenderung": "Removed commas; added the synonym \"Halter\"."
+  },
+  "2020": {
+   "fuer": "Ladegut Ölfässer 6 Stück passend für Spur G",
+   "neu": "Ladegut Ölfässer 6 Stück passend für Spur G Gartenbahn Modellbahn",
+   "aenderung": "Added \"Gartenbahn\" and \"Modellbahn\" (scale G is the garden railway scale)."
+  },
+  "2023": {
+   "fuer": "10x Akku-Geräthalter passend für DeWalt/Milwaukee Akkus und Geräte",
+   "neu": "Akku-Geräthalter 10x Akkuhalter passend für DeWalt Milwaukee Akkus und Geräte",
+   "aenderung": "Added the synonym \"Akkuhalter\"; removed the slash."
+  },
+  "2025": {
+   "fuer": "Fein-Fokus Drehregler ELITE passend für Celestron 8\" and 9.25\" SCT Telescope",
+   "neu": "Fein-Fokus Drehregler ELITE passend für Celestron 8\" 9.25\" SCT Teleskop",
+   "aenderung": "Added the German spelling \"Teleskop\"; removed the English \"and\"."
+  },
+  "2033": {
+   "fuer": "Staubsauger Wand Halterung Akku Sauger Halter passend für Makita DCL Serie",
+   "neu": "Staubsauger Wandhalterung Akku Sauger Halter passend für Makita DCL Serie",
+   "aenderung": "\"Wand Halterung\" became one word \"Wandhalterung\"."
+  },
+  "2035": {
+   "fuer": "Bumper Verlängerung passend für Gardena Sileno Life / City 750 - 1250",
+   "neu": "Bumper Verlängerung passend für Gardena Sileno Life / City 750 - 1250 Mähroboter",
+   "aenderung": "Added \"Mähroboter\" (the Sileno is a robotic mower)."
+  },
+  "2043": {
+   "fuer": "Wandhalterung passend für Sonos One gen 2",
+   "neu": "Wandhalterung Halterung passend für Sonos One Gen 2 Lautsprecher",
+   "aenderung": "Added \"Halterung\" and \"Lautsprecher\"; fixed capitalisation."
+  },
+  "2056": {
+   "fuer": "Anti-Stuck Clip passend für Eufy RoboVac 11s 25c 30c Möbel-Schutz Bumper",
+   "neu": "Anti-Stuck Clip Bumper Möbel-Schutz passend für Eufy RoboVac 11s 25c 30c",
+   "aenderung": "Product names first, then the compatibility part."
+  },
+  "2057": {
+   "fuer": "Abdeckung passend für Eufy Türklingel",
+   "neu": "Abdeckung Cover passend für Eufy Türklingel",
+   "aenderung": "Added the synonym \"Cover\"."
+  },
+  "2058": {
+   "fuer": "Hidden Wall Mounting bracket passend für Eufy Pan/Tilt Camera",
+   "neu": "Wandhalterung Halterung versteckt passend für Eufy Pan/Tilt Camera Kamera",
+   "aenderung": "Translated \"Hidden Wall Mounting bracket\" into the German search words."
+  },
+  "2079": {
+   "fuer": "Wandhalterung passend für Dyson Airwrap | Organizer Halter",
+   "neu": "Wandhalterung Organizer Halter passend für Dyson Airwrap",
+   "aenderung": "Removed the \"|\" character; product names first."
+  },
+  "2084": {
+   "fuer": "Wandhalterung Halter kompatibel mit Google Nest Wifi Router 2. Gen",
+   "neu": "Wandhalterung Halter passend für Google Nest Wifi Router 2. Gen",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"."
+  },
+  "2088": {
+   "fuer": "Wandhalterung passend für Netatmo Welcome Überwachungskamera / Wetterstation",
+   "neu": "Wandhalterung passend für Netatmo Welcome Überwachungskamera Wetterstation",
+   "aenderung": "Removed the slash."
+  },
+  "2104": {
+   "fuer": "Ersatzteil Clip passend für Vorwerk dichtlippenrahmen sp600 dichtlippen rahmen",
+   "neu": "Clip Ersatzteil passend für Vorwerk SP600 Dichtlippenrahmen Dichtlippen Rahmen",
+   "aenderung": "Fixed capitalisation of the model and the product names."
+  },
+  "2107": {
+   "fuer": "Küchengeräte Kabelaufwickler, Silikonwickel-Organizer,Kabelhalter Selbstklebend",
+   "neu": "Küchengeräte Kabelaufwickler Silikonwickel-Organizer Kabelhalter Selbstklebend",
+   "aenderung": "Fixed the missing space in \"Organizer,Kabelhalter\", which made both words unsearchable."
+  },
+  "2108": {
+   "fuer": "Schnellspannhebel passend für Bosch bt150 ersatzteil stativ Hebel ersatz bt350",
+   "neu": "Schnellspannhebel Hebel Ersatzteil Stativ passend für Bosch BT150 BT350",
+   "aenderung": "Removed the duplicate \"ersatz\"; fixed capitalisation of the models."
+  },
+  "2120": {
+   "fuer": "30 Stück Trenner Trennwand passend für Stanley Kleinteilemagazin 1-93-980 / 981",
+   "neu": "Trenner Trennwand 30 Stück passend für Stanley Kleinteilemagazin 1-93-980 / 981",
+   "aenderung": "Product names first, quantity after them."
+  },
+  "2124": {
+   "fuer": "2 Stück P6029ass16 Dichtung passend für Bestway P6029 Abdichtung O-Ring",
+   "neu": "Dichtung O-Ring Abdichtung P6029ass16 passend für Bestway P6029 2 Stück",
+   "aenderung": "Product names first, quantity at the end."
+  },
+  "2132": {
+   "fuer": "Halter passend für Homematic IP HmIP-WTH-B",
+   "neu": "Halter Halterung passend für Homematic IP HmIP-WTH-B Wandthermostat",
+   "aenderung": "Added the synonym \"Halterung\" and \"Wandthermostat\" (the HmIP-WTH-B is a wall thermostat)."
+  },
+  "2143": {
+   "fuer": "⚜️ 3x Ersatzteil passend für IKEA DUKTIG Kunstoff Griff Spielküche grau Neu",
+   "neu": "Ersatzteil Griff 3x passend für IKEA DUKTIG Spielküche grau Kunststoff",
+   "aenderung": "Removed the symbol and \"Neu\"; fixed the typo \"Kunstoff\" to \"Kunststoff\"."
+  },
+  "2146": {
+   "fuer": "Wasserhahn Knopf passend für VW T4 Westfalia Camper Ersatzteil 3D Druck",
+   "neu": "Wasserhahn Knopf Ersatzteil passend für VW T4 Westfalia Camper 3D Druck",
+   "aenderung": "Moved \"Ersatzteil\" next to the product name."
+  },
+  "232651": {
+   "fuer": "Propeller-Lock kompatibel mit DJI Mavic Pro",
+   "neu": "Propeller-Lock Propellerhalterung passend für DJI Mavic Pro Drohne",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Propellerhalterung\" and \"Drohne\" (the Mavic Pro is a drone)."
+  },
+  "277298": {
+   "fuer": "Zollstockhalter kompatibel mit IKEA Skadis",
+   "neu": "Zollstockhalter Zollstock Halter passend für IKEA Skadis Skådis Lochwand",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Zollstock Halter\", the second spelling and \"Lochwand\"."
+  },
+  "364731": {
+   "fuer": "Halterung für Messschieber kompatibel mit Ikea Skådis",
+   "neu": "Halterung für Messschieber passend für IKEA Skådis Skadis Lochwand",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the second spelling \"Skadis\" and \"Lochwand\"."
+  },
+  "399599": {
+   "fuer": "Sonnenschutz kompatibel mit DJI Mavic Mini, versch. Smartphone-Größen",
+   "neu": "Sonnenschutz Sonnenblende passend für DJI Mavic Mini versch. Smartphone-Größen",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Sonnenblende\"; removed the comma."
+  },
+  "425387": {
+   "fuer": "Einsatz passend für Brother Nähmaschinen-Spulen kompatibel mit IKEA SKADIS",
+   "neu": "Einsatz passend für Brother Nähmaschinen-Spulen und IKEA SKADIS",
+   "aenderung": "Merged the two compatibility phrases into one."
+  },
+  "428897": {
+   "fuer": "Bithalter passend für Parkside PDSSA 20-Li A1, PABS 20-LI D4",
+   "neu": "Bithalter Bit Halter passend für Parkside PDSSA 20-Li A1 PABS 20-LI D4",
+   "aenderung": "Added the two-word spelling \"Bit Halter\"; removed the comma."
+  },
+  "472074": {
+   "fuer": "2x Halterung für Nähmaschinen-Spulen passend für IKEA SKADIS",
+   "neu": "Halterung für Nähmaschinen-Spulen 2x passend für IKEA SKADIS Skådis Lochwand",
+   "aenderung": "Quantity after the product name; added the second spelling \"Skådis\" and \"Lochwand\"."
+  },
+  "474085": {
+   "fuer": "Trennwand für Kühlschrank, kompatibel mit Dometic",
+   "neu": "Trennwand Trenner für Kühlschrank passend für Dometic",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Trenner\"."
+  },
+  "477979": {
+   "fuer": "Werkzeughalter kompatibel mit Lidl Powerfix Lochwand 38mm",
+   "neu": "Werkzeughalter Halter passend für Lidl Powerfix Lochwand 38mm",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Halter\"."
+  },
+  "491850": {
+   "fuer": "Aufbewahrungsbox kompatibel mit 80mm Delta Schleifpapier",
+   "neu": "Aufbewahrungsbox Organizer passend für 80mm Delta Schleifpapier",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Organizer\"."
+  },
+  "533731": {
+   "fuer": "Halterung passend für Parkside Präzisions-Schraubendreher HG02870 für Lochplatte",
+   "neu": "Halterung passend für Parkside Präzisions-Schraubendreher HG02870 Lochplatte",
+   "aenderung": "Removed the second \"für\"."
+  },
+  "ID406909298970": {
+   "fuer": "Snowboard-Wandhalterung, Klemm Halter, Halterung",
+   "neu": "Snowboard-Wandhalterung Snowboard Halter Klemm Halter Halterung",
+   "aenderung": "Removed the commas; added \"Snowboard Halter\"."
+  },
+  "ID406915986323": {
+   "fuer": "Aufbewahrungsbox Armlehne kompatibel mit BMW X3 F25",
+   "neu": "Aufbewahrungsbox Organizer Armlehne passend für BMW X3 F25",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added the synonym \"Organizer\"."
+  },
+  "ID406915987385": {
+   "fuer": "Flaschenhalter kompatibel mit Ford Superduty 2011–2016",
+   "neu": "Flaschenhalter Getränkehalter passend für Ford Superduty Super Duty 2011-2016",
+   "aenderung": "\"kompatibel mit\" became \"passend für\"; added \"Getränkehalter\" and the spelling \"Super Duty\"; replaced the en dash in the years by a hyphen."
+  },
+  "ID406950588522": {
+   "fuer": "Stift 5 6 7 7,8 cm Splint Pin passend für Intex Pool 305 366 457 549 3,05 3,66",
+   "neu": "Stift Splint Pin 5 6 7 7,8 cm passend für Intex Pool 305 366 457 549 3,05 3,66",
+   "aenderung": "Product names first, then the sizes."
+  },
+  "ID406981570882": {
+   "fuer": "5x Abdeckkappe Links Wasserablauf passend für Hymer Exsis Wohnmobil Frankia",
+   "neu": "Abdeckkappe Links Wasserablauf 5x passend für Hymer Exsis Wohnmobil Frankia",
+   "aenderung": "Product name first, quantity after it."
+  },
+  "ID406990693895": {
+   "fuer": "8Stk Kabel Clips passend für Staubsaugerschlauch ø 32-40mm. Kabel Bis 10mm ø",
+   "neu": "Kabelclips 8 Stück passend für Staubsaugerschlauch ø 32-40mm Kabel bis 10mm ø",
+   "aenderung": "Product name first; \"Kabel Clips\" became one word \"Kabelclips\"; removed the full stop."
+  },
+  "ID406990754924": {
+   "fuer": "Kanisterschlüssel für Wasserkanister 2,5-60L Kanister Öffner",
+   "neu": "Kanisterschlüssel Kanisteröffner für Wasserkanister 2,5-60L Kanister Öffner",
+   "aenderung": "Added the synonym \"Kanisteröffner\"."
+  }
+ }
+}

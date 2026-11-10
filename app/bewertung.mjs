@@ -1,6 +1,6 @@
 // Bringt Produkte aus pm.db, die Regeln, die Vorschläge und die gespeicherten Entscheidungen zusammen.
 import { bewerte, conversion, klickrate, leiteSchwellenAb, GRUPPEN, AKTIONEN, EINSTELLUNGEN } from "./regeln.mjs";
-import { lerneTitelWoerter, schlageVor } from "./vorschlaege.mjs";
+import { lerneTitelWoerter, bereiteAehnlichkeit, schlageVor } from "./vorschlaege.mjs";
 
 // Alle Produkte mit Traffic-Summen der letzten 90 Tage. Die traffic-Tabelle ist optional (ältere pm.db hat sie nicht).
 export function ladeProdukte(db) {
@@ -15,10 +15,11 @@ export function ladeProdukte(db) {
   return db.prepare(sql).all();
 }
 
-export function baueBewertung(produkte, entscheidungen, jetzt = new Date(), laufend = new Map()) {
+export function baueBewertung(produkte, entscheidungen, jetzt = new Date(), laufend = new Map(), entwuerfe = new Map()) {
   // Schwellen und Titel-Statistik kommen aus den Zahlen des Shops selbst
   const einst = leiteSchwellenAb(produkte, EINSTELLUNGEN, jetzt);
   const stat = lerneTitelWoerter(produkte, einst, jetzt);
+  const aehnlich = bereiteAehnlichkeit(produkte, einst, jetzt);
   const uebersicht = Object.fromEntries(Object.keys(GRUPPEN).map((k) => [k, 0]));
   let entschieden = 0;
   const liste = produkte.map((p) => {
@@ -27,7 +28,7 @@ export function baueBewertung(produkte, entscheidungen, jetzt = new Date(), lauf
     const e = entscheidungen.get(p.number) || null;
     if (e && e.aktion) entschieden++;
     const mitGruppe = { ...p, gruppe: b.gruppe };
-    return { ...p, conversion: conversion(p), klickrate: klickrate(p), gruppe: b.gruppe, empfehlung: b.empfehlung, begruendung: b.begruendung, vorschlag: schlageVor(mitGruppe, stat, einst), entscheidung: e, laufendeAenderung: laufend.get(p.number) || null };
+    return { ...p, conversion: conversion(p), klickrate: klickrate(p), gruppe: b.gruppe, empfehlung: b.empfehlung, begruendung: b.begruendung, vorschlag: schlageVor(mitGruppe, stat, einst, aehnlich, entwuerfe.get(p.number) || null), entscheidung: e, laufendeAenderung: laufend.get(p.number) || null };
   });
   return {
     einstellungen: einst,

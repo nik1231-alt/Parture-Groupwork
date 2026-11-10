@@ -2,8 +2,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { bewerte, conversion, klickrate, leiteSchwellenAb, EINSTELLUNGEN, GRUPPEN, AKTIONEN } from "./regeln.mjs";
-import { lerneTitelWoerter, schlageVor, neuerTitel, zerlegeTitel } from "./vorschlaege.mjs";
+import { lerneTitelWoerter, schlageVor, neuerTitel, zerlegeTitel, bereiteAehnlichkeit, ergaenzungen } from "./vorschlaege.mjs";
 import * as prot from "./protokoll.mjs";
+import { pruefeEntwurf, ladeEntwuerfe } from "./entwuerfe.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as ent from "./entscheidungen.mjs";
 import { baueBewertung } from "./bewertung.mjs";
 
@@ -33,6 +38,27 @@ test("Baum: Top ab 30 Verkäufen, 29 sind nicht Top", () => {
 test("Baum: fehlende Impressionen oder Aufrufe führen nicht zu einer Abwertung", () => {
   assert.equal(gruppe({ units_90d: 0, units_total: 0, impressionen_90d: null }), "ohne_daten");
   assert.equal(gruppe({ units_90d: 0, units_total: 0, aufrufe_90d: null }), "ohne_daten");
+});
+
+// ---------- Fokus Impressionen: Stufe 1 gilt für alle mit wenig Impressionen ----------
+test("Fokus: auch verkaufsstarke und gut verkaufende Angebote mit wenig Impressionen gehören in Stufe 1", () => {
+  const verkauft = bewerte(p({ units_90d: 5, impressionen_90d: 1500, aufrufe_90d: 100 }), EINSTELLUNGEN, JETZT);
+  assert.equal(verkauft.gruppe, "sichtbarkeit");
+  assert.match(verkauft.begruendung, /already sells \(5 sales/);
+  assert.equal(gruppe({ units_90d: 40, impressionen_90d: 1500, aufrufe_90d: 100 }), "sichtbarkeit"); // sogar ein Top-Seller
+  assert.equal(gruppe({ units_90d: 1, impressionen_90d: 1500, aufrufe_90d: 100 }), "sichtbarkeit");
+  assert.match(bewerte(p({ units_90d: 1, impressionen_90d: 1500 }), EINSTELLUNGEN, JETZT).begruendung, /\(1 sale in 90 days\)/);
+});
+
+test("Fokus: neue Produkte bleiben 'neu', auch mit wenig Impressionen", () => {
+  assert.equal(gruppe({ created_at: "2026-10-20T10:00:00.000Z", units_90d: 0, impressionen_90d: 10 }), "neu");
+});
+
+test("Fokus: nur Stufe 1 ist im Fokus, Stufe 2 und 3 kommen später", () => {
+  assert.equal(GRUPPEN.sichtbarkeit.fokus, true);
+  assert.equal(GRUPPEN.klicks.fokus, false);
+  assert.equal(GRUPPEN.kaufentscheidung.fokus, false);
+  assert.equal(Object.keys(GRUPPEN)[0], "sichtbarkeit"); // Fokus steht zuerst
 });
 
 // ---------- Baum: verkaufende Produkte ----------
@@ -168,6 +194,46 @@ test("Titel zerlegen: Produkt und Zielgerät, ohne Menge und eigene Marke", () =
   assert.deepEqual(zerlegeTitel("Ständer kompatibel mit Dyson Haartrockner, Halterung für Föhn"), { produkt: "Ständer", ziel: "Dyson Haartrockner, Halterung für Föhn" });
   assert.deepEqual(zerlegeTitel("Kanisterschlüssel für Wasserkanister"), { produkt: "Kanisterschlüssel für Wasserkanister", ziel: null });
   assert.deepEqual(zerlegeTitel(null), { produkt: "", ziel: null });
+});
+
+// Ähnliche Angebote: Wörter nur aus dem Produktteil, nur bei genug Belegen
+function aehnlichShop() {
+  const l = [];
+  for (let i = 0; i < 10; i++) l.push({ number: "H" + i, created_at: alt, title: `Wandhalterung Zubehör passend für Gerät${i} Modell`, impressionen_90d: 20000 }); // viele Impressionen
+  for (let i = 0; i < 10; i++) l.push({ number: "L" + i, created_at: alt, title: `Wandhalterung passend für Gerät${i} Modell`, impressionen_90d: 100 });      // wenige
+  const einzel = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India", "Juliett", "Kilo", "Lima"]; // jedes Angebot hat sein eigenes Wort
+  for (let i = 0; i < 12; i++) l.push({ number: "X" + i, created_at: alt, title: `Kabelbinder ${einzel[i]}`, impressionen_90d: 5000 });                    // viele ähnliche, aber kein gemeinsames Wort
+  return l;
+}
+test("Ähnliche: ein beschreibendes Wort aus dem Produktteil wird vorgeschlagen, nie ein Gerätename", () => {
+  const ps = aehnlichShop();
+  const ctx = bereiteAehnlichkeit(ps, EINSTELLUNGEN, JETZT);
+  const z = ergaenzungen({ number: "NEU1", title: "Wandhalterung passend für Foo Bar" }, ctx, EINSTELLUNGEN);
+  assert.deepEqual(z.map((x) => x.wort), ["Zubehör"]);
+  assert.equal(z[0].anzahl, 10); assert.equal(z[0].von, 10);
+  assert.ok(!z.some((x) => /gerät|modell/i.test(x.wort))); // Geräteteil nach "passend für" zählt nicht
+});
+
+test("Ähnliche: zu wenig Belege (weniger als 5 ähnliche Angebote mit vielen Impressionen) ergeben nichts", () => {
+  const ctx = bereiteAehnlichkeit(aehnlichShop(), EINSTELLUNGEN, JETZT);
+  assert.deepEqual(ergaenzungen({ number: "NEU1", title: "Kabelbinder Neuheit" }, ctx, EINSTELLUNGEN), []); // viele ähnliche Angebote, aber kein gemeinsames Wort: nichts wird erfunden
+  assert.deepEqual(ergaenzungen({ number: "NEU2", title: "Etwas völlig Anderes" }, ctx, EINSTELLUNGEN), []);
+  assert.deepEqual(ergaenzungen({ number: "A", title: "Wandhalterung" }, bereiteAehnlichkeit([], EINSTELLUNGEN, JETZT), EINSTELLUNGEN), []);
+});
+
+test("Ähnliche: Wörter, die schon im Titel stehen (auch als Teil eines Wortes), werden nicht doppelt vorgeschlagen", () => {
+  const ctx = bereiteAehnlichkeit(aehnlichShop(), EINSTELLUNGEN, JETZT);
+  assert.deepEqual(ergaenzungen({ number: "N", title: "Wandhalterung Zubehörset passend für X" }, ctx, EINSTELLUNGEN), []);
+});
+
+test("Neuer Titel: Wort von ähnlichen Angeboten steht hinter dem Produktnamen und vor 'passend für', nie über 80 Zeichen", () => {
+  const ctx = bereiteAehnlichkeit(aehnlichShop(), EINSTELLUNGEN, JETZT);
+  const z = ergaenzungen({ number: "N", title: "Wandhalterung passend für Foo Bar" }, ctx, EINSTELLUNGEN);
+  const r = neuerTitel("Wandhalterung passend für Foo Bar", lerneTitelWoerter([], EINSTELLUNGEN, JETZT), EINSTELLUNGEN, z);
+  assert.equal(r.neu, "Wandhalterung Zubehör passend für Foo Bar");
+  assert.match(r.gruende[0], /"Zubehör" added: it appears in the product name of 10 of 10 similar listings/);
+  const lang = "Wandhalterung passend für " + "x".repeat(52); // 79 Zeichen: kein Platz mehr
+  assert.equal(neuerTitel(lang, lerneTitelWoerter([], EINSTELLUNGEN, JETZT), EINSTELLUNGEN, z).neu, null);
 });
 
 test("Vorschläge: Stufe 1 liefert einen fertigen Titel, sonst eine ehrliche Absage", () => {
@@ -388,4 +454,93 @@ test("Auswertung: Übersicht zählt alle Produkte genau einmal, Vorschlag nur be
   assert.equal(b.produkte.find((x) => x.number === "1").entscheidung, null);
   assert.equal(b.produkte.find((x) => x.number === "1").vorschlag, null);
   assert.equal(b.produkte.find((x) => x.number === "2").vorschlag.hebel, "titel");
+});
+
+// ---------- KI-Titelentwürfe (entwuerfe/titel.json) ----------
+test("Entwurf prüfen: gültige Beispiele", () => {
+  assert.deepEqual(pruefeEntwurf("Wandhalter kompatibel mit Bosch GSR 18V", "Wandhalter passend für Bosch GSR 18V"), []);
+  assert.deepEqual(pruefeEntwurf("8Stk Kabel Clips passend für Rohr 32-40mm", "Kabelclips 8 Stück passend für Rohr 32-40mm"), []);   // Mengenangabe anders geschrieben
+  assert.deepEqual(pruefeEntwurf("2xWandhalterung passend für Gardena", "Wandhalterung 2x passend für Gardena"), []);                 // fehlendes Leerzeichen repariert
+  assert.deepEqual(pruefeEntwurf("Foo Ford 2011–2016", "Foo Ford 2011-2016"), []);                                                      // Gedankenstrich -> Bindestrich
+  assert.deepEqual(pruefeEntwurf("Halter passend für PS5 Controller", "Halter passend für PS5 PlayStation 5 Controller"), []);          // "5" stammt aus "PS5"
+});
+
+test("Entwurf prüfen: ungültige Entwürfe werden gefunden", () => {
+  assert.match(pruefeEntwurf("Halter Bosch GSR 18V", "Halter Bosch GSR").join(), /missing: 18v/);              // Modell verloren
+  assert.match(pruefeEntwurf("Halter Bosch GSR", "Halter Bosch GSR 18V").join(), /invented: 18v/);             // Modell erfunden
+  assert.match(pruefeEntwurf("Halter", "x".repeat(81)).join(), /too long \(81 of 80\)/);
+  assert.match(pruefeEntwurf("Halter", "Halter ⚜️ Neu").join(), /special characters/);
+  assert.match(pruefeEntwurf("Halter", "Halter  Neu").join(), /spacing/);
+  assert.match(pruefeEntwurf("Halter", " Halter").join(), /spacing/);
+  assert.deepEqual(pruefeEntwurf("Halter", ""), ["invalid entry"]);
+  assert.deepEqual(pruefeEntwurf(null, "Halter"), ["invalid entry"]);
+  assert.deepEqual(pruefeEntwurf("Halter", 5), ["invalid entry"]);
+});
+
+test("Entwürfe laden: fehlende oder kaputte Datei ist kein Absturz, ungültige Einträge fallen heraus", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "entw-"));
+  assert.equal(ladeEntwuerfe(path.join(dir, "gibtesnicht.json")).size, 0);
+  fs.writeFileSync(path.join(dir, "kaputt.json"), "{ das ist kein json");
+  assert.equal(ladeEntwuerfe(path.join(dir, "kaputt.json")).size, 0);
+  fs.writeFileSync(path.join(dir, "leer.json"), JSON.stringify({ eintraege: "nein" }));
+  assert.equal(ladeEntwuerfe(path.join(dir, "leer.json")).size, 0);
+  fs.writeFileSync(path.join(dir, "gemischt.json"), JSON.stringify({ eintraege: {
+    "1": { fuer: "Halter kompatibel mit Bosch GSR 18V", neu: "Halter passend für Bosch GSR 18V", aenderung: "x" },
+    "2": { fuer: "Halter Bosch GSR 18V", neu: "Halter Bosch" },          // Modell verloren: wird ausgelassen
+    "3": "kein objekt", "4": null,
+  } }));
+  const k = ladeEntwuerfe(path.join(dir, "gemischt.json"));
+  assert.deepEqual([...k.keys()], ["1"]);
+  assert.equal(k.get("1").neu, "Halter passend für Bosch GSR 18V");
+});
+
+test("Entwürfe: die echte Datei entwuerfe/titel.json besteht die Prüfung, kein Eintrag fällt heraus", () => {
+  const datei = JSON.parse(fs.readFileSync(new URL("../entwuerfe/titel.json", import.meta.url), "utf8"));
+  const alle = Object.entries(datei.eintraege);
+  assert.ok(alle.length >= 100);
+  const geladen = ladeEntwuerfe(fileURLToPath(new URL("../entwuerfe/titel.json", import.meta.url)));
+  assert.ok(geladen.size > 0, "Datei konnte nicht geladen werden");
+  const abgelehnt = alle.filter(([nr]) => !geladen.has(nr)).map(([nr, e]) => `${nr}: ${pruefeEntwurf(e.fuer, e.neu).join("; ")}`);
+  assert.deepEqual(abgelehnt, []);
+  for (const [nr, e] of alle) {
+    assert.notEqual(e.neu, e.fuer, `Entwurf ${nr} ist identisch mit dem Originaltitel`);
+    assert.ok(e.aenderung && e.aenderung.length > 0, `Entwurf ${nr} hat keine Begründung`);
+  }
+});
+
+test("Entwürfe: es werden keine Preis- oder Werbewörter hinzugefügt", () => {
+  const datei = JSON.parse(fs.readFileSync(new URL("../entwuerfe/titel.json", import.meta.url), "utf8"));
+  const verboten = /preis|günstig|billig|rabatt|sale|werbung|anzeige|gratis|angebot|aktion|sparen|price|cheap|discount|\bad\b|promo/i;
+  for (const [nr, e] of Object.entries(datei.eintraege)) {
+    const alt = new Set(e.fuer.toLowerCase().match(/[\p{L}\p{N}-]+/gu) || []);
+    const neu = (e.neu.toLowerCase().match(/[\p{L}\p{N}-]+/gu) || []).filter((w) => !alt.has(w));
+    assert.deepEqual(neu.filter((w) => verboten.test(w)), [], `Entwurf ${nr} fügt ein Preis- oder Werbewort hinzu`);
+  }
+});
+
+test("Vorschlag: ein passender KI-Entwurf hat Vorrang und ist als KI-Entwurf gekennzeichnet", () => {
+  const entwurf = { fuer: "Halter kompatibel mit Bosch GSR", neu: "Halter Halterung passend für Bosch GSR", aenderung: "Added the synonym." };
+  const v = schlageVor({ gruppe: "sichtbarkeit", title: "Halter kompatibel mit Bosch GSR" }, STAT(), EINSTELLUNGEN, null, entwurf);
+  assert.equal(v.neu, "Halter Halterung passend für Bosch GSR");
+  assert.equal(v.quelle, "claude");
+  assert.equal(v.laenge, v.neu.length);
+  assert.match(v.gruende.join(" "), /AI assistant wrote this draft/);
+  assert.match(v.gruende[0], /Added the synonym/);
+});
+
+test("Vorschlag: ein veralteter, zu langer oder unveränderter Entwurf wird ignoriert", () => {
+  const titel = "Halter kompatibel mit Bosch GSR";
+  const ohne = (entwurf) => schlageVor({ gruppe: "sichtbarkeit", title: titel }, STAT(), EINSTELLUNGEN, null, entwurf);
+  assert.equal(ohne({ fuer: "Ein ganz anderer, früherer Titel", neu: "Irgendwas", aenderung: "" }).quelle, undefined);   // Titel hat sich geändert
+  assert.equal(ohne({ fuer: titel, neu: "x".repeat(81), aenderung: "" }).quelle, undefined);                              // zu lang
+  assert.equal(ohne({ fuer: titel, neu: titel, aenderung: "" }).quelle, undefined);                                        // keine Änderung
+  assert.equal(ohne(null).quelle, undefined);
+  assert.equal(ohne({ fuer: titel, neu: "Halter passend für Bosch GSR", aenderung: "" }).quelle, "claude");
+});
+
+test("Auswertung: Entwürfe landen nur bei den passenden Produkten", () => {
+  const produkte = [{ number: "A1", ...p({ title: "Halter kompatibel mit Bosch GSR", units_90d: 0, impressionen_90d: 100, aufrufe_90d: 1 }) }, { number: "B2", ...p({ title: "Anderer Halter", units_90d: 0, impressionen_90d: 100, aufrufe_90d: 1 }) }];
+  const b = baueBewertung(produkte, new Map(), JETZT, new Map(), new Map([["A1", { fuer: "Halter kompatibel mit Bosch GSR", neu: "Halter passend für Bosch GSR", aenderung: "x" }]]));
+  assert.equal(b.produkte.find((x) => x.number === "A1").vorschlag.quelle, "claude");
+  assert.equal(b.produkte.find((x) => x.number === "B2").vorschlag.quelle, undefined);
 });

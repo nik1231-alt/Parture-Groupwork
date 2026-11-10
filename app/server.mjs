@@ -9,6 +9,7 @@ import Database from "better-sqlite3";
 import { ladeProdukte, baueBewertung } from "./bewertung.mjs";
 import * as entscheidungen from "./entscheidungen.mjs";
 import * as protokoll from "./protokoll.mjs";
+import { ladeEntwuerfe } from "./entwuerfe.mjs";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
@@ -20,6 +21,8 @@ const ENTSCHEIDUNGEN_PFAD = path.resolve(WURZEL, process.env.PM_ENTSCHEIDUNGEN |
 let _entscheidungenDb = null;
 // Dieselbe Datei enthält auch das Protokoll der Änderungen (Tabellen aenderung und momentaufnahme).
 const entscheidungenDb = () => (_entscheidungenDb ||= (() => { const d = entscheidungen.oeffne(ENTSCHEIDUNGEN_PFAD); protokoll.bereiteVor(d); return d; })());
+// KI-Titelentwürfe (von Menschen zu prüfen). Fehlt die Datei, läuft die App ohne sie.
+const ENTWUERFE_PFAD = path.resolve(WURZEL, process.env.PM_ENTWUERFE || "entwuerfe/titel.json");
 const HUB_URL = process.env.HUB_URL || "";
 const PM_TOKEN = process.env.PM_TOKEN || "";
 // Außenzugang (Server): Cloudflare Access stellt vor jede Anfrage ein signiertes JWT (Cf-Access-Jwt-Assertion).
@@ -63,7 +66,7 @@ function mitDb(fn) {
 const ROUTEN = {
   "/api/stand": () => mitDb((db) => db.prepare("SELECT * FROM stand").get()),
   // Alle Produkte mit Gruppe, Empfehlung, Begründung und gespeicherter Entscheidung (siehe regeln.mjs).
-  "/api/bewertung": () => baueBewertung(mitDb((db) => ladeProdukte(db)), entscheidungen.alle(entscheidungenDb()), new Date(), protokoll.laufende(entscheidungenDb())),
+  "/api/bewertung": () => baueBewertung(mitDb((db) => ladeProdukte(db)), entscheidungen.alle(entscheidungenDb()), new Date(), protokoll.laufende(entscheidungenDb()), ladeEntwuerfe(ENTWUERFE_PFAD)),
   // Protokoll der umgesetzten Änderungen mit Prüfstatus (läuft / bereit mit Urteil / abgeschlossen).
   "/api/aenderungen": () => protokoll.liste(entscheidungenDb(), mitDb((db) => ladeProdukte(db))),
   "/api/produkte": (q) => mitDb((db) => {
