@@ -137,7 +137,7 @@ function schreibe(items, vk) {
     CREATE TABLE produkt (number TEXT PRIMARY KEY, title TEXT, image_url TEXT, variants TEXT, variant_meta TEXT, grams REAL, print_s REAL, ship_method TEXT, status TEXT, created_at TEXT, units_total INTEGER, units_90d INTEGER, avg_price REAL, last_sold_at TEXT);
     CREATE TABLE kanal (number TEXT, channel TEXT, listed INTEGER, external_id TEXT, title TEXT, skus TEXT, preis_aktuell REAL, kanal_status TEXT, geplant_ab TEXT, units_total INTEGER, units_90d INTEGER, avg_price REAL, last_sold_at TEXT);
     CREATE TABLE bild (number TEXT, url TEXT, position INTEGER, kind TEXT);
-    CREATE TABLE stand (exportiert_am TEXT, quelle TEXT, produkte INTEGER, kanaele INTEGER, bilder INTEGER);
+    CREATE TABLE stand (exportiert_at TEXT, quelle TEXT, produkte INTEGER, kanaele INTEGER, bilder INTEGER);
     CREATE INDEX kanal_nr ON kanal(number); CREATE INDEX bild_nr ON bild(number);
   `);
   const iso = (t) => (t ? new Date(t).toISOString() : null);
