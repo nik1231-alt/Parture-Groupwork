@@ -6,12 +6,30 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { ladeProdukte, baueBewertung } from "./bewertung.mjs";
+import { leiteSchwellenAb } from "./regeln.mjs";
+import * as einstellungen from "./einstellungen.mjs";
+import * as experimente from "./experimente.mjs";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
 const PORT = Number(process.env.PM_PORT || 5060);
 // Reihenfolge: PM_DB aus der .env, sonst daten/pm.db (Server-Nachtlauf / eigener Export), sonst die Team-Kopie aus dem Repo.
 const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || (fs.existsSync(path.join(WURZEL, "daten/pm.db")) ? "daten/pm.db" : "daten-team/pm.db"));
+// Eigene Daten der App (Einstellungen und Tests) liegen getrennt von pm.db, weil pm.db nachts überschrieben wird.
+const APPDB_PFAD = path.resolve(WURZEL, process.env.PM_APPDB || "daten/app.db");
+let _appDb = null;
+function appDb() {
+  if (_appDb) return _appDb;
+  fs.mkdirSync(path.dirname(APPDB_PFAD), { recursive: true });
+  const d = new Database(APPDB_PFAD);
+  d.pragma("journal_mode = WAL");
+  einstellungen.bereiteVor(d);
+  experimente.bereiteVor(d);
+  return (_appDb = d);
+}
+const einst = () => einstellungen.effektiv(appDb());
+const produkteLaden = () => mitDb((db) => ladeProdukte(db));
 const HUB_URL = process.env.HUB_URL || "";
 const PM_TOKEN = process.env.PM_TOKEN || "";
 // Außenzugang (Server): Cloudflare Access stellt vor jede Anfrage ein signiertes JWT (Cf-Access-Jwt-Assertion).
@@ -54,6 +72,21 @@ function mitDb(fn) {
 
 const ROUTEN = {
   "/api/stand": () => mitDb((db) => db.prepare("SELECT * FROM stand").get()),
+  // Alle Angebote mit Bereich, Empfehlung und Begründung (siehe regeln.mjs), dazu ob sie in einem Test stecken.
+  "/api/bewertung": () => baueBewertung(produkteLaden(), einst(), new Date(), experimente.imTest(appDb())),
+  // Einstellungen: Formularbeschreibung, aktuelle Werte, Startwerte und die aus den Daten berechnete Grenze.
+  "/api/einstellungen": () => {
+    const e = einst();
+    return { abschnitte: einstellungen.ABSCHNITTE, schema: einstellungen.SCHEMA, werte: Object.fromEntries(einstellungen.SCHEMA.map((f) => [f.key, e[f.key]])), standard: einstellungen.STANDARD,
+      abgeleitet: { wenigImpressionen90d: leiteSchwellenAb(produkteLaden(), e, new Date()).wenigImpressionen90d } };
+  },
+  // Tests
+  "/api/experimente": () => ({ tests: experimente.liste(appDb(), produkteLaden(), new Date(), einst()), moeglich: experimente.kandidaten(appDb(), produkteLaden(), einst(), new Date()).length, testGroesse: einst().testGroesse }),
+  "/api/experiment": (q) => {
+    const r = experimente.detail(appDb(), Number(q.get("id")), produkteLaden(), new Date(), einst());
+    if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status });
+    return r.wert;
+  },
   "/api/produkte": (q) => mitDb((db) => {
     const suche = q.get("q") ? "%" + q.get("q").toLowerCase() + "%" : null;
     // Traffic-Tabelle ist optional (eine pm.db vom Server hat sie evtl. nicht): dann bleiben die Felder leer.
@@ -88,14 +121,46 @@ const ROUTEN = {
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" };
 
+const MAX_BODY = 10 * 1024;
+function leseJson(req) {
+  return new Promise((resolve, reject) => {
+    const fehler = (status, msg) => reject(Object.assign(new Error(msg), { status }));
+    if (!String(req.headers["content-type"] || "").startsWith("application/json")) return fehler(415, "Expected application/json.");
+    // Schutz vor fremden Webseiten: ein Origin-Header muss zum eigenen Host passen.
+    const origin = req.headers.origin;
+    let herkunft = null;
+    try { herkunft = origin ? new URL(origin).host : null; } catch { return fehler(403, "Request from a foreign origin rejected."); }
+    if (herkunft && herkunft !== req.headers.host) return fehler(403, "Request from a foreign origin rejected.");
+    let n = 0; const teile = [];
+    req.on("data", (c) => { n += c.length; if (n > MAX_BODY) fehler(413, "Request too large."); else teile.push(c); });
+    req.on("end", () => { try { resolve(JSON.parse(Buffer.concat(teile).toString("utf8"))); } catch { fehler(400, "Not valid JSON."); } });
+    req.on("error", () => fehler(400, "Request aborted."));
+  });
+}
+
+// Jede Funktion prüft die Eingabe selbst (Typen, Grenzen, Zustand) und liefert { ok, wert } oder { ok: false, status, fehler }.
+const antwort = (r) => { if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status || 400 }); return r.wert; };
+const POST_ROUTEN = {
+  "/api/einstellungen": async (req) => antwort(einstellungen.speichere(appDb(), (await leseJson(req))?.werte)),
+  "/api/einstellungen/zuruecksetzen": async (req) => { await leseJson(req); return antwort(einstellungen.zuruecksetzen(appDb())); },
+  "/api/experiment": async (req) => antwort(experimente.legeAn(appDb(), await leseJson(req), produkteLaden(), einst())),
+  "/api/experiment/titel": async (req) => antwort(experimente.setzeTitel(appDb(), await leseJson(req), einst())),
+  "/api/experiment/start": async (req) => antwort(experimente.starte(appDb(), await leseJson(req), produkteLaden())),
+  "/api/experiment/abschluss": async (req) => antwort(experimente.schliesse(appDb(), await leseJson(req))),
+};
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const json = (code, body) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(body)); };
   try {
     if (url.pathname === "/healthz") return json(200, { ok: true });
     if (!(await accessOk(req))) return json(401, { ok: false, error: "kein gültiger Zugang (Cloudflare Access)" });
-    const route = ROUTEN[url.pathname];
-    if (route) return json(200, { ok: true, daten: await route(url.searchParams) });
+    // Dieselbe Adresse darf lesen (GET) und schreiben (POST): die Methode entscheidet
+    if (req.method === "POST" && Object.hasOwn(POST_ROUTEN, url.pathname)) return json(200, { ok: true, daten: await POST_ROUTEN[url.pathname](req) });
+    const route = Object.hasOwn(ROUTEN, url.pathname) ? ROUTEN[url.pathname] : null;
+    if (route && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: await route(url.searchParams) });
+    if (route) return json(405, { ok: false, error: "GET only." });
+    if (Object.hasOwn(POST_ROUTEN, url.pathname)) return json(405, { ok: false, error: "POST only." });
     // statische Dateien aus public/
     const rel = url.pathname === "/" ? "/index.html" : url.pathname;
     const datei = path.join(WURZEL, "public", path.normalize(rel).replace(/^(\.\.[/\\])+/, ""));
