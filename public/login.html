@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Parture</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body class="login-seite">
+<main class="login-karte">
+  <div class="marke">
+    <span class="marke-zeichen" aria-hidden="true">P</span>
+    <span class="marke-name">Parture</span>
+  </div>
+  <h1>Sign in</h1>
+  <p class="leise">Product management for the eBay shop. Access is limited to the team.</p>
+  <div id="fehler" class="hinweis hinweis-fehler" role="alert" hidden></div>
+  <div id="ersteinrichtung" class="hinweis" hidden>
+    No user exists yet. Create one on the machine that runs the server:
+    <code>npm run benutzer -- anlegen &lt;username&gt;</code>
+  </div>
+  <form id="formular" class="login-formular" autocomplete="on" novalidate>
+    <label for="name">Username</label>
+    <input id="name" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="40" required autofocus>
+    <label for="passwort">Password</label>
+    <input id="passwort" name="password" type="password" autocomplete="current-password" maxlength="200" required>
+    <button class="knopf knopf-akzent" id="senden" type="submit">Sign in</button>
+  </form>
+</main>
+<script src="/login.js"></script>
+</body>
+</html>

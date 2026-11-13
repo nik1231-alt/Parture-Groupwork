@@ -29,6 +29,7 @@ const zustand = { daten: null, tests: null, einst: null, tab: "sichtbarkeit", su
 
 async function api(pfad, optionen) {
   const r = await fetch(pfad, optionen);
+  if (r.status === 401) { location.replace("/"); throw new Error("Please sign in."); } // Sitzung abgelaufen: zurück zur Anmeldung
   let j;
   try { j = await r.json(); } catch { throw new Error("Unexpected response from the server."); }
   if (!j.ok) throw new Error(j.error || "Unknown error");
@@ -410,5 +411,10 @@ $("#suche").addEventListener("input", (ev) => { clearTimeout(sucheTimer); sucheT
 $("#sortierung").addEventListener("change", (ev) => { zustand.sortierung = ev.target.value; zustand.sichtbar = SEITENGROESSE; if (zustand.daten) zeichneListe(); });
 $("#mehr").addEventListener("click", () => { zustand.sichtbar += SEITENGROESSE; zeichneListe(); });
 window.addEventListener("hashchange", route);
+$("#abmelden").addEventListener("click", async () => {
+  try { await post("/api/logout", {}); } catch { /* auch bei Fehler zur Anmeldung zurück */ }
+  location.replace("/");
+});
+api("/api/ich").then((d) => { $("#benutzer").textContent = d.name || ""; }).catch(() => {});
 
 laden().then(route);

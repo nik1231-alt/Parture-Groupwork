@@ -176,5 +176,19 @@ a { color: inherit; }
   .angebotszeile .titelfeld { grid-column: 1 / -1; }
 }
 @media (min-width: 861px) { .kennzahlen-kurz { display: none; } }
+
+/* Anmeldeseite */
+.login-seite { display: grid; place-items: center; min-height: 100vh; padding: 20px; }
+.login-karte { width: 100%; max-width: 380px; background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); box-shadow: var(--schatten); padding: 32px 28px; }
+.login-karte h1 { margin: 22px 0 6px; font-size: 28px; }
+.login-karte .hinweis { margin: 16px 0 0; font-size: 14px; }
+.login-karte code { display: block; margin-top: 6px; font-size: 13px; word-break: break-word; }
+.login-formular { display: grid; gap: 6px; margin-top: 20px; }
+.login-formular label { font-size: 14px; color: var(--leise); margin-top: 8px; }
+.login-formular input { padding: 11px 14px; border-radius: var(--radius-klein); border: 1px solid var(--linie-stark); background: var(--bg); }
+.login-formular .knopf-akzent { margin-top: 18px; background: var(--akzent); color: var(--akzent-text); border-color: var(--akzent); padding: 11px 18px; }
+.login-formular .knopf-akzent:hover { filter: brightness(.95); background: var(--akzent); }
+.login-formular .knopf:disabled { opacity: .6; cursor: default; }
+.kopf-rechts { display: flex; align-items: center; gap: 12px; }
 @media (max-width: 520px) { .seite { padding-top: 22px; } .kopf-innen { justify-content: center; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
