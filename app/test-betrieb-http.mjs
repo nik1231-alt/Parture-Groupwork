@@ -47,5 +47,9 @@ test("Datenstand: ohne Traffic-Datum oder mit unlesbarem Wert keine Warnung und 
 
 test("Umgebung steht im Status, und /healthz zeigt die Version aus dem Wächter-Status ohne Anmeldung", async () => {
   assert.equal((await betrieb(await cookie())).umgebung, "vorschau");
-  assert.equal((await (await fetch(basis + "/healthz")).json()).version, null, "ohne Wächter keine Version");
+  // Auf dem Server läuft dieser Test IM Wächter-Ordner, dort liegt daten/waechter-status.json mit dem ausgerollten Commit.
+  // Fest „null“ zu erwarten ließ den Wächter jeden zweiten Stand ablehnen (Serverprobe 17.11.2026: b86458b ABGELEHNT).
+  let erwartet = null;
+  try { erwartet = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "..", "daten", "waechter-status.json"), "utf8")).commit?.slice(0, 7) || null; } catch { /* ohne Wächter keine Version */ }
+  assert.equal((await (await fetch(basis + "/healthz")).json()).version, erwartet, "Version aus daten/waechter-status.json, sonst null");
 });
