@@ -66,13 +66,15 @@ Die eBay-API-Keys (`EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_REFRESH_TOKEN`)
 `.env` und in der `.env` auf dem Server. Sie gehören nie ins Repo, auch nicht in Issues, Pull Requests oder Chats.
 Wer die Keys braucht, fragt den Admin. Einmal committete Keys bleiben im Git-Verlauf und müssten bei eBay neu ausgestellt werden.
 
-## Server
+## Server und Zusammenarbeit
 
-Auf dem Parture-Server läuft die App unter `C:\parture-pm` auf Port 5060 (nur lokal, noch kein Hostname).
-`ensure_pm_running.ps1` hält sie am Leben (Aufgabe anlegen: `aufgabe_anlegen.ps1`), Logs in `pm.log`.
-Sobald ein Hostname davor liegt, prüft die App das Cloudflare-Access-Token (`CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` in der
-Server-.env). Ohne gültiges Token antwortet sie 401, egal wie der Hostname konfiguriert ist.
-- Stand Server: automatisches Ausrollen alle 10 Minuten aus origin/main (ensure_pm_running.ps1).
+Die App läuft auf dem Parture-Server in zwei Umgebungen: **PROD** (Branch `main`, mit eBay-Keys, Freigabe, Traffic-Import) und **VORSCHAU** (Branch `vorschau`, ohne Keys, zeigt Änderungen nach 1 bis 2 Minuten). Zugang nur über Cloudflare Access mit E-Mail-Code und danach den App-Login.
+Ein Wächter (`app/waechter.mjs`) rollt neue Stände nur nach bestandenen Tests aus und hält die App am Leben.
+
+- Einrichtung Schritt für Schritt (mit Proben): [`docs/server-einrichtung.md`](docs/server-einrichtung.md)
+- So arbeitet die Gruppe (Branches, Vorschau, Pull Request, Review): [`docs/entwicklung.md`](docs/entwicklung.md)
+- Fortschritt der Einrichtung: [`docs/server-checkliste.md`](docs/server-checkliste.md)
+- Übergabe an die KI auf dem Server-Laptop: [`docs/uebergabe-server-ki.md`](docs/uebergabe-server-ki.md)
 
 ## Login
 
@@ -86,7 +88,7 @@ npm run benutzer -- passwort <name>
 npm run benutzer -- liste
 ```
 
-Sitzungen laufen nach 12 Stunden ab. Nach 5 falschen Passwörtern ist der Benutzername 15 Minuten gesperrt. Das Cookie ist `HttpOnly` und `SameSite=Strict` (hinter HTTPS zusätzlich `Secure`).
+Sitzungen laufen nach 12 Stunden ab. Nach 5 falschen Passwörtern ist der Benutzername 15 Minuten gesperrt, nach 20 falschen Versuchen von einer Adresse (über alle Namen) die Adresse. Jede Person ändert ihr Passwort selbst unter *Account*. Das Cookie ist `HttpOnly` und `SameSite=Strict` (hinter HTTPS zusätzlich `Secure`).
 
 ## Rollen: Admin und Builder
 
@@ -126,3 +128,13 @@ Zur Kontrolle wird je Tag die Summe aller Listings mit der Kontosumme von eBay v
 - Von Hand: `npm run export` oder im Tab **Log** den Knopf **Import now** (nur Admin).
 - Team-Kopie für alle: `npm run export:team` schreibt zusätzlich `daten-team/pm.db` (ohne die Tagesdaten). Diese Datei checkt der Admin ein.
 
+
+## Betrieb: Sicherung, Meldungen, Status
+
+- **Sicherung:** täglich ab 3 Uhr von `app.db` (Benutzer, Tests, Freigaben, Protokoll) und `traffic-tage.db`, 14 Stück in `daten/sicherung`, optional zusätzlich in `SICHERUNG_ZIEL2`. `npm run sicherung` (jetzt), `-- liste`, `-- wiederherstellen <datei>`.
+- **Meldung an den Admin** (Telegram, optional): neuer Vorschlag wartet, Traffic-Import oder Sicherung fehlgeschlagen. Nur mit `TELEGRAM_BOT_TOKEN` und `TELEGRAM_CHAT_ID`.
+- **Status:** Tab *Log* zeigt Umgebung, Version, Schreibschalter, Sicherung und Traffic-Import. Ist der Traffic mehr als 2 Tage hinter dem Soll, warnt die App oben.
+- **Obergrenze:** eine Freigabe ändert höchstens 50 Angebote.
+- **Titelhilfe:** im Test zeigt die App unter jedem Titelfeld Wörter, die in den am besten gesehenen eigenen Angeboten oft vorkommen und hier fehlen (Klick hängt sie an). Sie schreibt keine Titel.
+- **Beispiel-Urteil:** im Tab *Tests* zeigt ein aufklappbarer Bereich drei Beispiel-Urteile mit erfundenen Zahlen, berechnet mit den echten Regeln.
+- **Geheimnis-Scan:** `npm run scan` (und `-- --historie`), läuft auch bei jedem Pull Request.

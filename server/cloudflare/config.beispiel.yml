@@ -1,0 +1,11 @@
+# Beispiel für ~/.cloudflared/config.yml bzw. C:\Users\<name>\.cloudflared\config.yml auf dem Server.
+# TUNNEL-ID und Benutzername ersetzen. Die Datei mit den Tunnel-Zugangsdaten (<TUNNEL-ID>.json) ist ein Geheimnis und gehört nie ins Repo.
+tunnel: TUNNEL-ID
+credentials-file: C:\Users\BENUTZERNAME\.cloudflared\TUNNEL-ID.json
+
+ingress:
+  - hostname: app.DEINE-DOMAIN.de          # PROD
+    service: http://127.0.0.1:5070
+  - hostname: vorschau.DEINE-DOMAIN.de     # VORSCHAU
+    service: http://127.0.0.1:5071
+  - service: http_status:404               # alles andere

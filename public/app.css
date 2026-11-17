@@ -192,3 +192,16 @@ a { color: inherit; }
 .kopf-rechts { display: flex; align-items: center; gap: 12px; }
 @media (max-width: 520px) { .seite { padding-top: 22px; } .kopf-innen { justify-content: center; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Umgebung (VORSCHAU / PROD / lokal) und Warnungen */
+.umgebung { font-size: 12px; font-weight: 600; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: var(--akzent-weich); }
+.umgebung.vorschau { background: #fde7c4; color: #6b4200; }
+.umgebung.prod { background: #d9f2df; color: #12501f; }
+.hinweis-warnung { background: #fff4d6; color: #5c4300; border: 1px solid #f0d58a; }
+@media (prefers-color-scheme: dark) { .umgebung.vorschau { background: #4a3510; color: #ffd98a; } .umgebung.prod { background: #123a1e; color: #a8e6b5; } .hinweis-warnung { background: #3b3010; color: #ffe39a; border-color: #6b5518; } }
+#nav-account { text-decoration: none; }
+#nav-account[aria-current="page"] { text-decoration: underline; }
+.stapel { display: grid; gap: 12px; max-width: 420px; margin-bottom: 12px; }
+.titelhilfe { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wort { font: inherit; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--linie-stark); background: var(--karte); cursor: pointer; }
+.wort:hover, .wort:focus-visible { border-color: var(--fokus); }

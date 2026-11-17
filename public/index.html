@@ -21,12 +21,13 @@
       <a class="nav-knopf" id="nav-log" href="#log">Log</a>
       <a class="nav-knopf" id="nav-settings" href="#settings">Settings</a>
     </nav>
-    <span class="kopf-rechts"><span class="leise" id="stand"></span><span class="leise" id="benutzer"></span><button class="knopf knopf-klein" id="abmelden" type="button">Sign out</button></span>
+    <span class="kopf-rechts"><span class="leise" id="stand"></span><span class="umgebung" id="umgebung" hidden></span><a class="leise" id="nav-account" href="#account" title="Account and password"><span id="benutzer"></span></a><button class="knopf knopf-klein" id="abmelden" type="button">Sign out</button></span>
   </div>
 </header>
 
 <main class="seite">
   <div id="fehler" class="hinweis hinweis-fehler" role="alert" hidden></div>
+  <div id="warnung" class="hinweis hinweis-warnung" role="status" hidden></div>
 
   <!-- Listings -->
   <section id="ansicht-listings">
@@ -76,6 +77,9 @@
 
   <!-- Protokoll -->
   <section id="ansicht-log" hidden></section>
+
+  <!-- Konto -->
+  <section id="ansicht-account" hidden></section>
 
   <!-- Einstellungen -->
   <section id="ansicht-settings" hidden>

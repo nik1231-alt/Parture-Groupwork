@@ -15,6 +15,8 @@ import * as rollen from "./rollen.mjs";
 import * as protokoll from "./protokoll.mjs";
 import * as freigabe from "./freigabe.mjs";
 import * as ebaySchreiben from "./ebay-schreiben.mjs";
+import { baueDemo } from "./demo.mjs";
+import * as titelhilfe from "./titelhilfe.mjs";
 import * as sicherung from "./sicherung.mjs";
 import * as benachrichtigung from "./benachrichtigung.mjs";
 import { laDatum, addTage, VERZOEGERUNG_STANDARD } from "./traffic.mjs";
@@ -188,6 +190,9 @@ const ROUTEN = {
   "/api/protokoll": () => protokoll.liste(appDb(), 300),
   "/api/traffic/status": () => trafficStatus(),
   "/api/betrieb": () => betriebStatus(),
+  "/api/demo": () => baueDemo(einst()),
+  // Hinweise für neue Titel aus den eigenen Daten (keine erfundenen Titel, siehe titelhilfe.mjs)
+  "/api/titelhilfe": (q) => titelhilfe.hinweiseFuer(produkteLaden(), String(q.get("nr") || "").slice(0, 40)),
   "/api/rollen": (q, ctx) => { adminNoetig(ctx); return { benutzer: rollen.liste(appDb()), admins: rollen.anzahlAdmins(appDb()) }; },
   // Alle Angebote mit Bereich, Empfehlung und Begründung (siehe regeln.mjs), dazu ob sie in einem Test stecken.
   "/api/bewertung": () => baueBewertung(produkteLaden(), einst(), new Date(), experimente.imTest(appDb())),
@@ -316,12 +321,23 @@ const server = http.createServer(async (req, res) => {
     const sicher = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https";
     const token = login.tokenAusCookie(req.headers.cookie);
     const benutzer = login.sitzungFuer(appDb(), token);
+    // Adresse für die Sperre bei Fehlversuchen: hinter Cloudflare (Access ist dann Pflicht) die echte Adresse aus dem Cloudflare-Header, sonst die Verbindung
+    const ip = (CF_TEAM && CF_AUD && String(req.headers["cf-connecting-ip"] || "").slice(0, 64)) || req.socket.remoteAddress || "";
     if (req.method === "POST" && url.pathname === "/api/login") {
       const b = await leseJson(req);
-      const r = login.anmelden(appDb(), b?.name, b?.passwort);
+      const r = login.anmelden(appDb(), b?.name, b?.passwort, new Date(), ip);
       if (!r.ok) return json(r.status, { ok: false, error: r.fehler });
       res.setHeader("Set-Cookie", login.cookie(r.wert.token, sicher));
       return json(200, { ok: true, daten: { name: r.wert.name } });
+    }
+    if (req.method === "POST" && url.pathname === "/api/passwort") {
+      if (!benutzer) return json(401, { ok: false, error: "Please sign in." });
+      const b = await leseJson(req);
+      const r = login.aendernPasswort(appDb(), benutzer.name, b?.altes, b?.neues, new Date(), ip);
+      if (!r.ok) return json(r.status, { ok: false, error: r.fehler });
+      try { protokoll.schreibe(appDb(), { benutzer: benutzer.name, rolle: rollen.rolleVon(appDb(), benutzer.name) ?? "builder", aktion: "password_changed", objekt: "user " + benutzer.name }); } catch { /* Protokoll nicht erreichbar */ }
+      res.setHeader("Set-Cookie", login.cookie(r.wert.token, sicher));
+      return json(200, { ok: true, daten: {} });
     }
     if (req.method === "POST" && url.pathname === "/api/logout") {
       await leseJson(req);

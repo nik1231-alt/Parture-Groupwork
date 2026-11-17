@@ -103,3 +103,18 @@ test("Sicherung per Knopf: Builder 403, Admin sichert, das Protokoll hält es fe
   assert.ok(d.prepare("SELECT COUNT(*) n FROM benutzer").get().n >= 2); d.close();
   assert.equal((await (await get("/api/betrieb", c)).json()).daten.sicherung.anzahl, 1);
 });
+
+test("Passwort ändern über den Server: nur mit Anmeldung, altes Passwort nötig, alte Sitzung endet, neue gilt, Protokoll ohne Passwörter", async () => {
+  assert.equal((await post("/api/passwort", { altes: "x", neues: "y" })).status, 401);
+  const c = await anmelden("anna");
+  assert.equal((await post("/api/passwort", { altes: "falsch-falsch", neues: "ein-ganz-neues-passwort" }, c)).status, 403);
+  const r = await post("/api/passwort", { altes: "ein-langes-passwort", neues: "ein-ganz-neues-passwort" }, c);
+  assert.equal(r.status, 200);
+  const neuesCookie = r.headers.get("set-cookie").split(";")[0];
+  assert.equal((await get("/api/ich", c)).status === 200 && (await (await get("/api/ich", c)).json()).daten.angemeldet, false, "alte Sitzung ist beendet");
+  assert.equal((await (await get("/api/ich", neuesCookie)).json()).daten.angemeldet, true);
+  const l = JSON.stringify((await (await get("/api/protokoll", await anmelden("niko"))).json()).daten);
+  assert.match(l, /password_changed/);
+  assert.ok(!l.includes("ein-ganz-neues-passwort") && !l.includes("ein-langes-passwort"));
+  assert.equal((await post("/api/login", { name: "anna", passwort: "ein-langes-passwort" })).status, 401);
+});

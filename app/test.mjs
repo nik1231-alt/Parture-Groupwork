@@ -490,3 +490,35 @@ test("Login: Cookie wird gelesen und ist HttpOnly, SameSite=Strict, bei HTTPS Se
   assert.match(lg.cookie("tok", true), /; Secure/);
   assert.match(lg.cookie("", true, 0), /Max-Age=0/);
 });
+
+// ---------- Sperre je Adresse und Passwort ändern ----------
+test("Login: Sperre je Adresse über alle Namen, andere Adressen und der richtige Name bleiben unberührt", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  for (let i = 0; i < lg.MAX_FEHLVERSUCHE_IP; i++) assert.equal(lg.anmelden(d, "name" + i, "falsch-falsch", JETZT, "1.2.3.4").status, 401, "jeder Name nur einmal falsch: keine Namenssperre");
+  assert.equal(lg.anmelden(d, "anna", PW, JETZT, "1.2.3.4").status, 429, "die Adresse ist gesperrt, auch mit richtigem Passwort");
+  assert.equal(lg.anmelden(d, "anna", PW, JETZT, "5.6.7.8").ok, true, "eine andere Adresse kann sich anmelden");
+  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + 16 * 60000), "1.2.3.4").ok, true, "nach der Sperrzeit wieder frei");
+});
+
+test("Login: Passwort ändern prüft das alte, verlangt ein neues, beendet andere Sitzungen und gibt eine neue", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  const alt = lg.anmelden(d, "anna", PW, JETZT).wert.token;
+  assert.equal(lg.aendernPasswort(d, "anna", "falsch-falsch", "ein-neues-passwort", JETZT).status, 403);
+  assert.equal(lg.aendernPasswort(d, "anna", PW, "kurz", JETZT).status, 400);
+  assert.equal(lg.aendernPasswort(d, "anna", PW, PW, JETZT).status, 400, "dasselbe Passwort ist keine Änderung");
+  assert.equal(lg.aendernPasswort(d, "anna", 5, "ein-neues-passwort", JETZT).status, 400);
+  assert.ok(lg.sitzungFuer(d, alt, JETZT), "nach Fehlern ist die Sitzung noch da");
+  const r = lg.aendernPasswort(d, "anna", PW, "ein-neues-passwort", JETZT);
+  assert.equal(r.ok, true);
+  assert.equal(lg.sitzungFuer(d, alt, JETZT), null, "alte Sitzung beendet");
+  assert.ok(lg.sitzungFuer(d, r.wert.token, JETZT), "neue Sitzung gilt");
+  assert.equal(lg.anmelden(d, "anna", PW, JETZT).status, 401, "altes Passwort gilt nicht mehr");
+  assert.equal(lg.anmelden(d, "anna", "ein-neues-passwort", JETZT).ok, true);
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM sitzung").get().n, 2, "keine liegengebliebenen Prüf-Sitzungen (neue + eine vom Test-Login)");
+});
+
+test("Login: falsche alte Passwörter beim Ändern zählen als Fehlversuche und sperren irgendwann", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  for (let i = 0; i < 5; i++) lg.aendernPasswort(d, "anna", "falsch-falsch", "ein-neues-passwort", JETZT);
+  assert.equal(lg.aendernPasswort(d, "anna", PW, "ein-neues-passwort", JETZT).status, 429);
+});
