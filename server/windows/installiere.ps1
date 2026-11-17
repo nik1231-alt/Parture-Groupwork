@@ -2,6 +2,8 @@
 #   .\server\windows\installiere.ps1 -Umgebung prod      im PROD-Ordner:     folgt origin/main (nur Fast-Forward, nach bestandenen Tests)
 #   .\server\windows\installiere.ps1 -Umgebung vorschau  im VORSCHAU-Ordner: folgt origin/vorschau (jede Minute)
 # Die Aufgabe startet beim Hochfahren (auch ohne Anmeldung) und startet sich nach einem Absturz neu. Idempotent.
+# Braucht eine ERHÖHTE PowerShell (S4U-Anmeldung): ohne Adminrechte meldet Register-ScheduledTask „Access is denied“
+# (Parture-Server 17.11.2026). Dann stattdessen aufgaben-ohne-admin.ps1 nehmen: gleiche Aufgabe, aber Start bei der Anmeldung.
 param([Parameter(Mandatory = $true)][ValidateSet('prod', 'vorschau')][string]$Umgebung)
 $ErrorActionPreference = 'Stop'
 $ordner = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -20,6 +22,13 @@ $einstellungen = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStop
 # S4U: läuft auch ohne angemeldeten Benutzer, ohne dass ein Passwort gespeichert wird
 $konto = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
 if (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName $name -Confirm:$false }
-Register-ScheduledTask -TaskName $name -Action $aktion -Trigger $ausloeser -Settings $einstellungen -Principal $konto | Out-Null
-Start-ScheduledTask -TaskName $name
+# Die CIM-Fehler dieser Cmdlets sind nicht terminierend; ohne try/catch meldete das Skript „angelegt“, obwohl nichts angelegt war.
+try {
+  Register-ScheduledTask -TaskName $name -Action $aktion -Trigger $ausloeser -Settings $einstellungen -Principal $konto -ErrorAction Stop | Out-Null
+  Start-ScheduledTask -TaskName $name -ErrorAction Stop
+} catch {
+  # Nur ASCII in Zeichenketten: Windows PowerShell liest die Datei ohne BOM als ANSI, ein UTF-8-Gedankenstrich enthaelt dann ein Anfuehrungszeichen-Byte.
+  throw "Aufgabe '$name' NICHT angelegt: $($_.Exception.Message). PowerShell als Administrator starten oder server\windows\aufgaben-ohne-admin.ps1 verwenden."
+}
+if ((Get-ScheduledTask -TaskName $name).State -notin @('Running', 'Ready')) { throw "Aufgabe '$name' angelegt, läuft aber nicht (Zustand: $((Get-ScheduledTask -TaskName $name).State))." }
 "Aufgabe '$name' angelegt und gestartet. Log: $ordner\daten\waechter.log"
