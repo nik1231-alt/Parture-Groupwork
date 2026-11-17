@@ -22,7 +22,11 @@ test.before(async () => {
   for (let i = 0; i < 50; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
-test.after(() => { server?.kill(); fs.rmSync(verz, { recursive: true, force: true }); });
+// Erst warten, bis der Server-Prozess wirklich beendet ist: auf Windows hält er app.db sonst noch offen und rmSync scheitert mit EBUSY (Serverprobe 17.11.2026).
+test.after(async () => {
+  if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
+  fs.rmSync(verz, { recursive: true, force: true });
+});
 
 async function cookie() { const r = await fetch(basis + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "anna", passwort: "ein-langes-passwort" }) }); return r.headers.get("set-cookie").split(";")[0]; }
 const betrieb = async (c) => (await (await fetch(basis + "/api/betrieb", { headers: { Cookie: c } })).json()).daten;
