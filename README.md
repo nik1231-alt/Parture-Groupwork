@@ -26,11 +26,14 @@ Sie ist bewusst eingecheckt, damit alle ohne Zugangsdaten arbeiten können. Die 
 
 ## Lokal starten
 
+> Wichtig für Chrome: Port 5060 ist im Browser gesperrt (`ERR_UNSAFE_PORT`, SIP). Deshalb nutzt die Vorlage `.env.beispiel` jetzt 5070.
+> Hast du eine ältere `.env` mit `PM_PORT=5060`, ändere sie auf 5070.
+
 ```bash
 npm install
 cp .env.beispiel .env        # Windows: copy .env.beispiel .env
 # fertig: ohne daten/pm.db nutzt die App die Team-Kopie daten-team/pm.db
-npm start                    # http://127.0.0.1:5060
+npm start                    # http://127.0.0.1:5070
 ```
 
 `npm run dev` startet mit Neuladen bei Dateiänderungen.
@@ -84,3 +87,42 @@ npm run benutzer -- liste
 ```
 
 Sitzungen laufen nach 12 Stunden ab. Nach 5 falschen Passwörtern ist der Benutzername 15 Minuten gesperrt. Das Cookie ist `HttpOnly` und `SameSite=Strict` (hinter HTTPS zusätzlich `Secure`).
+
+## Rollen: Admin und Builder
+
+- **Builder** bauen: Tests anlegen, neue Titel eintragen, Tests **zur Freigabe senden**. Sie ändern nichts bei eBay.
+- **Admin** gibt Vorschläge frei (Tab **Approvals**), vergibt Rollen (Tab **Team**) und sieht alles. Es gibt immer mindestens einen Admin.
+- Neue Benutzer sind Builder. Der erste Benutzer wird automatisch Admin. Auf dem Rechner, auf dem die App läuft:
+
+```bash
+npm run benutzer -- anlegen <name> [admin|builder]
+npm run benutzer -- rolle <name> <admin|builder>
+npm run benutzer -- liste
+```
+
+## Änderungen bei eBay: Vorschlag, Freigabe, Protokoll
+
+1. Builder trägt im Test die neuen Titel ein und klickt **Send for approval**. Es wird noch nichts bei eBay geändert.
+2. Ein Admin prüft im Tab **Approvals** (alter und neuer Titel nebeneinander) und gibt frei. Erst dann ändert die App die Titel bei eBay.
+3. Vor jeder Änderung liest die App den aktuellen Titel bei eBay. Weicht er vom erwarteten ab (z. B. von Hand geändert), wird **nichts überschrieben**.
+4. Sind alle Titel geändert, startet der Test, und die Ausgangszahlen werden in diesem Moment festgehalten.
+5. Schließt man einen Test mit **revert**, entstehen Rückänderungen auf die alten Titel. Auch die muss ein Admin freigeben.
+6. Jede Aktion steht im Tab **Log**: Vorschlag, Freigabe, Ablehnung, jede einzelne eBay-Änderung mit altem und neuem Titel und eBay-Antwort, Rollenwechsel, Traffic-Import. Das Protokoll wird nur ergänzt, nie geändert.
+
+**Schreibschalter:** Bei eBay wird nur geschrieben, wenn auf dem Admin-Rechner in der `.env` `EBAY_SCHREIBEN=an` steht und dort die eBay-Keys liegen.
+Ohne den Schalter ist die Freigabe ein **Probelauf** (die Angebote werden gelesen und geprüft, nichts wird geändert).
+eBay kann Titeländerungen ablehnen (zum Beispiel bei Angeboten mit Verkäufen). Die Meldung von eBay steht dann am Vorschlag und im Log.
+
+Wichtig: Alle arbeiten nur dann am **gleichen** Stand, wenn sie dieselbe laufende App benutzen. Die Daten der App (Benutzer, Tests, Vorschläge, Log) liegen in `daten/app.db`
+des Rechners, auf dem sie läuft, und nicht im Repo.
+
+## Traffic: täglich automatisch, mit Verzögerung
+
+Der Traffic kommt als **Tageswerte je Listing** (Tabelle `traffic_tag`). Daraus werden die 30- und 90-Tage-Summen gebildet, jeweils bis zum **Stichtag = heute minus 3 Tage**.
+Nur Tage, die so alt sind, gelten als fertig. Die letzten 3 Tage vor dem Stichtag werden bei jedem Lauf noch einmal geholt und mit den gespeicherten verglichen (Abweichungen werden überschrieben und gezählt).
+Zur Kontrolle wird je Tag die Summe aller Listings mit der Kontosumme von eBay verglichen. Liegt der Anteil im Mittel unter 80 %, gilt der Lauf als fehlerhaft und die alte Datei bleibt.
+
+- Automatisch: auf dem Rechner mit den eBay-Keys `EBAY_TRAFFIC_AUTO=an` in die `.env` und die App laufen lassen. Sie importiert einmal täglich ab 5 Uhr (`TRAFFIC_UHRZEIT`).
+- Von Hand: `npm run export` oder im Tab **Log** den Knopf **Import now** (nur Admin).
+- Team-Kopie für alle: `npm run export:team` schreibt zusätzlich `daten-team/pm.db` (ohne die Tagesdaten). Diese Datei checkt der Admin ein.
+

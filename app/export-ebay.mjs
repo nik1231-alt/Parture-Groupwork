@@ -1,5 +1,10 @@
 // Baut daten/pm.db selbst aus der eBay-API (Konto partureshop). Nur Lesezugriffe.
 // Aufruf: npm run export   (braucht EBAY_APP_ID, EBAY_CERT_ID, EBAY_REFRESH_TOKEN in der .env)
+//         npm run export:team   (wie oben, schreibt zusätzlich die Team-Kopie daten-team/pm.db ohne Tagesdaten)
+// Läuft auch automatisch einmal täglich im Server (EBAY_TRAFFIC_AUTO=an), siehe server.mjs.
+//
+// Traffic: Es werden Tageswerte je Listing geholt (Tabelle traffic_tag) und daraus die 30- und 90-Tage-Summen (Tabelle traffic)
+// gebildet, jeweils bis zum Stichtag = heute minus 3 Tage (TRAFFIC_VERZOEGERUNG_TAGE). Siehe traffic.mjs.
 //
 // Whitelist wie in der README: Katalog, Kanal, Menge, Preis, Bilder. NICHT übernommen werden
 // Käufer, Adressen, Gebühren, Kosten, Umsatz in Euro. Bestellungen werden nur zu Stückzahl,
@@ -11,11 +16,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { laDatum, tageListe, planeTage, zaehleAbweichungen, fensterSummen, abdeckung, holeTag, holeZeitraum, holeKontrolle, FENSTER_TAGE, NACHPRUEFEN_TAGE, VERZOEGERUNG_STANDARD, LimitFehler } from "./traffic.mjs";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
 const { EBAY_APP_ID, EBAY_CERT_ID, EBAY_REFRESH_TOKEN } = process.env;
+const TEAM = process.argv.includes("--team");
 const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || "daten/pm.db");
+const TEAM_PFAD = path.resolve(WURZEL, "daten-team/pm.db");
+// Zwischenspeicher der Tageswerte: bleibt erhalten, wenn ein Lauf abbricht (z. B. eBay-Limit), der nächste macht dort weiter.
+const CACHE_PFAD = path.resolve(WURZEL, process.env.PM_TRAFFIC_CACHE || "daten/traffic-tage.db");
+const VERZOEGERUNG = Math.max(1, Number(process.env.TRAFFIC_VERZOEGERUNG_TAGE) || VERZOEGERUNG_STANDARD);
+const MIN_ABDECKUNG = Number(process.env.TRAFFIC_MIN_ABDECKUNG) || 0.8; // darunter gilt der Lauf als fehlerhaft und die alte Datei bleibt
 const SITE_DE = "77";
 const TAGE_HISTORIE = 360; // so weit zurück werden Bestellungen gelesen (für last_sold_at)
 
@@ -108,31 +120,26 @@ async function verkaeufe(token) {
   return je;
 }
 
-// Traffic je Listing (Analytics-API). Datumsfilter laufen in Los-Angeles-Zeit. Die API liefert je Aufruf nur die Top 200
-// und ignoriert offset, deshalb werden die Listing-IDs in Paketen zu 200 abgefragt (Filter listing_ids).
-const laTag = (tageZurueck) => new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Los_Angeles" }).format(new Date(Date.now() - tageZurueck * 864e5)).replace(/-/g, "");
-async function traffic(token, tage, ids) {
-  const je = new Map();
-  for (let i = 0; i < ids.length; i += 200) {
-    const paket = ids.slice(i, i + 200);
-    const filter = `date_range:[${laTag(tage)}..${laTag(1)}],marketplace_ids:{EBAY_DE},listing_ids:{${paket.join("|")}}`;
-    const url = "https://api.ebay.com/sell/analytics/v1/traffic_report?" + new URLSearchParams({
-      dimension: "LISTING", filter, sort: "-TOTAL_IMPRESSION_TOTAL", limit: "200",
-      metric: "CLICK_THROUGH_RATE,TOTAL_IMPRESSION_TOTAL,LISTING_VIEWS_TOTAL,SALES_CONVERSION_RATE,TRANSACTION",
-    });
-    const r = await fetch(url, { headers: { Authorization: "Bearer " + token, "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE" } });
-    if (!r.ok) { console.warn(`  Traffic ${tage} Tage, Paket ${i / 200 + 1}: HTTP ${r.status} ${(await r.text()).slice(0, 120)}`); continue; }
-    const j = await r.json();
-    const keys = (j.header?.metrics || []).map((m) => m.key);
-    const wert = (mv, k) => { const x = keys.indexOf(k); return x >= 0 ? Number(mv?.[x]?.value) || 0 : 0; };
-    for (const rec of j.records || []) {
-      const id = rec.dimensionValues?.[0]?.value;
-      if (!id || je.has(id)) continue;
-      const mv = rec.metricValues || [];
-      je.set(id, { impressionen: wert(mv, "TOTAL_IMPRESSION_TOTAL"), aufrufe: wert(mv, "LISTING_VIEWS_TOTAL"), klickrate: wert(mv, "CLICK_THROUGH_RATE"), conversion: wert(mv, "SALES_CONVERSION_RATE"), transaktionen: wert(mv, "TRANSACTION") });
-    }
-  }
-  return je;
+// Zwischenspeicher der Tageswerte (eigene Datei, wird beim Neubau von pm.db nicht angefasst).
+function oeffneCache() {
+  fs.mkdirSync(path.dirname(CACHE_PFAD), { recursive: true });
+  const c = new Database(CACHE_PFAD);
+  c.exec("CREATE TABLE IF NOT EXISTS tag (datum TEXT PRIMARY KEY, geholt_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS zeile (datum TEXT NOT NULL, item_id TEXT NOT NULL, imp INTEGER, auf INTEGER, trans INTEGER, PRIMARY KEY (datum, item_id));");
+  return c;
+}
+function leseCache(c, ersterTag) {
+  const aus = new Map();
+  for (const t of c.prepare("SELECT datum FROM tag WHERE datum >= ?").all(ersterTag)) aus.set(t.datum, new Map());
+  for (const z of c.prepare("SELECT datum, item_id, imp, auf, trans FROM zeile WHERE datum >= ?").iterate(ersterTag)) aus.get(z.datum)?.set(z.item_id, { imp: z.imp, auf: z.auf, trans: z.trans });
+  return aus;
+}
+function speichereTag(c, datum, m) {
+  c.transaction(() => {
+    c.prepare("DELETE FROM zeile WHERE datum = ?").run(datum);
+    const ins = c.prepare("INSERT INTO zeile VALUES (?,?,?,?,?)");
+    for (const [id, w] of m) ins.run(datum, id, w.imp, w.auf, w.trans);
+    c.prepare("INSERT OR REPLACE INTO tag VALUES (?, ?)").run(datum, new Date().toISOString());
+  })();
 }
 
 // Artikelnummer = führende Ziffern der SKU ("234 -  -" -> 234, "1254_Gr" -> 1254). Variantenlistings: erste Varianten-SKU.
@@ -141,7 +148,7 @@ function artikelnummer(it) {
   return null;
 }
 
-function schreibe(items, vk, tr30, tr90) {
+function schreibe(items, vk, tage, stichtag, meta) {
   const produkte = new Map();
   for (const it of items) {
     const nr = artikelnummer(it) ?? "ID" + it.itemId;
@@ -165,14 +172,19 @@ function schreibe(items, vk, tr30, tr90) {
     CREATE TABLE kanal (number TEXT, channel TEXT, listed INTEGER, external_id TEXT, title TEXT, skus TEXT, preis_aktuell REAL, kanal_status TEXT, geplant_ab TEXT, units_total INTEGER, units_90d INTEGER, avg_price REAL, last_sold_at TEXT);
     CREATE TABLE bild (number TEXT, url TEXT, position INTEGER, kind TEXT);
     CREATE TABLE traffic (item_id TEXT, number TEXT, tage INTEGER, impressionen INTEGER, aufrufe INTEGER, klickrate REAL, conversion REAL, transaktionen INTEGER);
-    CREATE TABLE stand (exportiert_at TEXT, quelle TEXT, produkte INTEGER, kanaele INTEGER, bilder INTEGER);
-    CREATE INDEX kanal_nr ON kanal(number); CREATE INDEX traffic_nr ON traffic(number); CREATE INDEX bild_nr ON bild(number);
+    CREATE TABLE traffic_tag (datum TEXT, item_id TEXT, number TEXT, impressionen INTEGER, aufrufe INTEGER, transaktionen INTEGER);
+    CREATE TABLE stand (exportiert_at TEXT, quelle TEXT, produkte INTEGER, kanaele INTEGER, bilder INTEGER, traffic_bis TEXT, traffic_tage INTEGER, traffic_abdeckung REAL);
+    CREATE INDEX kanal_nr ON kanal(number); CREATE INDEX traffic_nr ON traffic(number); CREATE INDEX traffic_tag_datum ON traffic_tag(datum); CREATE INDEX bild_nr ON bild(number);
   `);
   const iso = (t) => (t ? new Date(t).toISOString() : null);
   const insP = db.prepare("INSERT INTO produkt VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   const insK = db.prepare("INSERT INTO kanal VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
   const insB = db.prepare("INSERT INTO bild VALUES (?,?,?,?)");
   const insT = db.prepare("INSERT INTO traffic VALUES (?,?,?,?,?,?,?,?)");
+  const insTag = db.prepare("INSERT INTO traffic_tag VALUES (?,?,?,?,?,?)");
+  const bekannt = new Set(items.map((i) => i.itemId));
+  const fenster = meta.fenster ?? { 30: fensterSummen(tage, stichtag, 30, bekannt), 90: fensterSummen(tage, stichtag, 90, bekannt) };
+  const nummerVon = new Map();
   let nK = 0, nB = 0, nT = 0;
   db.transaction(() => {
     for (const p of produkte.values()) {
@@ -184,9 +196,13 @@ function schreibe(items, vk, tr30, tr90) {
         nK++;
       }
       if (p.bild) { insB.run(p.number, p.bild, 0, "galerie"); nB++; }
-      for (const { it } of p.kanaele) for (const [tage, tr] of [[30, tr30], [90, tr90]]) { const t = tr.get(it.itemId); if (t) { insT.run(it.itemId, p.number, tage, t.impressionen, t.aufrufe, t.klickrate, t.conversion, t.transaktionen); nT++; } }
+      for (const { it } of p.kanaele) {
+        nummerVon.set(it.itemId, p.number);
+        for (const tg of [30, 90]) { const t = fenster[tg].get(it.itemId); if (t) { insT.run(it.itemId, p.number, tg, t.imp, t.auf, t.imp ? t.auf / t.imp : 0, t.auf ? t.trans / t.auf : 0, t.trans); nT++; } }
+      }
     }
-    db.prepare("INSERT INTO stand VALUES (?,?,?,?,?)").run(new Date().toISOString(), "eBay-API (partureshop), lokal gebaut", produkte.size, nK, nB);
+    for (const [datum, ids] of tage) for (const [id, w] of ids) if (nummerVon.has(id) && (w.imp || w.auf || w.trans)) insTag.run(datum, id, nummerVon.get(id), w.imp, w.auf, w.trans);
+    db.prepare("INSERT INTO stand VALUES (?,?,?,?,?,?,?,?)").run(new Date().toISOString(), "eBay-API (partureshop), lokal gebaut", produkte.size, nK, nB, stichtag, tage.size, meta.abdeckung?.mittel ?? null);
   })();
   db.close();
   fs.renameSync(neu, DB_PFAD);
@@ -201,11 +217,62 @@ console.log(`  ${items.length} aktive Listings`);
 console.log("Lese Bestellungen (nur zählen) …");
 const vk = await verkaeufe(token);
 console.log(`  ${vk.size} Artikel mit Verkäufen in ${TAGE_HISTORIE} Tagen`);
-console.log("Lese Traffic (30 und 90 Tage) …");
+
+// ---- Traffic: nur fertige Tage (heute minus VERZOEGERUNG), fehlende Tage nachholen, die letzten Tage nachprüfen ----
+const stichtag = laDatum(new Date(), VERZOEGERUNG);
+const alleTage = tageListe(stichtag, FENSTER_TAGE);
+const cache = oeffneCache();
+const alt = leseCache(cache, alleTage[0]);
+const nachpruef = new Set(alleTage.slice(-NACHPRUEFEN_TAGE));
+// Reihenfolge: erst die Nachprüfung der letzten Tage, dann die fehlenden Tage vom neuesten zum ältesten
+const holen = planeTage([...alt.keys()], alleTage).sort((a, b) => (nachpruef.has(b) - nachpruef.has(a)) || (a < b ? 1 : -1));
+console.log(`Traffic bis ${stichtag} (Verzögerung ${VERZOEGERUNG} Tage): ${alt.size} von ${alleTage.length} Tagen im Zwischenspeicher, ${holen.length} werden geholt (davon ${holen.filter((d) => alt.has(d)).length} zur Nachprüfung) …`);
 const ids = items.map((i) => i.itemId);
-const tr30 = await traffic(token, 30, ids), tr90 = await traffic(token, 90, ids);
-console.log(`  Traffic: ${tr30.size} Listings (30 T), ${tr90.size} Listings (90 T)`);
-const { produkte, nK, nB, nT } = schreibe(items, vk, tr30, tr90);
+let abweichungen = 0, nachgeprueft = 0, geholt = 0, limit = null;
+const tage = new Map(alt);
+for (const d of holen) {
+  let m;
+  try { m = await holeTag(token, d, ids, { drosselMs: 300 }); }
+  catch (e) { if (e instanceof LimitFehler) { limit = e.message; break; } throw e; }
+  if (nachpruef.has(d) && alt.has(d)) { nachgeprueft++; abweichungen += zaehleAbweichungen(alt.get(d), m); }
+  speichereTag(cache, d, m); tage.set(d, m); geholt++;
+}
+const vollstaendig = alleTage.every((d) => tage.has(d));
+if (limit) console.log(`  eBay-Limit erreicht nach ${geholt} Tagen: ${limit}. Der Fortschritt ist gespeichert, der nächste Lauf macht weiter.`);
+console.log(`  ${tage.size} von ${alleTage.length} Tagen vorhanden${vollstaendig ? " (vollständig)" : ""}.`);
+if (nachgeprueft) console.log(`  Nachprüfung: ${nachgeprueft} Tage erneut gelesen, ${abweichungen} Zeilen hat eBay nachträglich geändert (überschrieben).`);
+
+// Solange die 90 Tage nicht vollständig sind, kommen die Summen direkt von eBay (Zeitraum-Abfragen, wenige Aufrufe).
+let fenster = null;
+if (!vollstaendig) {
+  console.log("  Tageswerte noch unvollständig: die 30- und 90-Tage-Summen kommen als Zeitraum-Summen direkt von eBay.");
+  try {
+    fenster = {};
+    for (const n of [30, 90]) fenster[n] = await holeZeitraum(token, tageListe(stichtag, n)[0], stichtag, ids, { drosselMs: 300 });
+  } catch (e) {
+    cache.close();
+    throw new Error("Traffic konnte nicht geholt werden (" + e.message + "). Die alte pm.db bleibt unverändert, der Zwischenspeicher enthält " + tage.size + " Tage.");
+  }
+}
+cache.close();
+const kontrolle = await holeKontrolle(token, alleTage[0], stichtag);
+const ab = abdeckung(tage, kontrolle, alleTage);
+if (ab) console.log(`  Kontrolle gegen die Kontosumme: im Mittel ${(100 * ab.mittel).toFixed(1)} %, schwächster Tag ${ab.schlechtester} mit ${(100 * ab.min).toFixed(1)} % (${ab.tage} Tage geprüft)`);
+else console.log("  Kontrolle gegen die Kontosumme war nicht möglich.");
+if (ab && ab.mittel < MIN_ABDECKUNG) throw new Error(`Traffic-Kontrolle fehlgeschlagen: die Listings erklären im Mittel nur ${(100 * ab.mittel).toFixed(1)} % der Kontosumme (Grenze ${(100 * MIN_ABDECKUNG).toFixed(0)} %). Die alte Datei bleibt unverändert.`);
+
+const { produkte, nK, nB, nT } = schreibe(items, vk, tage, stichtag, { abdeckung: ab, fenster });
 const ohneNr = [...produkte.keys()].filter((k) => k.startsWith("ID")).length;
-console.log(`Fertig in ${Math.round((Date.now() - t0) / 1000)} s: ${produkte.size} Produkte, ${nK} Kanal-Zeilen, ${nB} Bilder, ${nT} Traffic-Zeilen -> ${DB_PFAD}`);
+console.log(`Fertig in ${Math.round((Date.now() - t0) / 1000)} s: ${produkte.size} Produkte, ${nK} Kanal-Zeilen, ${nB} Bilder, ${nT} Traffic-Summen, Tagesdaten bis ${stichtag} -> ${DB_PFAD}`);
 if (ohneNr) console.log(`Hinweis: ${ohneNr} Listings ohne erkennbare Artikelnummer in der SKU (als "ID<ItemID>" angelegt).`);
+
+// Team-Kopie: dieselben Daten ohne die Tagesdaten (klein halten, die App braucht dort nur die Summen)
+if (TEAM) {
+  fs.mkdirSync(path.dirname(TEAM_PFAD), { recursive: true });
+  const tmp = TEAM_PFAD + ".neu";
+  fs.copyFileSync(DB_PFAD, tmp);
+  const d = new Database(tmp); d.exec("DROP TABLE traffic_tag; VACUUM;"); d.close();
+  fs.renameSync(tmp, TEAM_PFAD);
+  console.log("Team-Kopie geschrieben: " + TEAM_PFAD);
+}
+console.log("RESULT " + JSON.stringify({ produkte: produkte.size, kanaele: nK, trafficBis: stichtag, tageGeholt: geholt, tageVorhanden: tage.size, vollstaendig, limitErreicht: !!limit, nachgeprueft, abweichungen, abdeckungMittel: ab?.mittel ?? null, abdeckungMin: ab?.min ?? null, sekunden: Math.round((Date.now() - t0) / 1000) }));

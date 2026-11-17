@@ -7,10 +7,10 @@
   "scripts": {
     "start": "node app/server.mjs",
     "dev": "node --watch app/server.mjs",
-    "test": "node app/test.mjs && node app/test-http.mjs",
+    "test": "node app/test.mjs && node app/test-http.mjs && node app/test-freigabe.mjs && node app/test-rollen-http.mjs && node app/test-traffic.mjs",
     "benutzer": "node app/benutzer.mjs",
     "export": "node app/export-ebay.mjs",
-    "export:team": "PM_DB=daten-team/pm.db node app/export-ebay.mjs"
+    "export:team": "node app/export-ebay.mjs --team"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0"
