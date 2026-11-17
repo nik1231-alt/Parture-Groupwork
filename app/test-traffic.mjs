@@ -1,7 +1,7 @@
 // Tests für den Traffic-Import (traffic.mjs). Kein Netz: eBay wird durch eine Ersatzfunktion nachgestellt.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { laDatum, addTage, tageListe, planeTage, zaehleAbweichungen, fensterSummen, abdeckung, holeTag, holeKontrolle } from "./traffic.mjs";
+import { laDatum, addTage, tageListe, planeTage, zaehleAbweichungen, fensterSummen, abdeckung, holeTag, holeZeitraum, holeKontrolle, LimitFehler } from "./traffic.mjs";
 
 const w = (imp, auf = 0, trans = 0) => ({ imp, auf, trans });
 const tag = (o) => new Map(Object.entries(o));
@@ -78,4 +78,19 @@ test("Kontrollsumme: Datumsformat von eBay (yyyymmdd) wird gelesen, bei Fehlern 
   const k = await holeKontrolle("t", "2026-11-10", "2026-11-11", { fetchFn: async () => antwort(bericht([["20261110", 100, 5, 2], ["20261111", 90, 4, 1]])) });
   assert.deepEqual(k.get("2026-11-10"), { imp: 100, auf: 5, trans: 2 });
   assert.equal(await holeKontrolle("t", "2026-11-10", "2026-11-11", { fetchFn: async () => antwort({}, 500), pauseMs: 1 }), null);
+});
+
+test("eBay-Limit (HTTP 429): ein zweiter Versuch nach der Pause, dann ein LimitFehler statt endlosem Wiederholen", async () => {
+  let n = 0;
+  await assert.rejects(holeTag("t", "2026-11-12", ["1"], { fetchFn: async () => { n++; return antwort({}, 429); }, limitPauseMs: 1 }), (e) => e instanceof LimitFehler && e.limit === true);
+  assert.equal(n, 2, "genau zwei Anfragen, dann Schluss");
+  let k = 0;
+  const danach = async () => (++k === 1 ? antwort({}, 429) : antwort(bericht([["1", 5, 1, 0]])));
+  assert.equal((await holeTag("t", "2026-11-12", ["1"], { fetchFn: danach, limitPauseMs: 1 })).get("1").imp, 5, "ein kurzer Engpass wird überbrückt");
+});
+
+test("Zeitraum: ein Zeitraum von mehreren Tagen steht im Filter (für die Summen, solange Tageswerte fehlen)", async () => {
+  const urls = [];
+  await holeZeitraum("t", "2026-10-16", "2026-11-14", ["1"], { fetchFn: async (u) => { urls.push(decodeURIComponent(String(u))); return antwort(bericht([])); } });
+  assert.match(urls[0], /date_range:\[20261016\.\.20261114\]/);
 });

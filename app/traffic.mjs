@@ -19,28 +19,38 @@ const kompakt = (iso) => iso.replace(/-/g, "");
 const ausKompakt = (s) => { const m = String(s).match(/^(\d{4})-?(\d{2})-?(\d{2})$/); return m ? `${m[1]}-${m[2]}-${m[3]}` : null; };
 
 // ---------- Abruf ----------
-async function holeJson(fetchFn, url, token, versuche = 3, pauseMs = 1500) {
-  let letzter;
+// eBay begrenzt die Analytics-API (HTTP 429, "request limit has been reached"). Dann wird nicht weiter gehämmert: nach einer
+// kurzen Wartezeit gibt es einen zweiten Versuch, danach wirft die Funktion einen LimitFehler. Der Import speichert, was er hat,
+// und macht beim nächsten Lauf weiter.
+export class LimitFehler extends Error { constructor(m) { super(m); this.name = "LimitFehler"; this.limit = true; } }
+async function holeJson(fetchFn, url, token, versuche = 3, pauseMs = 1500, limitPauseMs = 20000) {
+  let letzter; let limitVersuche = 0;
   for (let i = 1; i <= versuche; i++) {
     try {
       const r = await fetchFn(url, { headers: { Authorization: "Bearer " + token, "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE" }, signal: AbortSignal.timeout(45000) });
       if (r.ok) return await r.json();
+      if (r.status === 429) {
+        if (++limitVersuche >= 2) throw new LimitFehler("eBay Analytics: request limit reached (HTTP 429)");
+        await new Promise((res) => setTimeout(res, limitPauseMs)); i--; continue; // zählt nicht als normaler Versuch
+      }
       letzter = new Error(`eBay Analytics: HTTP ${r.status}`);
-      if (r.status >= 400 && r.status < 500 && r.status !== 429) break; // Client-Fehler: Wiederholen hilft nicht
-    } catch (e) { letzter = e; }
+      if (r.status >= 400 && r.status < 500) break; // Client-Fehler: Wiederholen hilft nicht
+    } catch (e) { if (e instanceof LimitFehler) throw e; letzter = e; }
     if (i < versuche) await new Promise((res) => setTimeout(res, pauseMs * i));
   }
   throw letzter;
 }
 const wert = (keys, mv, k) => { const i = keys.indexOf(k); return i >= 0 ? Number(mv?.[i]?.value) || 0 : 0; };
 
-// Ein Tag, alle Listings: Map(itemId -> { imp, auf, trans }). Wirft bei jedem endgültigen Fehler: lieber kein Tag als ein halber.
-export async function holeTag(token, datum, ids, { fetchFn = fetch, versuche = 3, pauseMs = 1500 } = {}) {
+// Ein Zeitraum (von bis bis, einschließlich), alle Listings: Map(itemId -> { imp, auf, trans }).
+// Wirft bei jedem endgültigen Fehler: lieber gar nichts als einen halben Tag.
+export async function holeZeitraum(token, von, bis, ids, { fetchFn = fetch, versuche = 3, pauseMs = 1500, limitPauseMs = 20000, drosselMs = 0 } = {}) {
   const je = new Map();
   for (let i = 0; i < ids.length; i += PAKET) {
-    const filter = `date_range:[${kompakt(datum)}..${kompakt(datum)}],marketplace_ids:{EBAY_DE},listing_ids:{${ids.slice(i, i + PAKET).join("|")}}`;
+    if (i > 0 && drosselMs) await new Promise((res) => setTimeout(res, drosselMs));
+    const filter = `date_range:[${kompakt(von)}..${kompakt(bis)}],marketplace_ids:{EBAY_DE},listing_ids:{${ids.slice(i, i + PAKET).join("|")}}`;
     const url = "https://api.ebay.com/sell/analytics/v1/traffic_report?" + new URLSearchParams({ dimension: "LISTING", filter, metric: METRIKEN, sort: "-TOTAL_IMPRESSION_TOTAL", limit: String(PAKET) });
-    const j = await holeJson(fetchFn, url, token, versuche, pauseMs);
+    const j = await holeJson(fetchFn, url, token, versuche, pauseMs, limitPauseMs);
     const keys = (j.header?.metrics || []).map((m) => m.key);
     for (const rec of j.records || []) {
       const id = rec.dimensionValues?.[0]?.value;
@@ -52,11 +62,13 @@ export async function holeTag(token, datum, ids, { fetchFn = fetch, versuche = 3
   return je;
 }
 
+export const holeTag = (token, datum, ids, opts) => holeZeitraum(token, datum, datum, ids, opts);
+
 // Kontosumme je Tag (Dimension DAY): Map(datum -> { imp, auf, trans }). Bei Fehlern null (die Kontrolle ist eine Zugabe).
 export async function holeKontrolle(token, von, bis, { fetchFn = fetch, versuche = 3, pauseMs = 1500 } = {}) {
   try {
     const url = "https://api.ebay.com/sell/analytics/v1/traffic_report?" + new URLSearchParams({ dimension: "DAY", filter: `date_range:[${kompakt(von)}..${kompakt(bis)}],marketplace_ids:{EBAY_DE}`, metric: METRIKEN });
-    const j = await holeJson(fetchFn, url, token, versuche, pauseMs);
+    const j = await holeJson(fetchFn, url, token, versuche, pauseMs, 0);
     const keys = (j.header?.metrics || []).map((m) => m.key);
     const aus = new Map();
     for (const rec of j.records || []) {

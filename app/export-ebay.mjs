@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { laDatum, tageListe, planeTage, zaehleAbweichungen, fensterSummen, abdeckung, holeTag, holeKontrolle, FENSTER_TAGE, NACHPRUEFEN_TAGE, VERZOEGERUNG_STANDARD } from "./traffic.mjs";
+import { laDatum, tageListe, planeTage, zaehleAbweichungen, fensterSummen, abdeckung, holeTag, holeZeitraum, holeKontrolle, FENSTER_TAGE, NACHPRUEFEN_TAGE, VERZOEGERUNG_STANDARD, LimitFehler } from "./traffic.mjs";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
@@ -24,6 +24,8 @@ const { EBAY_APP_ID, EBAY_CERT_ID, EBAY_REFRESH_TOKEN } = process.env;
 const TEAM = process.argv.includes("--team");
 const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || "daten/pm.db");
 const TEAM_PFAD = path.resolve(WURZEL, "daten-team/pm.db");
+// Zwischenspeicher der Tageswerte: bleibt erhalten, wenn ein Lauf abbricht (z. B. eBay-Limit), der nächste macht dort weiter.
+const CACHE_PFAD = path.resolve(WURZEL, process.env.PM_TRAFFIC_CACHE || "daten/traffic-tage.db");
 const VERZOEGERUNG = Math.max(1, Number(process.env.TRAFFIC_VERZOEGERUNG_TAGE) || VERZOEGERUNG_STANDARD);
 const MIN_ABDECKUNG = Number(process.env.TRAFFIC_MIN_ABDECKUNG) || 0.8; // darunter gilt der Lauf als fehlerhaft und die alte Datei bleibt
 const SITE_DE = "77";
@@ -118,20 +120,26 @@ async function verkaeufe(token) {
   return je;
 }
 
-// Bereits gespeicherte Tageswerte aus der vorhandenen pm.db (damit nicht jedes Mal 90 Tage neu geholt werden müssen).
-function leseAlteTage(pfad, ersterTag) {
+// Zwischenspeicher der Tageswerte (eigene Datei, wird beim Neubau von pm.db nicht angefasst).
+function oeffneCache() {
+  fs.mkdirSync(path.dirname(CACHE_PFAD), { recursive: true });
+  const c = new Database(CACHE_PFAD);
+  c.exec("CREATE TABLE IF NOT EXISTS tag (datum TEXT PRIMARY KEY, geholt_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS zeile (datum TEXT NOT NULL, item_id TEXT NOT NULL, imp INTEGER, auf INTEGER, trans INTEGER, PRIMARY KEY (datum, item_id));");
+  return c;
+}
+function leseCache(c, ersterTag) {
   const aus = new Map();
-  if (!fs.existsSync(pfad)) return aus;
-  let db;
-  try {
-    db = new Database(pfad, { readonly: true, fileMustExist: true });
-    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic_tag'").get()) return aus;
-    for (const z of db.prepare("SELECT datum, item_id, impressionen, aufrufe, transaktionen FROM traffic_tag WHERE datum >= ?").iterate(ersterTag)) {
-      if (!aus.has(z.datum)) aus.set(z.datum, new Map());
-      aus.get(z.datum).set(z.item_id, { imp: z.impressionen, auf: z.aufrufe, trans: z.transaktionen });
-    }
-  } catch { /* unlesbare alte Datei: dann wird alles neu geholt */ } finally { db?.close(); }
+  for (const t of c.prepare("SELECT datum FROM tag WHERE datum >= ?").all(ersterTag)) aus.set(t.datum, new Map());
+  for (const z of c.prepare("SELECT datum, item_id, imp, auf, trans FROM zeile WHERE datum >= ?").iterate(ersterTag)) aus.get(z.datum)?.set(z.item_id, { imp: z.imp, auf: z.auf, trans: z.trans });
   return aus;
+}
+function speichereTag(c, datum, m) {
+  c.transaction(() => {
+    c.prepare("DELETE FROM zeile WHERE datum = ?").run(datum);
+    const ins = c.prepare("INSERT INTO zeile VALUES (?,?,?,?,?)");
+    for (const [id, w] of m) ins.run(datum, id, w.imp, w.auf, w.trans);
+    c.prepare("INSERT OR REPLACE INTO tag VALUES (?, ?)").run(datum, new Date().toISOString());
+  })();
 }
 
 // Artikelnummer = führende Ziffern der SKU ("234 -  -" -> 234, "1254_Gr" -> 1254). Variantenlistings: erste Varianten-SKU.
@@ -175,7 +183,7 @@ function schreibe(items, vk, tage, stichtag, meta) {
   const insT = db.prepare("INSERT INTO traffic VALUES (?,?,?,?,?,?,?,?)");
   const insTag = db.prepare("INSERT INTO traffic_tag VALUES (?,?,?,?,?,?)");
   const bekannt = new Set(items.map((i) => i.itemId));
-  const fenster = { 30: fensterSummen(tage, stichtag, 30, bekannt), 90: fensterSummen(tage, stichtag, 90, bekannt) };
+  const fenster = meta.fenster ?? { 30: fensterSummen(tage, stichtag, 30, bekannt), 90: fensterSummen(tage, stichtag, 90, bekannt) };
   const nummerVon = new Map();
   let nK = 0, nB = 0, nT = 0;
   db.transaction(() => {
@@ -213,27 +221,47 @@ console.log(`  ${vk.size} Artikel mit Verkäufen in ${TAGE_HISTORIE} Tagen`);
 // ---- Traffic: nur fertige Tage (heute minus VERZOEGERUNG), fehlende Tage nachholen, die letzten Tage nachprüfen ----
 const stichtag = laDatum(new Date(), VERZOEGERUNG);
 const alleTage = tageListe(stichtag, FENSTER_TAGE);
-const alt = leseAlteTage(DB_PFAD, alleTage[0]);
-const holen = planeTage([...alt.keys()], alleTage);
+const cache = oeffneCache();
+const alt = leseCache(cache, alleTage[0]);
 const nachpruef = new Set(alleTage.slice(-NACHPRUEFEN_TAGE));
-console.log(`Traffic bis ${stichtag} (Verzögerung ${VERZOEGERUNG} Tage): ${alleTage.length - holen.filter((d) => !alt.has(d)).length} Tage vorhanden, ${holen.length} werden geholt (davon ${holen.filter((d) => alt.has(d)).length} zur Nachprüfung) …`);
+// Reihenfolge: erst die Nachprüfung der letzten Tage, dann die fehlenden Tage vom neuesten zum ältesten
+const holen = planeTage([...alt.keys()], alleTage).sort((a, b) => (nachpruef.has(b) - nachpruef.has(a)) || (a < b ? 1 : -1));
+console.log(`Traffic bis ${stichtag} (Verzögerung ${VERZOEGERUNG} Tage): ${alt.size} von ${alleTage.length} Tagen im Zwischenspeicher, ${holen.length} werden geholt (davon ${holen.filter((d) => alt.has(d)).length} zur Nachprüfung) …`);
 const ids = items.map((i) => i.itemId);
-const tage = new Map();
-let abweichungen = 0, nachgeprueft = 0;
-for (const d of alleTage) if (!holen.includes(d)) tage.set(d, alt.get(d));
+let abweichungen = 0, nachgeprueft = 0, geholt = 0, limit = null;
+const tage = new Map(alt);
 for (const d of holen) {
-  const m = await holeTag(token, d, ids);
+  let m;
+  try { m = await holeTag(token, d, ids, { drosselMs: 300 }); }
+  catch (e) { if (e instanceof LimitFehler) { limit = e.message; break; } throw e; }
   if (nachpruef.has(d) && alt.has(d)) { nachgeprueft++; abweichungen += zaehleAbweichungen(alt.get(d), m); }
-  tage.set(d, m);
+  speichereTag(cache, d, m); tage.set(d, m); geholt++;
 }
+const vollstaendig = alleTage.every((d) => tage.has(d));
+if (limit) console.log(`  eBay-Limit erreicht nach ${geholt} Tagen: ${limit}. Der Fortschritt ist gespeichert, der nächste Lauf macht weiter.`);
+console.log(`  ${tage.size} von ${alleTage.length} Tagen vorhanden${vollstaendig ? " (vollständig)" : ""}.`);
+if (nachgeprueft) console.log(`  Nachprüfung: ${nachgeprueft} Tage erneut gelesen, ${abweichungen} Zeilen hat eBay nachträglich geändert (überschrieben).`);
+
+// Solange die 90 Tage nicht vollständig sind, kommen die Summen direkt von eBay (Zeitraum-Abfragen, wenige Aufrufe).
+let fenster = null;
+if (!vollstaendig) {
+  console.log("  Tageswerte noch unvollständig: die 30- und 90-Tage-Summen kommen als Zeitraum-Summen direkt von eBay.");
+  try {
+    fenster = {};
+    for (const n of [30, 90]) fenster[n] = await holeZeitraum(token, tageListe(stichtag, n)[0], stichtag, ids, { drosselMs: 300 });
+  } catch (e) {
+    cache.close();
+    throw new Error("Traffic konnte nicht geholt werden (" + e.message + "). Die alte pm.db bleibt unverändert, der Zwischenspeicher enthält " + tage.size + " Tage.");
+  }
+}
+cache.close();
 const kontrolle = await holeKontrolle(token, alleTage[0], stichtag);
 const ab = abdeckung(tage, kontrolle, alleTage);
 if (ab) console.log(`  Kontrolle gegen die Kontosumme: im Mittel ${(100 * ab.mittel).toFixed(1)} %, schwächster Tag ${ab.schlechtester} mit ${(100 * ab.min).toFixed(1)} % (${ab.tage} Tage geprüft)`);
 else console.log("  Kontrolle gegen die Kontosumme war nicht möglich.");
-if (abweichungen) console.log(`  Nachprüfung: eBay hat ${abweichungen} Zeilen der letzten ${nachgeprueft} Tage nachträglich geändert (überschrieben).`);
 if (ab && ab.mittel < MIN_ABDECKUNG) throw new Error(`Traffic-Kontrolle fehlgeschlagen: die Listings erklären im Mittel nur ${(100 * ab.mittel).toFixed(1)} % der Kontosumme (Grenze ${(100 * MIN_ABDECKUNG).toFixed(0)} %). Die alte Datei bleibt unverändert.`);
 
-const { produkte, nK, nB, nT } = schreibe(items, vk, tage, stichtag, { abdeckung: ab });
+const { produkte, nK, nB, nT } = schreibe(items, vk, tage, stichtag, { abdeckung: ab, fenster });
 const ohneNr = [...produkte.keys()].filter((k) => k.startsWith("ID")).length;
 console.log(`Fertig in ${Math.round((Date.now() - t0) / 1000)} s: ${produkte.size} Produkte, ${nK} Kanal-Zeilen, ${nB} Bilder, ${nT} Traffic-Summen, Tagesdaten bis ${stichtag} -> ${DB_PFAD}`);
 if (ohneNr) console.log(`Hinweis: ${ohneNr} Listings ohne erkennbare Artikelnummer in der SKU (als "ID<ItemID>" angelegt).`);
@@ -247,4 +275,4 @@ if (TEAM) {
   fs.renameSync(tmp, TEAM_PFAD);
   console.log("Team-Kopie geschrieben: " + TEAM_PFAD);
 }
-console.log("RESULT " + JSON.stringify({ produkte: produkte.size, kanaele: nK, trafficBis: stichtag, tageGeholt: holen.length, nachgeprueft, abweichungen, abdeckungMittel: ab?.mittel ?? null, abdeckungMin: ab?.min ?? null, sekunden: Math.round((Date.now() - t0) / 1000) }));
+console.log("RESULT " + JSON.stringify({ produkte: produkte.size, kanaele: nK, trafficBis: stichtag, tageGeholt: geholt, tageVorhanden: tage.size, vollstaendig, limitErreicht: !!limit, nachgeprueft, abweichungen, abdeckungMittel: ab?.mittel ?? null, abdeckungMin: ab?.min ?? null, sekunden: Math.round((Date.now() - t0) / 1000) }));
