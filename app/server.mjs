@@ -15,10 +15,14 @@ import * as rollen from "./rollen.mjs";
 import * as protokoll from "./protokoll.mjs";
 import * as freigabe from "./freigabe.mjs";
 import * as ebaySchreiben from "./ebay-schreiben.mjs";
+import * as sicherung from "./sicherung.mjs";
+import * as benachrichtigung from "./benachrichtigung.mjs";
+import { laDatum, addTage, VERZOEGERUNG_STANDARD } from "./traffic.mjs";
 import { spawn } from "node:child_process";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-ladeEnv(path.join(WURZEL, ".env"));
+// PM_OHNE_ENV=1: .env nicht lesen (die Tests starten den Server so, damit sie nie echte eBay-Keys oder Schalter erben)
+if (!process.env.PM_OHNE_ENV) ladeEnv(path.join(WURZEL, ".env"));
 const PORT = Number(process.env.PM_PORT || 5060);
 // Reihenfolge: PM_DB aus der .env, sonst daten/pm.db (Server-Nachtlauf / eigener Export), sonst die Team-Kopie aus dem Repo.
 const dbPfad = () => path.resolve(WURZEL, process.env.PM_DB || (fs.existsSync(path.join(WURZEL, "daten/pm.db")) ? "daten/pm.db" : "daten-team/pm.db"));
@@ -46,6 +50,10 @@ const schreiber = ebaySchreiben.erzeuge();
 const kanaeleFuer = (nummer) => mitDb((db) => db.prepare("SELECT external_id, title FROM kanal WHERE number = ? AND channel = 'ebay'").all(nummer));
 const adminNoetig = (ctx) => { if (ctx?.rolle !== "admin") throw Object.assign(new Error("Only an admin can do this."), { status: 403 }); };
 const PM_TOKEN = process.env.PM_TOKEN || "";
+// Welche Umgebung ist das? prod | vorschau | lokal (leer = lokal). Wird oben in der App angezeigt, damit niemand VORSCHAU mit PROD verwechselt.
+const UMGEBUNG = ["prod", "vorschau"].includes(String(process.env.PM_UMGEBUNG || "").toLowerCase()) ? String(process.env.PM_UMGEBUNG).toLowerCase() : "lokal";
+const melder = benachrichtigung.erzeuge();
+const APP_URL = /^https:\/\/[\w.-]+(:\d+)?\/?$/.test(process.env.APP_URL || "") ? process.env.APP_URL.replace(/\/$/, "") : "";
 // Außenzugang (Server): Cloudflare Access stellt vor jede Anfrage ein signiertes JWT (Cf-Access-Jwt-Assertion).
 // Sind CF_ACCESS_TEAM_DOMAIN und CF_ACCESS_AUD gesetzt, nimmt die App NUR Anfragen mit gültigem Token an —
 // auch dann, wenn jemand den Hostname einmal ohne Access-Regel anlegt. Lokal (beide leer) ist alles offen.
@@ -113,6 +121,7 @@ function starteTrafficImport(wer) {
     const gut = code === 0 && !!details;
     try { protokoll.schreibe(appDb(), { benutzer: wer, rolle: wer === "system" ? null : "admin", aktion: "traffic_sync", objekt: "pm.db", details: gut ? details : { fehler: grund || zeilen.slice(-4).join(" | ").slice(0, 500) }, ergebnis: gut ? "ok" : "error" }); } catch { /* Protokoll nicht erreichbar */ }
     console.log(gut ? `Traffic-Import fertig (Daten bis ${details.trafficBis}).` : "Traffic-Import fehlgeschlagen: " + (grund || zeilen.slice(-2).join(" | ")));
+    if (!gut) melder.fehler("Traffic-Import", grund || zeilen.slice(-1).join(" "));
   };
   kind.on("error", (e) => ende(1, e.message));
   kind.on("close", (code) => ende(code));
@@ -128,12 +137,57 @@ function pruefeTrafficImport() {
   starteTrafficImport("system");
 }
 
+// Ausgerollter Stand (schreibt der Wächter, siehe waechter.mjs); lokal ohne Wächter leer
+const versionKurz = () => { try { return JSON.parse(fs.readFileSync(path.join(WURZEL, "daten", "waechter-status.json"), "utf8")).commit?.slice(0, 7) || null; } catch { return null; } };
+
+// ---- Tägliche Sicherung von app.db und traffic-tage.db (siehe sicherung.mjs) ----
+const SICH_AUTO = String(process.env.SICHERUNG_AUTO || "an").trim().toLowerCase() !== "aus";
+const SICH_UHR = Math.min(23, Math.max(0, Number(process.env.SICHERUNG_UHRZEIT ?? 3) || 0));
+let sicherungLaeuft = false, letzterSicherungsFehler = 0;
+async function fuehreSicherungAus(wer) {
+  if (sicherungLaeuft) return null;
+  sicherungLaeuft = true;
+  try {
+    const r = await sicherung.sichere(sicherung.konfiguration());
+    const gut = !r.fehler.length && r.gesichert.length > 0;
+    if (!gut) letzterSicherungsFehler = Date.now();
+    try { protokoll.schreibe(appDb(), { benutzer: wer, rolle: wer === "system" ? null : "admin", aktion: "backup", objekt: "app.db, traffic-tage.db", details: { dateien: r.gesichert.map((g) => path.basename(g.datei)), fehler: r.fehler }, ergebnis: gut ? "ok" : "error" }); } catch { /* Protokoll nicht erreichbar */ }
+    if (!gut) melder.fehler("Datensicherung", r.fehler.join("; ") || "keine Daten gefunden");
+    console.log(gut ? `Sicherung fertig (${r.gesichert.length} Dateien).` : "Sicherung fehlgeschlagen: " + r.fehler.join("; "));
+    return { gut, dateien: r.gesichert.length, fehler: r.fehler };
+  } catch (e) { letzterSicherungsFehler = Date.now(); console.log("Sicherung fehlgeschlagen: " + e.message); return { gut: false, dateien: 0, fehler: [e.message] }; }
+  finally { sicherungLaeuft = false; }
+}
+function pruefeSicherung() {
+  if (!SICH_AUTO || sicherungLaeuft || new Date().getHours() < SICH_UHR) return;
+  if (Date.now() - letzterSicherungsFehler < 2 * STUNDE) return;
+  const neueste = sicherung.liste(sicherung.konfiguration().ziel)[0];
+  if (neueste && Date.now() - Date.parse(neueste.geaendert) < 20 * STUNDE) return;
+  fuehreSicherungAus("system");
+}
+function sicherungStatus() {
+  const k = sicherung.konfiguration(); const alle = sicherung.liste(k.ziel);
+  return { automatisch: SICH_AUTO, uhrzeit: SICH_UHR, letzte: alle[0]?.geaendert ?? null, anzahl: alle.length, zweiterOrt: !!k.ziel2, laeuft: sicherungLaeuft };
+}
+// Wie alt sind die Traffic-Daten im Vergleich zum Soll? Soll: heute minus Verzögerung (LA-Zeit). 2 Tage und mehr dahinter = veraltet.
+function datenStand() {
+  let bis = null; try { bis = mitDb((db) => db.prepare("SELECT traffic_bis FROM stand").get()?.traffic_bis ?? null); } catch { /* keine pm.db */ }
+  if (!bis || !/^\d{4}-\d{2}-\d{2}$/.test(bis)) return { trafficBis: null, rueckstandTage: null, veraltet: false };
+  const soll = laDatum(new Date(), Number(process.env.TRAFFIC_VERZOEGERUNG_TAGE ?? VERZOEGERUNG_STANDARD) || 0);
+  const rueckstand = Math.round((Date.parse(soll) - Date.parse(bis)) / 864e5);
+  return { trafficBis: bis, soll, rueckstandTage: rueckstand, veraltet: rueckstand >= 2 };
+}
+function betriebStatus() {
+  return { umgebung: UMGEBUNG, version: versionKurz(), schreibenAn: schreiber.schreibenAn(), zugangsdaten: schreiber.konfiguriert(), benachrichtigung: melder.konfiguriert(), sicherung: sicherungStatus(), traffic: trafficStatus(), daten: datenStand() };
+}
+
 const ROUTEN = {
   "/api/stand": () => mitDb((db) => db.prepare("SELECT * FROM stand").get()),
   // Freigaben (Vorschläge für Titeländerungen bei eBay), Protokoll und Rollen
   "/api/freigaben": () => ({ schreibenAn: schreiber.schreibenAn(), zugangsdaten: schreiber.konfiguriert(), offen: freigabe.zaehleOffen(appDb()), aenderungen: freigabe.liste(appDb()) }),
   "/api/protokoll": () => protokoll.liste(appDb(), 300),
   "/api/traffic/status": () => trafficStatus(),
+  "/api/betrieb": () => betriebStatus(),
   "/api/rollen": (q, ctx) => { adminNoetig(ctx); return { benutzer: rollen.liste(appDb()), admins: rollen.anzahlAdmins(appDb()) }; },
   // Alle Angebote mit Bereich, Empfehlung und Begründung (siehe regeln.mjs), dazu ob sie in einem Test stecken.
   "/api/bewertung": () => baueBewertung(produkteLaden(), einst(), new Date(), experimente.imTest(appDb())),
@@ -213,7 +267,13 @@ const POST_ROUTEN = {
   },
   "/api/experiment/titel": async (req) => antwort(experimente.setzeTitel(appDb(), await leseJson(req), einst())),
   // Builder und Admin: Vorschlag zur Freigabe senden. Erst ein Admin lässt die Titel bei eBay ändern.
-  "/api/experiment/freigabe": async (req, ctx) => antwort(freigabe.reicheEin(appDb(), ctx, await leseJson(req), kanaeleFuer)),
+  "/api/experiment/freigabe": async (req, ctx) => {
+    const b = await leseJson(req);
+    const r = antwort(freigabe.reicheEin(appDb(), ctx, b, kanaeleFuer));
+    const name = appDb().prepare("SELECT name FROM experiment WHERE id = ?").get(r.id)?.name || "test " + r.id;
+    melder.vorschlag(ctx.name, r.aenderungen, name, APP_URL ? APP_URL + "/#approvals" : "");   // ohne await: eine Meldung darf die Antwort nie aufhalten
+    return r;
+  },
   // Direkt starten, ohne dass die App bei eBay etwas ändert (der Admin hat die Titel selbst geändert).
   "/api/experiment/start": async (req, ctx) => {
     adminNoetig(ctx);
@@ -237,6 +297,7 @@ const POST_ROUTEN = {
     if (!starteTrafficImport(ctx.name)) throw Object.assign(new Error("An import is already running."), { status: 409 });
     return { gestartet: true };
   },
+  "/api/sicherung": async (req, ctx) => { adminNoetig(ctx); await leseJson(req); const r = await fuehreSicherungAus(ctx.name); if (!r) throw Object.assign(new Error("A backup is already running."), { status: 409 }); if (!r.gut) throw Object.assign(new Error("Backup failed: " + r.fehler.join("; ")), { status: 500 }); return r; },
   "/api/rolle": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(rollen.setzeRolle(appDb(), ctx, b?.name, b?.rolle)); },
 };
 
@@ -249,7 +310,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");
   try {
-    if (url.pathname === "/healthz") return json(200, { ok: true });
+    if (url.pathname === "/healthz") return json(200, { ok: true, version: versionKurz() });
     if (!(await accessOk(req))) return json(401, { ok: false, error: "kein gültiger Zugang (Cloudflare Access)" });
     // ---- Login: ohne Anmeldung sind nur die Anmeldeseite, ihre Dateien und /api/login erreichbar ----
     const sicher = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https";
@@ -294,5 +355,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Parture Groupwork läuft: http://127.0.0.1:${PORT}  (DB: ${dbPfad()})`);
+  if (SICH_AUTO) { setTimeout(pruefeSicherung, 45e3).unref(); setInterval(pruefeSicherung, 15 * 60e3).unref(); }
   if (TRAFFIC_AUTO) { console.log(`Automatischer Traffic-Import: täglich ab ${TRAFFIC_UHR}:00 Uhr (Verzögerung ${process.env.TRAFFIC_VERZOEGERUNG_TAGE || 3} Tage).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
 });

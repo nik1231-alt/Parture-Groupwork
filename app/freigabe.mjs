@@ -15,6 +15,8 @@ const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 const OFFEN = ["offen", "fehlgeschlagen"];
 const ARTEN = ["titel", "zurueck"];
 const pruefeId = (id) => Number.isInteger(id) && id >= 1;
+// Sicherung gegen Fehlgriffe: so viele Angebote darf eine einzelne Freigabe höchstens ändern (Tests sind ohnehin klein)
+export const MAX_AENDERUNGEN = 50;
 const laufend = new Set(); // verhindert, dass dieselbe Freigabe zweimal gleichzeitig läuft
 
 export function bereiteVor(db) {
@@ -58,6 +60,7 @@ export function reicheEin(db, nutzer, eingabe, kanaeleFuer, jetzt = new Date()) 
     for (const it of items) zeilen.push({ number: a.number, item_id: String(it.external_id), alt: a.alt, neu: a.neu });
   }
   if (ungeklaert.length) return fehler(409, `Cannot match these products to a single eBay listing: ${ungeklaert.slice(0, 5).join(", ")}${ungeklaert.length > 5 ? " …" : ""}. Discard the test and draw a new one.`);
+  if (zeilen.length > MAX_AENDERUNGEN) return fehler(409, `A single approval can change at most ${MAX_AENDERUNGEN} listings, this test would change ${zeilen.length}. Draw a smaller test.`);
   if (zeilen.some((z) => !/^\d{6,20}$/.test(z.item_id))) return fehler(409, "A listing has an invalid eBay item number.");
   db.transaction(() => {
     const ins = db.prepare("INSERT INTO aenderung (experiment_id, number, item_id, art, alt, neu, status, vorgeschlagen_von, vorgeschlagen_at) VALUES (?, ?, ?, 'titel', ?, ?, 'offen', ?, ?)");
@@ -93,6 +96,7 @@ export async function erteile(db, nutzer, eingabe, schreiber, produkte, jetzt = 
   if (laufend.has(schluessel)) return fehler(409, "This approval is already running.");
   const offen = db.prepare("SELECT * FROM aenderung WHERE experiment_id = ? AND art = ? AND status IN ('offen', 'fehlgeschlagen') ORDER BY id").all(id, art);
   if (!offen.length) return fehler(409, "There is nothing to approve here.");
+  if (offen.length > MAX_AENDERUNGEN) return fehler(409, `A single approval can change at most ${MAX_AENDERUNGEN} listings, here ${offen.length} are waiting. Nothing was changed.`);
   laufend.add(schluessel);
   const ergebnis = { angewendet: 0, fehlgeschlagen: 0, probelauf: 0, gestartet: false, schreibenAn: schreiber.schreibenAn() };
   try {
