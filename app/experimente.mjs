@@ -9,7 +9,8 @@
 //   6. Abschluss:   Behalten (neue Base) oder zurück auf die alten Titel.
 // Regeln aus dem Briefing: ein Angebot steckt immer nur in einem Test; gleich lange Fenster vorher und nachher;
 // "kein Unterschied belegt" zählt wie "nicht besser" (zurück zur Base).
-// Die App ändert nichts auf eBay: Das macht ein Mensch. Die App protokolliert und rechnet.
+// Titel bei eBay ändert die App nur nach Freigabe durch einen Admin (siehe freigabe.mjs). Status "freigabe": Vorschlag wartet auf den Admin.
+// Die App protokolliert und rechnet.
 import crypto from "node:crypto";
 import { bewerte, leiteSchwellenAb, EINSTELLUNGEN } from "./regeln.mjs";
 
@@ -23,7 +24,7 @@ export function bereiteVor(db) {
     CREATE TABLE IF NOT EXISTS experiment (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL, hebel TEXT NOT NULL, hypothese TEXT NOT NULL,
-      status TEXT NOT NULL,                    -- vorbereitet | laeuft | abgeschlossen
+      status TEXT NOT NULL,                    -- vorbereitet | freigabe | laeuft | abgeschlossen
       seed INTEGER NOT NULL,                   -- Zufallszahl des Loses (damit die Ziehung nachvollziehbar bleibt)
       erstellt_at TEXT NOT NULL, gestartet_at TEXT, abschluss TEXT, abschluss_at TEXT
     );
@@ -120,12 +121,12 @@ export function setzeTitel(db, eingabe, einst = EINSTELLUNGEN) {
 }
 
 // ---------- Starten ----------
-export function starte(db, eingabe, produkte, jetzt = new Date()) {
+export function starte(db, eingabe, produkte, jetzt = new Date(), erlaubterStatus = "vorbereitet") {
   if (!eingabe || typeof eingabe !== "object" || Array.isArray(eingabe)) return fehler(400, "Invalid request.");
   if (!pruefeId(eingabe.id)) return fehler(400, "Invalid test id.");
   const e = lade(db, eingabe.id);
   if (!e) return fehler(404, "Test not found.");
-  if (e.status !== "vorbereitet") return fehler(409, "This test has already started or is closed.");
+  if (e.status !== erlaubterStatus) return fehler(409, "This test has already started or is closed.");
   const angebote = db.prepare("SELECT * FROM experiment_angebot WHERE experiment_id = ?").all(e.id);
   const ohneTitel = angebote.filter((a) => a.gruppe === "test" && !a.neu).length;
   if (ohneTitel) return fehler(409, `${ohneTitel} of ${angebote.filter((a) => a.gruppe === "test").length} test listings still need a new title.`);
@@ -180,7 +181,7 @@ export function urteile(test, kontrolle, einst = EINSTELLUNGEN) {
 }
 
 // ---------- Auswertung ----------
-const statusVon = (e, tage, einst) => (e.status === "abgeschlossen" ? "closed" : e.status === "vorbereitet" ? "prepared" : tage < einst.pruefungNachTagen ? "running" : "ready");
+const statusVon = (e, tage, einst) => (e.status === "abgeschlossen" ? "closed" : e.status === "vorbereitet" ? "prepared" : e.status === "freigabe" ? "approval" : tage < einst.pruefungNachTagen ? "running" : "ready");
 
 function baueDetail(e, angebote, aktuell, jetzt, einst) {
   const tage = e.gestartet_at ? Math.floor((jetzt.getTime() - Date.parse(e.gestartet_at)) / 86400000) : null;

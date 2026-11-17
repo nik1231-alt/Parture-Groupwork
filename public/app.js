@@ -1,4 +1,5 @@
-// Oberfläche mit drei Seiten: Listings (Diagnose), Tests (Gruppenvergleich nach dem Briefing) und Settings (Regelwerte).
+// Oberfläche: Listings (Diagnose), Tests (Gruppenvergleich nach dem Briefing), Approvals (Freigabe von Titeländerungen),
+// Team (Rollen, nur Admin), Log (Protokoll) und Settings (Regelwerte).
 // Wichtig: Texte aus den Daten (z. B. eBay-Titel) werden nur als Text eingesetzt (textContent), nie als HTML.
 // Sichtbare Texte sind auf Englisch.
 const $ = (s) => document.querySelector(s);
@@ -25,7 +26,7 @@ const datum = (s) => (s && !Number.isNaN(Date.parse(s)) ? new Date(s).toLocaleDa
 const bildUrl = (u) => (typeof u === "string" && /^https:\/\//i.test(u) ? u : null);
 const SEITENGROESSE = 40;
 
-const zustand = { daten: null, tests: null, einst: null, tab: "sichtbarkeit", suche: "", sortierung: "potential", sichtbar: SEITENGROESSE };
+const zustand = { ich: { name: "", rolle: "builder" }, daten: null, tests: null, einst: null, tab: "sichtbarkeit", suche: "", sortierung: "potential", sichtbar: SEITENGROESSE };
 
 async function api(pfad, optionen) {
   const r = await fetch(pfad, optionen);
@@ -70,7 +71,7 @@ async function laden() {
   try {
     const [daten, stand] = await Promise.all([api("/api/bewertung"), api("/api/stand").catch(() => null)]);
     zustand.daten = daten;
-    $("#stand").textContent = stand ? `Data as of ${new Date(stand.exportiert_at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" })}` : "";
+    $("#stand").textContent = stand ? `Data as of ${new Date(stand.exportiert_at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" })}${stand.traffic_bis ? ` · traffic up to ${datum(stand.traffic_bis + "T12:00:00Z")}` : ""}` : "";
     zeichneListings();
     ladeZaehler();
   } catch (e) { zeigeFehler(e, laden); }
@@ -81,13 +82,17 @@ async function ladeZaehler() {
     const bereit = zustand.tests.tests.filter((t) => t.status === "ready").length;
     const z = $("#tests-zaehler"); z.hidden = bereit === 0; z.textContent = bereit; z.setAttribute("aria-label", `${bereit} ready for a verdict`);
   } catch { /* Zähler ist nur eine Zugabe */ }
+  try {
+    const f = await api("/api/freigaben");
+    const z = $("#approvals-zaehler"); z.hidden = f.offen === 0; z.textContent = f.offen; z.setAttribute("aria-label", `${f.offen} waiting for approval`);
+  } catch { /* wie oben */ }
 }
 
 let ersterAufruf = true;
 function route() {
   const [seite, arg] = location.hash.replace(/^#/, "").split("/");
-  const ansicht = seite === "tests" || seite === "settings" ? seite : "listings";
-  for (const a of ["listings", "tests", "settings"]) {
+  const ansicht = ["tests", "settings", "approvals", "team", "log"].includes(seite) ? seite : "listings";
+  for (const a of ["listings", "tests", "settings", "approvals", "team", "log"]) {
     $("#ansicht-" + a).hidden = a !== ansicht;
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
@@ -97,6 +102,9 @@ function route() {
   ersterAufruf = false;
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
   if (ansicht === "settings") ladeEinstellungen();
+  if (ansicht === "approvals") ladeFreigaben();
+  if (ansicht === "team") ladeTeam();
+  if (ansicht === "log") ladeLog();
 }
 
 // ======================================================= Listings
@@ -168,7 +176,8 @@ function zeile(p) {
 }
 
 // ======================================================= Tests
-const SCHRITTE = ["Draw groups", "Enter new titles", "Start", "Wait", "Verdict", "Keep or revert"];
+const SCHRITTE = ["Draw groups", "Enter new titles", "Admin approval", "Wait", "Verdict", "Keep or revert"];
+const istAdmin = () => zustand.ich.rolle === "admin";
 const URTEIL = {
   better: { text: "Better", klasse: "gut", satz: "The test group gained clearly more impressions than the control group, and sales did not suffer." },
   no_difference: { text: "No difference proven", klasse: "", satz: "The test group did not do clearly better than the control group. This counts as not better." },
@@ -178,6 +187,7 @@ const URTEIL = {
 
 const badge = (t) => {
   if (t.status === "closed") return el("span", { class: "badge", text: t.abschluss === "behalten" ? "Kept" : "Reverted" });
+  if (t.status === "approval") return el("span", { class: "badge vorbereitet", text: "Waiting for admin approval" });
   if (t.status === "prepared") return el("span", { class: "badge vorbereitet", text: `Step 2 · ${t.anzahl.titel} of ${t.anzahl.test} titles entered` });
   if (t.status === "running") return el("span", { class: "badge laeuft", text: `Running · day ${t.tage} of ${t.pruefungNachTagen}` });
   const u = URTEIL[t.urteil?.urteil];
@@ -236,13 +246,13 @@ function zeichneDetail(d) {
   $("#tests-uebersicht").hidden = true;
   const root = $("#test-detail"); root.hidden = false;
   const alleTitel = d.anzahl.titel === d.anzahl.test;
-  const aktuell = d.status === "prepared" ? (alleTitel ? 2 : 1) : d.status === "running" ? 3 : d.status === "ready" ? 4 : 6;
+  const aktuell = d.status === "prepared" ? (alleTitel ? 2 : 1) : d.status === "approval" ? 2 : d.status === "running" ? 3 : d.status === "ready" ? 4 : 6;
   const fertig = d.status === "closed" ? 6 : aktuell;
   root.replaceChildren(
     zurueck(),
     el("div", { class: "kopf-zeile", style: "margin: 8px 0 16px" }, el("div", {}, el("h1", { text: d.name }), el("p", { class: "leise klein", text: `${d.anzahl.test} test + ${d.anzahl.kontrolle} control listings · drawn ${datum(d.erstellt_at)} (draw number ${d.seed}) · lever: title and search terms` })), badge(d)),
     schritteListe(d.status === "closed" ? -1 : aktuell, fertig),
-    ...({ prepared: detailVorbereitet, running: detailLaeuft, ready: detailBereit, closed: detailAbgeschlossen }[d.status](d)));
+    ...({ prepared: detailVorbereitet, approval: detailFreigabe, running: detailLaeuft, ready: detailBereit, closed: detailAbgeschlossen }[d.status](d)));
 }
 
 function testAngebote(d) { return d.angebote.filter((a) => a.gruppe === "test"); }
@@ -254,10 +264,12 @@ function kontrollePanel(d) {
 }
 
 function detailVorbereitet(d) {
-  const start = el("button", { class: "knopf knopf-akzent", type: "button", text: "Start test", disabled: d.anzahl.titel !== d.anzahl.test });
-  start.addEventListener("click", () => { start.disabled = true; aktion("/api/experiment/start", { id: d.id }, d.id, "Test started. The verdict comes after the test duration."); });
+  const start = el("button", { class: "knopf knopf-akzent", type: "button", text: "Send for approval", disabled: d.anzahl.titel !== d.anzahl.test });
+  start.addEventListener("click", () => { start.disabled = true; aktion("/api/experiment/freigabe", { id: d.id }, d.id, "Sent for approval. An admin has to approve the changes before anything changes on eBay."); });
+  const manuell = istAdmin() ? zweiStufig(el("button", { class: "knopf", type: "button", text: "Start without changing eBay" }), "Titles are already changed on eBay?", () => aktion("/api/experiment/start", { id: d.id }, d.id, "Test started. Nothing was changed on eBay by the app.")) : null;
+  const wegen = el("span", {});
   const fortschritt = el("span", { class: "leise", text: `${d.anzahl.titel} of ${d.anzahl.test} titles entered` });
-  const aktualisiere = () => { const n = testAngebote(d).filter((a) => a.neu).length; fortschritt.textContent = `${n} of ${d.anzahl.test} titles entered`; start.disabled = n !== d.anzahl.test; };
+  const aktualisiere = () => { const n = testAngebote(d).filter((a) => a.neu).length; fortschritt.textContent = `${n} of ${d.anzahl.test} titles entered`; start.disabled = n !== d.anzahl.test; if (manuell) manuell.disabled = n !== d.anzahl.test; };
   const zeilen = testAngebote(d).map((a) => {
     const feld = el("input", { class: "feld", type: "text", maxlength: "80", "aria-label": "New title for product " + a.number, placeholder: "New title (up to 80 characters)" });
     feld.value = a.neu || "";
@@ -279,9 +291,9 @@ function detailVorbereitet(d) {
   return [
     el("div", { class: "panel" },
       el("h2", { text: "Enter the new titles" }),
-      el("p", { class: "leise", text: "Change the title of each test listing on eBay, then enter the new title here exactly as you published it. The app does not write titles for you, and it cannot change eBay. The control listings stay as they are." }),
+      el("p", { class: "leise", text: "Enter the new title for each test listing. The app does not write titles for you. Nothing changes on eBay yet: after you send the test for approval, an admin checks the titles and lets the app change them on eBay. The control listings stay as they are." }),
       zeilen,
-      el("div", { class: "aktionen" }, start, verwerfen, fortschritt)),
+      el("div", { class: "aktionen" }, start, manuell, verwerfen, fortschritt)),
     kontrollePanel(d),
   ];
 }
@@ -297,9 +309,22 @@ function kasten(beschriftung, text, mitKopie) {
   return el("div", { class: "kasten", style: "margin:0" }, el("div", { class: "kasten-kopf" }, el("span", { class: "leise", text: beschriftung }), mitKopie ? el("button", { class: "knopf knopf-klein", type: "button", onclick: () => kopiere(text), text: "Copy" }) : null), el("div", { class: "kasten-text", text }));
 }
 
+// Test wartet auf die Freigabe durch einen Admin
+function detailFreigabe(d) {
+  const platz = el("div", {}, el("p", { class: "leise", text: "Loading …" }));
+  api("/api/freigaben").then((f) => { platz.replaceChildren(...gruppenKarten(f, (a) => a.experiment_id === d.id && a.art === "titel", () => neuLaden(d.id))); }).catch((e) => { platz.textContent = e.message; });
+  const verwerfen = zweiStufig(el("button", { class: "knopf", type: "button", text: "Discard this test" }), "Really discard?", () => aktion("/api/experiment/abschluss", { id: d.id, abschluss: "zurueck" }, d.id, "Test discarded. The listings are free again."));
+  return [
+    el("div", { class: "panel" }, el("h2", { text: "Waiting for approval" }),
+      el("p", { class: "leise", text: istAdmin() ? "You are an admin: check the changes below, then approve them. The app changes the titles on eBay and the test starts once all titles are live." : "An admin has to approve these changes. Until then nothing changes on eBay, and you cannot edit the titles." }),
+      el("div", { class: "aktionen" }, verwerfen)),
+    platz, kontrollePanel(d),
+  ];
+}
+
 function detailLaeuft(d) {
   const t = summe(testAngebote(d), "vorher"), k = summe(kontrollAngebote(d), "vorher");
-  const stop = zweiStufig(el("button", { class: "knopf", type: "button", text: "Stop and revert" }), "Really stop?", () => aktion("/api/experiment/abschluss", { id: d.id, abschluss: "zurueck" }, d.id, "Test stopped. Set the old titles again on eBay."));
+  const stop = zweiStufig(el("button", { class: "knopf", type: "button", text: "Stop and revert" }), "Really stop?", () => aktion("/api/experiment/abschluss", { id: d.id, abschluss: "zurueck" }, d.id, "Test stopped. Going back to the old titles needs an admin's approval (see Approvals)."));
   return [
     el("div", { class: "panel" },
       el("h2", { text: "Waiting for data" }),
@@ -329,7 +354,7 @@ function urteilBox(d) {
 function detailBereit(d) {
   const empf = d.urteil?.empfehlung;
   const knopf = (wert, text) => el("button", { class: "knopf" + (empf === (wert === "behalten" ? "keep" : "revert") ? " knopf-akzent" : ""), type: "button", text,
-    onclick: () => aktion("/api/experiment/abschluss", { id: d.id, abschluss: wert }, d.id, wert === "behalten" ? "Kept as the new base. The listings are free for the next test." : "Closed. Set the old titles again on eBay.") });
+    onclick: () => aktion("/api/experiment/abschluss", { id: d.id, abschluss: wert }, d.id, wert === "behalten" ? "Kept as the new base. The listings are free for the next test." : "Closed. Going back to the old titles needs an admin's approval (see Approvals).") });
   return [
     el("div", { class: "panel" }, el("h2", { text: "Verdict" }), urteilBox(d),
       el("p", { text: empf === "keep" ? "Recommendation: keep the new titles." : "Recommendation: go back to the old titles." }),
@@ -345,10 +370,123 @@ function detailAbgeschlossen(d) {
       el("p", { class: "leise", text: `Closed on ${datum(d.abschluss_at)}.` + (d.gestartet_at ? "" : " The test never started.") }),
       d.gestartet_at ? urteilBox(d) : null),
     zurueckGesetzt && d.gestartet_at
-      ? el("div", { class: "panel" }, el("h2", { text: "Set the old titles again on eBay" }), el("p", { class: "leise", text: "Copy each old title back into the listing." }),
-        testAngebote(d).map((a) => el("div", { class: "angebotszeile", style: "grid-template-columns: 48px minmax(0,1fr)" }, bildVon(a), kasten(`No. ${a.number}`, a.alt, true))))
+      ? el("div", { class: "panel" }, el("h2", { text: "Back to the old titles" }),
+        el("p", { class: "leise", text: "The app changes the old titles back on eBay after an admin approves it. If the test never reached eBay, there is nothing to change." }),
+        el("div", { class: "aktionen" }, el("a", { class: "knopf", href: "#approvals", text: "Open Approvals" })))
       : null,
   ];
+}
+
+// ======================================================= Approvals (Freigaben)
+const AENDERUNG_STATUS = { offen: ["Waiting", "vorbereitet"], angewendet: ["Changed on eBay", "gut"], abgelehnt: ["Rejected", "schlecht"], fehlgeschlagen: ["Failed", "schlecht"], verworfen: ["Dropped", ""] };
+const zeitpunkt = (s) => (s && !Number.isNaN(Date.parse(s)) ? new Date(s).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }) : "–");
+
+// Baut je Test und Art (neue Titel / Rückänderung) eine Karte. filter wählt aus, welche Änderungen gezeigt werden.
+function gruppenKarten(f, filter, danach) {
+  const gruppen = new Map();
+  for (const a of f.aenderungen.filter(filter)) { const k = a.experiment_id + ":" + a.art; if (!gruppen.has(k)) gruppen.set(k, []); gruppen.get(k).push(a); }
+  if (!gruppen.size) return [el("p", { class: "leere-hinweis leise", text: "No changes to show." })];
+  return [...gruppen.values()].map((zeilen) => gruppenKarte(f, zeilen, danach));
+}
+
+function gruppenKarte(f, zeilen, danach) {
+  const erste = zeilen[zeilen.length - 1]; // die Liste kommt neueste zuerst
+  const offen = zeilen.filter((z) => z.status === "offen" || z.status === "fehlgeschlagen");
+  const art = erste.art === "titel" ? "New titles" : "Back to the old titles";
+  const fertig = async (pfad, body, text) => { try { const r = await post(pfad, body); meldung(typeof text === "function" ? text(r) : text); await danach(); ladeZaehler(); } catch (e) { meldung(e.message); danach(); } };
+  const knoepfe = [];
+  if (offen.length && istAdmin()) {
+    const text = f.schreibenAn ? `Approve and change ${offen.length} on eBay` : "Approve (dry run only)";
+    const frage = f.schreibenAn ? `Really change ${offen.length} title${offen.length === 1 ? "" : "s"} on eBay?` : "Run the dry run?";
+    knoepfe.push(zweiStufig(el("button", { class: "knopf knopf-akzent", type: "button", text }), frage, () => fertig("/api/freigabe/erteilen", { id: erste.experiment_id, art: erste.art },
+      (r) => r.schreibenAn ? `${r.angewendet} changed on eBay, ${r.fehlgeschlagen} failed.${r.gestartet ? " The test has started." : ""}` : `Dry run done: ${r.probelauf} listings checked, nothing was changed on eBay.`)));
+    knoepfe.push(zweiStufig(el("button", { class: "knopf", type: "button", text: "Reject" }), "Really reject?", () => fertig("/api/freigabe/ablehnen", { id: erste.experiment_id, art: erste.art }, "Rejected. Nothing was changed on eBay.")));
+  }
+  return el("div", { class: "panel" },
+    el("div", { class: "kopf-zeile" }, el("div", {}, el("h2", { text: `${art} · ${erste.experiment_name}` }),
+      el("p", { class: "leise klein", text: `Test #${erste.experiment_id} · proposed by ${erste.vorgeschlagen_von} on ${zeitpunkt(erste.vorgeschlagen_at)} · ${zeilen.length} change${zeilen.length === 1 ? "" : "s"}` })),
+      offen.length ? el("span", { class: "badge vorbereitet", text: `${offen.length} waiting` }) : el("span", { class: "badge", text: "Done" })),
+    zeilen.slice().reverse().map((z) => {
+      const [name, klasse] = AENDERUNG_STATUS[z.status] || [z.status, ""];
+      return el("div", { class: "angebotszeile", style: "grid-template-columns: minmax(0,1fr) minmax(0,1fr) 150px" },
+        el("div", {}, el("div", { class: "nummer", text: `No. ${z.number} · eBay item ${z.item_id}` }), kasten("Now on eBay", z.alt, false)),
+        kasten("Proposed title", z.neu, false),
+        el("div", {}, el("span", { class: "badge " + klasse, text: name }), z.ergebnis ? el("p", { class: "leise klein", text: z.ergebnis }) : null));
+    }),
+    knoepfe.length ? el("div", { class: "aktionen" }, knoepfe) : null,
+    offen.length && !istAdmin() ? el("p", { class: "leise klein", text: "Only an admin can approve." }) : null);
+}
+
+async function ladeFreigaben() {
+  const root = $("#ansicht-approvals");
+  try {
+    const f = await api("/api/freigaben");
+    const offene = f.aenderungen.filter((a) => a.status === "offen" || a.status === "fehlgeschlagen").map((a) => a.experiment_id + ":" + a.art);
+    const gruppiert = (offenFlag) => gruppenKarten(f, (a) => offene.includes(a.experiment_id + ":" + a.art) === offenFlag, ladeFreigaben);
+    root.replaceChildren(
+      el("div", { class: "einstieg" }, el("h1", { text: "Approvals" }),
+        el("p", { class: "leise", text: "Builders propose new titles. An admin checks them here and approves. Only then does the app change the title on eBay, and every change is written to the Log." })),
+      f.schreibenAn
+        ? el("div", { class: "hinweiszeile", style: "margin-bottom:14px" }, el("span", { text: "Writing to eBay is ON on this computer. Approving changes real listings." }))
+        : el("div", { class: "hinweiszeile", style: "margin-bottom:14px" }, el("span", { text: f.zugangsdaten ? "Writing to eBay is OFF (dry run). Approving only checks the listings and changes nothing. To allow changes, set EBAY_SCHREIBEN=an in the .env of the admin computer." : "This computer has no eBay credentials, so nothing can be changed on eBay from here." })),
+      el("h2", { text: "Waiting for approval", style: "margin: 8px 0 10px" }), ...gruppiert(true),
+      el("h2", { text: "History", style: "margin: 22px 0 10px" }), ...gruppiert(false));
+    ladeZaehler();
+  } catch (e) { zeigeFehler(e, ladeFreigaben); }
+}
+
+// ======================================================= Team (Rollen)
+async function ladeTeam() {
+  const root = $("#ansicht-team");
+  try {
+    const t = await api("/api/rollen");
+    root.replaceChildren(
+      el("div", { class: "einstieg" }, el("h1", { text: "Team" }),
+        el("p", { class: "leise", text: "Admins approve changes that go to eBay and assign roles. Builders prepare tests and propose titles, but cannot change eBay. New people start as builders. Accounts are created on the computer that runs the app (npm run benutzer)." })),
+      el("div", { class: "panel" },
+        el("table", { class: "mini" }, el("thead", {}, el("tr", {}, el("th", { text: "User" }), el("th", { text: "Role" }), el("th", { text: "Created" }))),
+          el("tbody", {}, t.benutzer.map((b) => {
+            const wahl = el("select", { class: "feld", "aria-label": "Role of " + b.name }, ["admin", "builder"].map((r) => el("option", { value: r, text: r === "admin" ? "Admin" : "Builder" })));
+            wahl.value = b.rolle;
+            wahl.addEventListener("change", async () => {
+              wahl.disabled = true;
+              try { await post("/api/rolle", { name: b.name, rolle: wahl.value }); meldung(`${b.name} is now ${wahl.value === "admin" ? "an admin" : "a builder"}.`); }
+              catch (e) { meldung(e.message); }
+              ladeTeam();
+            });
+            return el("tr", {}, el("td", { text: b.name + (b.name === zustand.ich.name ? " (you)" : "") }), el("td", {}, wahl), el("td", { text: datum(b.erstellt_at) }));
+          })))),
+      el("p", { class: "leise klein", text: `${t.admins} admin${t.admins === 1 ? "" : "s"}. There is always at least one.` }));
+  } catch (e) { zeigeFehler(e, ladeTeam); }
+}
+
+// ======================================================= Log (Protokoll)
+const LOG_TEXT = {
+  role_changed: "Role changed", change_proposed: "Change proposed", change_approved: "Approved", change_rejected: "Rejected", revert_proposed: "Revert proposed",
+  ebay_changed: "Changed on eBay", ebay_failed: "eBay change failed", ebay_refused: "Not changed (title differs or listing inactive)", ebay_already_current: "Already up to date", ebay_dry_run: "Dry run",
+  test_created: "Test created", test_started: "Test started", test_started_manually: "Test started manually", test_closed: "Test closed", traffic_sync: "Traffic import",
+};
+async function ladeLog() {
+  const root = $("#ansicht-log");
+  try {
+    const [l, ts] = await Promise.all([api("/api/protokoll"), api("/api/traffic/status").catch(() => null)]);
+    const jetztKnopf = ts && istAdmin() && ts.zugangsdaten
+      ? el("button", { class: "knopf knopf-klein", type: "button", disabled: ts.laeuft, text: ts.laeuft ? "Import is running …" : "Import now", onclick: async () => { try { await post("/api/traffic/import", {}); meldung("Traffic import started. It takes a few minutes, reload the Log afterwards."); setTimeout(ladeLog, 2000); } catch (e) { meldung(e.message); } } })
+      : null;
+    root.replaceChildren(
+      el("div", { class: "einstieg" }, el("h1", { text: "Log" }),
+        el("p", { class: "leise", text: "Everything that was proposed, approved, changed on eBay or imported, with who did it and the result. Entries are only ever added, never edited. The latest 300 are shown." })),
+      ts ? el("div", { class: "panel" }, el("h2", { text: "Traffic import" }),
+        el("p", { class: "leise", text: !ts.zugangsdaten ? "This computer has no eBay credentials, so it does not import traffic. Data comes from the team copy in the repository."
+          : ts.automatisch ? `Runs automatically once a day from ${ts.uhrzeit}:00. Only finished days are imported (3 days delay), and the latest days are checked again against eBay.`
+          : "Automatic import is off. Set EBAY_TRAFFIC_AUTO=an in the .env of this computer to import traffic every day." }),
+        el("p", { class: "leise klein", text: `Last successful import: ${zeitpunkt(ts.letzterErfolg)} · last failed import: ${ts.letzterFehler ? zeitpunkt(ts.letzterFehler) : "none"}` }),
+        jetztKnopf ? el("div", { class: "aktionen" }, jetztKnopf) : null) : null,
+      el("div", { class: "panel" }, l.length ? el("table", { class: "mini" }, el("thead", {}, el("tr", {}, ["When", "Who", "What", "Object", "Result", "Details"].map((x) => el("th", { text: x })))),
+        el("tbody", {}, l.map((z) => el("tr", {}, el("td", { text: zeitpunkt(z.zeit) }), el("td", { text: z.benutzer + (z.rolle ? ` (${z.rolle})` : "") }), el("td", { text: LOG_TEXT[z.aktion] || z.aktion }), el("td", { text: z.objekt || "" }),
+          el("td", {}, el("span", { class: "badge " + (z.ergebnis === "ok" ? "gut" : z.ergebnis === "error" || z.ergebnis === "refused" ? "schlecht" : ""), text: z.ergebnis })),
+          el("td", { class: "klein", text: z.details ? Object.entries(z.details).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ") : "" }))))) : el("p", { class: "leise", text: "Nothing logged yet." })));
+  } catch (e) { zeigeFehler(e, ladeLog); }
 }
 
 // ======================================================= Einstellungen
@@ -415,6 +553,6 @@ $("#abmelden").addEventListener("click", async () => {
   try { await post("/api/logout", {}); } catch { /* auch bei Fehler zur Anmeldung zurück */ }
   location.replace("/");
 });
-api("/api/ich").then((d) => { $("#benutzer").textContent = d.name || ""; }).catch(() => {});
+const ichGeladen = api("/api/ich").then((d) => { zustand.ich = { name: d.name || "", rolle: d.rolle || "builder" }; $("#benutzer").textContent = d.name ? `${d.name} (${d.rolle === "admin" ? "admin" : "builder"})` : ""; $("#nav-team").hidden = d.rolle !== "admin"; }).catch(() => {});
 
-laden().then(route);
+ichGeladen.then(laden).then(route); // erst die Rolle kennen, dann zeichnen

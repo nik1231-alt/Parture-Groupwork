@@ -1,0 +1,235 @@
+// Tests für Rollen, Freigabe und Protokoll. Es wird nie bei eBay geschrieben: der Schreiber ist hier ein Ersatz im Speicher.
+import test from "node:test";
+import assert from "node:assert/strict";
+import Database from "better-sqlite3";
+import { EINSTELLUNGEN } from "./regeln.mjs";
+import * as einstModul from "./einstellungen.mjs";
+import * as ex from "./experimente.mjs";
+import * as login from "./login.mjs";
+import * as rollen from "./rollen.mjs";
+import * as protokoll from "./protokoll.mjs";
+import * as fg from "./freigabe.mjs";
+import { erzeuge } from "./ebay-schreiben.mjs";
+
+const JETZT = new Date("2026-11-10T12:00:00Z");
+const EINST = { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 2000, testGroesse: 4 };
+const ADMIN = { name: "niko", rolle: "admin" };
+const BUILDER = { name: "anna", rolle: "builder" };
+
+const baseDb = () => {
+  const d = new Database(":memory:");
+  einstModul.bereiteVor(d); ex.bereiteVor(d); login.bereiteVor(d); rollen.bereiteVor(d); protokoll.bereiteVor(d); fg.bereiteVor(d);
+  return d;
+};
+const produkte = () => Array.from({ length: 8 }, (_, i) => ({ number: String(100 + i), title: `Holder for device ${i}`, image_url: null, avg_price: 4.99, units_total: 20, units_90d: 5, created_at: "2025-12-01T10:00:00.000Z",
+  impressionen_90d: 500, aufrufe_90d: 10, impressionen_30d: 200, aufrufe_30d: 4, transaktionen_30d: 1 }));
+const kanaele = (nummer) => [{ external_id: "9000" + nummer + "00", title: `Holder for device ${Number(nummer) - 100}` }];
+
+// Ein Test mit allen Titeln, bereit zum Einreichen. Gibt { db, id, ebay } zurück (ebay = was bei "eBay" gerade steht).
+function vorbereitet() {
+  const db = baseDb();
+  const p = produkte();
+  const { wert: { id } } = ex.legeAn(db, { name: "T" }, p, EINST, JETZT, 7);
+  for (const a of db.prepare("SELECT number, alt FROM experiment_angebot WHERE experiment_id = ? AND gruppe = 'test'").all(id)) ex.setzeTitel(db, { id, number: a.number, neu: a.alt + " NEW" }, EINST);
+  const ebay = new Map();
+  for (const a of db.prepare("SELECT number, alt FROM experiment_angebot WHERE experiment_id = ?").all(id)) ebay.set("9000" + a.number + "00", a.alt);
+  return { db, id, p, ebay };
+}
+// Ersatz für ebay-schreiben.mjs
+function ersatzSchreiber(ebay, { an = true, ablehnen = null, langsam = false } = {}) {
+  const aufrufe = { lies: 0, schreibe: [] };
+  return { aufrufe, schreibenAn: () => an, konfiguriert: () => true,
+    async lies(id) { aufrufe.lies++; if (langsam) await new Promise((r) => setTimeout(r, 40)); return ebay.has(id) ? { ok: true, titel: ebay.get(id), status: "Active", verkauft: 3 } : { ok: false, meldung: "not found" }; },
+    async setzeTitel(id, titel) { if (ablehnen) return { ok: false, ack: "Failure", meldung: ablehnen }; aufrufe.schreibe.push([id, titel]); ebay.set(id, titel); return { ok: true, ack: "Success", meldung: "" }; } };
+}
+const status = (db, id) => db.prepare("SELECT status FROM experiment WHERE id = ?").get(id).status;
+const zaehle = (db, sql, ...a) => db.prepare(sql).get(...a).n;
+
+// ---------- Rollen ----------
+test("Rollen: neue Benutzer sind Builder, beim Nachrüsten wird der älteste Benutzer Admin", () => {
+  const d = new Database(":memory:"); login.bereiteVor(d);
+  login.legeBenutzerAn(d, "niko", "ein-langes-passwort", new Date("2026-11-01T10:00:00Z"));
+  login.legeBenutzerAn(d, "anna", "ein-langes-passwort", new Date("2026-11-02T10:00:00Z"));
+  rollen.bereiteVor(d);
+  assert.equal(rollen.rolleVon(d, "niko"), "admin");
+  assert.equal(rollen.rolleVon(d, "anna"), "builder");
+  login.legeBenutzerAn(d, "ben", "ein-langes-passwort");
+  assert.equal(rollen.rolleVon(d, "ben"), "builder");
+  rollen.bereiteVor(d); // zweiter Lauf ändert nichts
+  assert.equal(rollen.anzahlAdmins(d), 1);
+});
+
+test("Rollen: nur ein Admin vergibt Rollen, es bleibt immer ein Admin, jede Änderung wird protokolliert", () => {
+  const d = baseDb(); login.legeBenutzerAn(d, "niko", "ein-langes-passwort"); login.legeBenutzerAn(d, "anna", "ein-langes-passwort");
+  rollen.legeFest(d, "niko", "admin");
+  assert.equal(rollen.setzeRolle(d, BUILDER, "anna", "admin").status, 403, "ein Builder darf keine Rollen vergeben");
+  assert.equal(rollen.rolleVon(d, "anna"), "builder");
+  assert.equal(rollen.setzeRolle(d, ADMIN, "anna", "chef").status, 400);
+  assert.equal(rollen.setzeRolle(d, ADMIN, "gibtesnicht", "admin").status, 404);
+  assert.equal(rollen.setzeRolle(d, ADMIN, "niko", "builder").status, 409, "der letzte Admin kann sich nicht selbst abgeben");
+  assert.equal(rollen.setzeRolle(d, ADMIN, "anna", "admin").ok, true);
+  assert.equal(rollen.setzeRolle(d, ADMIN, "niko", "builder").ok, true, "mit einem zweiten Admin ist es erlaubt");
+  const l = protokoll.liste(d);
+  assert.deepEqual(l.map((z) => z.aktion), ["role_changed", "role_changed"]);
+  assert.deepEqual(l[1].details, { von: "builder", zu: "admin" });
+  assert.equal(l[1].benutzer, "niko");
+});
+
+test("Protokoll: es wird nur angehängt, Ändern und Löschen schlagen fehl", () => {
+  const d = baseDb();
+  protokoll.schreibe(d, { benutzer: "niko", rolle: "admin", aktion: "x", ergebnis: "ok" });
+  assert.throws(() => d.prepare("UPDATE protokoll SET benutzer = 'anna'").run(), /append-only/);
+  assert.throws(() => d.prepare("DELETE FROM protokoll").run(), /append-only/);
+  assert.equal(zaehle(d, "SELECT COUNT(*) n FROM protokoll"), 1);
+});
+
+// ---------- Einreichen ----------
+test("Einreichen: ohne alle Titel geht es nicht, mit allen Titeln wird der Test zur Freigabe vorgemerkt", () => {
+  const db = baseDb(); const { wert: { id } } = ex.legeAn(db, {}, produkte(), EINST, JETZT, 3);
+  assert.equal(fg.reicheEin(db, BUILDER, { id }, kanaele).status, 409);
+  const v = vorbereitet();
+  const r = fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  assert.equal(r.ok, true); assert.equal(r.wert.aenderungen, 2);
+  assert.equal(status(v.db, v.id), "freigabe");
+  assert.equal(ex.detail(v.db, v.id, v.p, JETZT, EINST).wert.status, "approval");
+  assert.equal(fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele).status, 409, "nicht zweimal einreichen");
+  assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM protokoll WHERE aktion = 'change_proposed'"), 2);
+  assert.equal(ex.setzeTitel(v.db, { id: v.id, number: "100", neu: "Anderer Titel" }, EINST).status, 409, "Titel sind während der Freigabe gesperrt");
+});
+
+test("Einreichen: ein Angebot, das keinem eBay-Artikel eindeutig zugeordnet werden kann, stoppt alles", () => {
+  const v = vorbereitet();
+  const r = fg.reicheEin(v.db, BUILDER, { id: v.id }, (n) => [{ external_id: "1", title: "A" }, { external_id: "2", title: "B" }]);
+  assert.equal(r.status, 409); assert.match(r.fehler, /Cannot match/);
+  assert.equal(status(v.db, v.id), "vorbereitet");
+  assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM aenderung"), 0);
+});
+
+// ---------- Freigeben ----------
+test("Freigabe: ein Builder kann nichts freigeben, und bei eBay passiert nichts", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const s = ersatzSchreiber(v.ebay);
+  const r = await fg.erteile(v.db, BUILDER, { id: v.id, art: "titel" }, s, v.p, JETZT);
+  assert.equal(r.status, 403);
+  assert.equal(fg.lehneAb(v.db, BUILDER, { id: v.id, art: "titel" }).status, 403);
+  assert.deepEqual(s.aufrufe, { lies: 0, schreibe: [] });
+});
+
+test("Freigabe: der Admin gibt frei, eBay wird geändert, jede Änderung steht mit altem und neuem Titel im Protokoll, der Test startet", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const s = ersatzSchreiber(v.ebay);
+  const r = await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
+  assert.equal(r.ok, true);
+  assert.deepEqual([r.wert.angewendet, r.wert.fehlgeschlagen, r.wert.gestartet], [2, 0, true]);
+  assert.equal(s.aufrufe.schreibe.length, 2);
+  for (const [id, titel] of s.aufrufe.schreibe) assert.match(titel, / NEW$/), assert.match(v.ebay.get(id), / NEW$/);
+  assert.equal(status(v.db, v.id), "laeuft");
+  const log = protokoll.liste(v.db, 100).filter((z) => z.aktion === "ebay_changed");
+  assert.equal(log.length, 2);
+  for (const z of log) { assert.equal(z.benutzer, "niko"); assert.equal(z.ergebnis, "ok"); assert.match(z.details.neu, / NEW$/); assert.ok(z.details.alt && !z.details.alt.endsWith("NEW")); assert.equal(z.details.ack, "Success"); }
+  assert.ok(protokoll.liste(v.db, 100).some((z) => z.aktion === "change_approved"));
+  assert.equal((await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)).status, 409, "ein zweites Mal gibt es nichts mehr freizugeben");
+});
+
+test("Freigabe: ohne EBAY_SCHREIBEN=an ist es nur ein Probelauf, nichts wird geschrieben und der Test startet nicht", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const s = ersatzSchreiber(v.ebay, { an: false });
+  const r = await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
+  assert.deepEqual([r.wert.probelauf, r.wert.angewendet, r.wert.gestartet], [2, 0, false]);
+  assert.equal(s.aufrufe.schreibe.length, 0);
+  assert.equal(status(v.db, v.id), "freigabe");
+  assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM aenderung WHERE status = 'offen'"), 2);
+  assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ebay_dry_run' AND ergebnis = 'dry_run'"), 2);
+});
+
+test("Freigabe: wurde der Titel bei eBay inzwischen von Hand geändert, wird nichts überschrieben", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const erster = v.db.prepare("SELECT item_id FROM aenderung ORDER BY id").get().item_id;
+  v.ebay.set(erster, "Von Hand geänderter Titel");
+  const s = ersatzSchreiber(v.ebay);
+  const r = await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
+  assert.deepEqual([r.wert.angewendet, r.wert.fehlgeschlagen, r.wert.gestartet], [1, 1, false]);
+  assert.equal(v.ebay.get(erster), "Von Hand geänderter Titel");
+  assert.equal(status(v.db, v.id), "freigabe", "der Test startet erst, wenn alle Titel geändert sind");
+  assert.equal(protokoll.liste(v.db, 100).filter((z) => z.aktion === "ebay_refused")[0].ergebnis, "refused");
+  // Der Admin stellt den erwarteten Titel wieder her und versucht es erneut: nur die fehlgeschlagene Änderung läuft noch einmal.
+  v.ebay.set(erster, v.db.prepare("SELECT alt FROM aenderung WHERE item_id = ?").get(erster).alt);
+  const r2 = await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
+  assert.deepEqual([r2.wert.angewendet, r2.wert.gestartet], [1, true]);
+  assert.equal(s.aufrufe.schreibe.length, 2, "die erste Änderung wurde nicht noch einmal geschrieben");
+});
+
+test("Freigabe: lehnt eBay die Änderung ab, wird die Meldung festgehalten und der Test bleibt in der Freigabe", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const r = await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, ersatzSchreiber(v.ebay, { ablehnen: "[21916] Title cannot be changed" }), v.p, JETZT);
+  assert.deepEqual([r.wert.angewendet, r.wert.fehlgeschlagen, r.wert.gestartet], [0, 2, false]);
+  const z = v.db.prepare("SELECT status, ergebnis FROM aenderung").get();
+  assert.equal(z.status, "fehlgeschlagen"); assert.match(z.ergebnis, /Title cannot be changed/);
+  assert.equal(status(v.db, v.id), "freigabe");
+});
+
+test("Freigabe: dieselbe Freigabe läuft nie zweimal gleichzeitig", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const s = ersatzSchreiber(v.ebay, { langsam: true });
+  const [a, b] = await Promise.all([fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT), fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)]);
+  assert.deepEqual([a.ok, b.ok].sort(), [false, true]);
+  assert.equal(s.aufrufe.schreibe.length, 2, "jeder Titel wurde genau einmal geschrieben");
+});
+
+// ---------- Ablehnen ----------
+test("Ablehnen: nichts wird bei eBay geändert, der Test geht zurück zu \"vorbereitet\" und die Titel sind wieder bearbeitbar", () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const r = fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel", grund: "Titles too long" }, JETZT);
+  assert.equal(r.ok, true);
+  assert.equal(status(v.db, v.id), "vorbereitet");
+  assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM aenderung WHERE status = 'abgelehnt'"), 2);
+  assert.equal(protokoll.liste(v.db, 20).find((z) => z.aktion === "change_rejected").details.grund, "Titles too long");
+  assert.equal(ex.setzeTitel(v.db, { id: v.id, number: v.db.prepare("SELECT number FROM experiment_angebot WHERE gruppe = 'test'").get().number, neu: "Neuer Versuch" }, EINST).ok, true);
+});
+
+// ---------- Zurück auf die alten Titel ----------
+test("Revert: ein geschlossener Test erzeugt Rückänderungen, die wieder ein Admin freigeben muss", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const s = ersatzSchreiber(v.ebay);
+  await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
+  const vorher = new Map(v.db.prepare("SELECT item_id, alt FROM aenderung WHERE art = 'titel'").all().map((z) => [z.item_id, z.alt]));
+  ex.schliesse(v.db, { id: v.id, abschluss: "zurueck" }, JETZT);
+  fg.beimAbschluss(v.db, BUILDER, v.id, "zurueck", JETZT);
+  assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM aenderung WHERE art = 'zurueck' AND status = 'offen'"), 2);
+  for (const id of vorher.keys()) assert.match(v.ebay.get(id), / NEW$/, "ohne Freigabe bleibt der neue Titel bei eBay stehen");
+  const r = await fg.erteile(v.db, ADMIN, { id: v.id, art: "zurueck" }, s, v.p, JETZT);
+  assert.equal(r.wert.angewendet, 2);
+  for (const [id, alt] of vorher) assert.equal(v.ebay.get(id), alt, "der alte Titel steht wieder bei eBay");
+  assert.equal(protokoll.liste(v.db, 100).filter((z) => z.aktion === "ebay_changed" && z.details.art === "zurueck").length, 2);
+});
+
+test("Revert: wird ein Test in der Freigabe verworfen, entstehen keine Rückänderungen, die offenen Vorschläge sind verworfen", () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  ex.schliesse(v.db, { id: v.id, abschluss: "zurueck" }, JETZT);
+  fg.beimAbschluss(v.db, BUILDER, v.id, "zurueck", JETZT);
+  assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM aenderung WHERE art = 'zurueck'"), 0);
+  assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM aenderung WHERE status = 'verworfen'"), 2);
+});
+
+// ---------- eBay-Schreiber ----------
+test("eBay-Schreiber: ohne EBAY_SCHREIBEN=an wird nie geschrieben, auch nicht aus Versehen", async () => {
+  let aufrufe = 0;
+  const s = erzeuge({ env: { EBAY_APP_ID: "a", EBAY_CERT_ID: "b", EBAY_REFRESH_TOKEN: "c" }, fetchFn: async () => { aufrufe++; throw new Error("kein Netz erwartet"); } });
+  const r = await s.setzeTitel("123456789012", "Titel");
+  assert.equal(r.ok, false); assert.match(r.meldung, /switched off/);
+  assert.equal(aufrufe, 0);
+});
+
+test("eBay-Schreiber: Titel werden für XML maskiert, und eBay-Fehler kommen als Meldung zurück", async () => {
+  const gesendet = [];
+  const antwort = (text, status = 200) => ({ status, ok: status === 200, json: async () => JSON.parse(text), text: async () => text });
+  const fetchFn = async (url, o) => {
+    if (String(url).includes("oauth2/token")) return antwort(JSON.stringify({ access_token: "t", expires_in: 7200 }));
+    gesendet.push(o.body);
+    return antwort(`<Ack>Failure</Ack><Errors><ErrorCode>21916</ErrorCode><SeverityCode>Error</SeverityCode><LongMessage>Title cannot be changed &amp; more</LongMessage></Errors>`);
+  };
+  const s = erzeuge({ env: { EBAY_APP_ID: "a", EBAY_CERT_ID: "b", EBAY_REFRESH_TOKEN: "c", EBAY_SCHREIBEN: "an" }, fetchFn });
+  const r = await s.setzeTitel("123456789012", "A & B <neu>");
+  assert.match(gesendet[0], /<Title>A &amp; B &lt;neu&gt;<\/Title>/);
+  assert.equal(r.ok, false); assert.match(r.meldung, /21916.*Title cannot be changed & more/);
+});

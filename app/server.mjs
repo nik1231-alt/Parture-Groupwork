@@ -11,12 +11,17 @@ import { leiteSchwellenAb } from "./regeln.mjs";
 import * as einstellungen from "./einstellungen.mjs";
 import * as experimente from "./experimente.mjs";
 import * as login from "./login.mjs";
+import * as rollen from "./rollen.mjs";
+import * as protokoll from "./protokoll.mjs";
+import * as freigabe from "./freigabe.mjs";
+import * as ebaySchreiben from "./ebay-schreiben.mjs";
+import { spawn } from "node:child_process";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
 const PORT = Number(process.env.PM_PORT || 5060);
 // Reihenfolge: PM_DB aus der .env, sonst daten/pm.db (Server-Nachtlauf / eigener Export), sonst die Team-Kopie aus dem Repo.
-const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || (fs.existsSync(path.join(WURZEL, "daten/pm.db")) ? "daten/pm.db" : "daten-team/pm.db"));
+const dbPfad = () => path.resolve(WURZEL, process.env.PM_DB || (fs.existsSync(path.join(WURZEL, "daten/pm.db")) ? "daten/pm.db" : "daten-team/pm.db"));
 // Eigene Daten der App (Einstellungen und Tests) liegen getrennt von pm.db, weil pm.db nachts überschrieben wird.
 const APPDB_PFAD = path.resolve(WURZEL, process.env.PM_APPDB || "daten/app.db");
 let _appDb = null;
@@ -28,11 +33,18 @@ function appDb() {
   einstellungen.bereiteVor(d);
   experimente.bereiteVor(d);
   login.bereiteVor(d);
+  rollen.bereiteVor(d);
+  protokoll.bereiteVor(d);
+  freigabe.bereiteVor(d);
   return (_appDb = d);
 }
 const einst = () => einstellungen.effektiv(appDb());
 const produkteLaden = () => mitDb((db) => ladeProdukte(db));
 const HUB_URL = process.env.HUB_URL || "";
+// Schreibzugriff auf eBay: nur mit Zugangsdaten in der .env dieses Rechners und nur, wenn EBAY_SCHREIBEN=an gesetzt ist.
+const schreiber = ebaySchreiben.erzeuge();
+const kanaeleFuer = (nummer) => mitDb((db) => db.prepare("SELECT external_id, title FROM kanal WHERE number = ? AND channel = 'ebay'").all(nummer));
+const adminNoetig = (ctx) => { if (ctx?.rolle !== "admin") throw Object.assign(new Error("Only an admin can do this."), { status: 403 }); };
 const PM_TOKEN = process.env.PM_TOKEN || "";
 // Außenzugang (Server): Cloudflare Access stellt vor jede Anfrage ein signiertes JWT (Cf-Access-Jwt-Assertion).
 // Sind CF_ACCESS_TEAM_DOMAIN und CF_ACCESS_AUD gesetzt, nimmt die App NUR Anfragen mit gültigem Token an —
@@ -67,13 +79,62 @@ async function accessOk(req) {
 // Datenbank bei jeder Anfrage frisch öffnen: pm.db wird nachts atomar ersetzt, eine offene Verbindung
 // würde sonst auf der alten Datei hängen.
 function mitDb(fn) {
+  const DB_PFAD = dbPfad();
   if (!fs.existsSync(DB_PFAD)) throw Object.assign(new Error("pm.db fehlt unter " + DB_PFAD + " — auf dem Server kommt sie nachts, lokal: Kopie aus dem Team holen"), { status: 503 });
   const db = new Database(DB_PFAD, { readonly: true, fileMustExist: true });
   try { return fn(db); } finally { db.close(); }
 }
 
+
+// ---- Automatischer Traffic-Import: einmal täglich, nur fertige Tage (3 Tage Verzögerung, siehe traffic.mjs) ----
+// Läuft nur auf dem Rechner mit den eBay-Zugangsdaten und nur mit EBAY_TRAFFIC_AUTO=an. Der Import ist der Export (export-ebay.mjs):
+// er baut daten/pm.db neu und ersetzt die Datei erst am Ende, bei einem Fehler bleibt die alte unverändert.
+const TRAFFIC_AUTO = String(process.env.EBAY_TRAFFIC_AUTO || "").trim().toLowerCase() === "an";
+const TRAFFIC_UHR = Math.min(23, Math.max(0, Number(process.env.TRAFFIC_UHRZEIT) || 5)); // frühestens um diese Uhrzeit (Ortszeit)
+const STUNDE = 3600e3;
+let importLaeuft = false;
+const letzterImport = (ergebnis) => appDb().prepare("SELECT zeit FROM protokoll WHERE aktion = 'traffic_sync' AND ergebnis = ? ORDER BY id DESC LIMIT 1").get(ergebnis)?.zeit ?? null;
+function trafficStatus() {
+  return { automatisch: TRAFFIC_AUTO, zugangsdaten: schreiber.konfiguriert(), laeuft: importLaeuft, uhrzeit: TRAFFIC_UHR, letzterErfolg: letzterImport("ok"), letzterFehler: letzterImport("error") };
+}
+function starteTrafficImport(wer) {
+  if (importLaeuft) return false;
+  if (!schreiber.konfiguriert()) return false;
+  importLaeuft = true;
+  const kind = spawn(process.execPath, [path.join(WURZEL, "app", "export-ebay.mjs")], { cwd: WURZEL, env: process.env });
+  let ausgabe = "";
+  const sammle = (c) => { ausgabe = (ausgabe + c).slice(-20000); };
+  kind.stdout.on("data", sammle); kind.stderr.on("data", sammle);
+  const ende = (code, grund) => {
+    if (!importLaeuft) return; importLaeuft = false;
+    const zeilen = ausgabe.split(/\r?\n/).filter(Boolean);
+    const treffer = zeilen.find((z) => z.startsWith("RESULT "));
+    let details = null; try { details = treffer ? JSON.parse(treffer.slice(7)) : null; } catch { /* Ergebniszeile unlesbar */ }
+    const gut = code === 0 && !!details;
+    try { protokoll.schreibe(appDb(), { benutzer: wer, rolle: wer === "system" ? null : "admin", aktion: "traffic_sync", objekt: "pm.db", details: gut ? details : { fehler: grund || zeilen.slice(-4).join(" | ").slice(0, 500) }, ergebnis: gut ? "ok" : "error" }); } catch { /* Protokoll nicht erreichbar */ }
+    console.log(gut ? `Traffic-Import fertig (Daten bis ${details.trafficBis}).` : "Traffic-Import fehlgeschlagen: " + (grund || zeilen.slice(-2).join(" | ")));
+  };
+  kind.on("error", (e) => ende(1, e.message));
+  kind.on("close", (code) => ende(code));
+  return true;
+}
+function pruefeTrafficImport() {
+  if (!TRAFFIC_AUTO || importLaeuft || !schreiber.konfiguriert()) return;
+  const jetzt = Date.now();
+  if (new Date().getHours() < TRAFFIC_UHR) return;
+  const ok = letzterImport("ok"), fehler = letzterImport("error");
+  if (ok && jetzt - Date.parse(ok) < 20 * STUNDE) return;      // heute schon erfolgreich
+  if (fehler && jetzt - Date.parse(fehler) < 2 * STUNDE && (!ok || Date.parse(fehler) > Date.parse(ok))) return; // nach einem Fehler erst in 2 Stunden wieder
+  starteTrafficImport("system");
+}
+
 const ROUTEN = {
   "/api/stand": () => mitDb((db) => db.prepare("SELECT * FROM stand").get()),
+  // Freigaben (Vorschläge für Titeländerungen bei eBay), Protokoll und Rollen
+  "/api/freigaben": () => ({ schreibenAn: schreiber.schreibenAn(), zugangsdaten: schreiber.konfiguriert(), offen: freigabe.zaehleOffen(appDb()), aenderungen: freigabe.liste(appDb()) }),
+  "/api/protokoll": () => protokoll.liste(appDb(), 300),
+  "/api/traffic/status": () => trafficStatus(),
+  "/api/rollen": (q, ctx) => { adminNoetig(ctx); return { benutzer: rollen.liste(appDb()), admins: rollen.anzahlAdmins(appDb()) }; },
   // Alle Angebote mit Bereich, Empfehlung und Begründung (siehe regeln.mjs), dazu ob sie in einem Test stecken.
   "/api/bewertung": () => baueBewertung(produkteLaden(), einst(), new Date(), experimente.imTest(appDb())),
   // Einstellungen: Formularbeschreibung, aktuelle Werte, Startwerte und die aus den Daten berechnete Grenze.
@@ -145,10 +206,38 @@ const antwort = (r) => { if (!r.ok) throw Object.assign(new Error(r.fehler), { s
 const POST_ROUTEN = {
   "/api/einstellungen": async (req) => antwort(einstellungen.speichere(appDb(), (await leseJson(req))?.werte)),
   "/api/einstellungen/zuruecksetzen": async (req) => { await leseJson(req); return antwort(einstellungen.zuruecksetzen(appDb())); },
-  "/api/experiment": async (req) => antwort(experimente.legeAn(appDb(), await leseJson(req), produkteLaden(), einst())),
+  "/api/experiment": async (req, ctx) => {
+    const r = antwort(experimente.legeAn(appDb(), await leseJson(req), produkteLaden(), einst()));
+    protokoll.schreibe(appDb(), { benutzer: ctx.name, rolle: ctx.rolle, aktion: "test_created", objekt: "test " + r.id });
+    return r;
+  },
   "/api/experiment/titel": async (req) => antwort(experimente.setzeTitel(appDb(), await leseJson(req), einst())),
-  "/api/experiment/start": async (req) => antwort(experimente.starte(appDb(), await leseJson(req), produkteLaden())),
-  "/api/experiment/abschluss": async (req) => antwort(experimente.schliesse(appDb(), await leseJson(req))),
+  // Builder und Admin: Vorschlag zur Freigabe senden. Erst ein Admin lässt die Titel bei eBay ändern.
+  "/api/experiment/freigabe": async (req, ctx) => antwort(freigabe.reicheEin(appDb(), ctx, await leseJson(req), kanaeleFuer)),
+  // Direkt starten, ohne dass die App bei eBay etwas ändert (der Admin hat die Titel selbst geändert).
+  "/api/experiment/start": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req);
+    const r = antwort(experimente.starte(appDb(), b, produkteLaden()));
+    protokoll.schreibe(appDb(), { benutzer: ctx.name, rolle: ctx.rolle, aktion: "test_started_manually", objekt: "test " + r.id, details: { hinweis: "Started without changing eBay through the app" } });
+    return r;
+  },
+  "/api/experiment/abschluss": async (req, ctx) => {
+    const b = await leseJson(req);
+    const r = antwort(experimente.schliesse(appDb(), b));
+    freigabe.beimAbschluss(appDb(), ctx, r.id, r.abschluss);
+    protokoll.schreibe(appDb(), { benutzer: ctx.name, rolle: ctx.rolle, aktion: "test_closed", objekt: "test " + r.id, details: { abschluss: r.abschluss } });
+    return r;
+  },
+  "/api/freigabe/erteilen": async (req, ctx) => { adminNoetig(ctx); return antwort(await freigabe.erteile(appDb(), ctx, await leseJson(req), schreiber, produkteLaden())); },
+  "/api/freigabe/ablehnen": async (req, ctx) => { adminNoetig(ctx); return antwort(freigabe.lehneAb(appDb(), ctx, await leseJson(req))); },
+  "/api/traffic/import": async (req, ctx) => {
+    adminNoetig(ctx); await leseJson(req);
+    if (!schreiber.konfiguriert()) throw Object.assign(new Error("This computer has no eBay credentials."), { status: 409 });
+    if (!starteTrafficImport(ctx.name)) throw Object.assign(new Error("An import is already running."), { status: 409 });
+    return { gestartet: true };
+  },
+  "/api/rolle": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(rollen.setzeRolle(appDb(), ctx, b?.name, b?.rolle)); },
 };
 
 const server = http.createServer(async (req, res) => {
@@ -179,16 +268,17 @@ const server = http.createServer(async (req, res) => {
       res.setHeader("Set-Cookie", login.cookie("", sicher, 0));
       return json(200, { ok: true, daten: {} });
     }
-    if (url.pathname === "/api/ich" && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: { angemeldet: !!benutzer, name: benutzer?.name || null, keineBenutzer: benutzer ? false : login.anzahlBenutzer(appDb()) === 0 } });
+    if (url.pathname === "/api/ich" && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: { angemeldet: !!benutzer, name: benutzer?.name || null, rolle: benutzer ? rollen.rolleVon(appDb(), benutzer.name) ?? "builder" : null, keineBenutzer: benutzer ? false : login.anzahlBenutzer(appDb()) === 0 } });
     if (!benutzer) {
       const offen = ["/login.html", "/login.js", "/app.css"];
       if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || offen.includes(url.pathname))) url.pathname = url.pathname === "/" ? "/login.html" : url.pathname;
       else return json(401, { ok: false, error: "Please sign in." });
     }
+    const ctx = benutzer ? { name: benutzer.name, rolle: rollen.rolleVon(appDb(), benutzer.name) ?? "builder" } : null;
     // Dieselbe Adresse darf lesen (GET) und schreiben (POST): die Methode entscheidet
-    if (req.method === "POST" && Object.hasOwn(POST_ROUTEN, url.pathname)) return json(200, { ok: true, daten: await POST_ROUTEN[url.pathname](req) });
+    if (req.method === "POST" && Object.hasOwn(POST_ROUTEN, url.pathname)) return json(200, { ok: true, daten: await POST_ROUTEN[url.pathname](req, ctx) });
     const route = Object.hasOwn(ROUTEN, url.pathname) ? ROUTEN[url.pathname] : null;
-    if (route && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: await route(url.searchParams) });
+    if (route && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: await route(url.searchParams, ctx) });
     if (route) return json(405, { ok: false, error: "GET only." });
     if (Object.hasOwn(POST_ROUTEN, url.pathname)) return json(405, { ok: false, error: "POST only." });
     // statische Dateien aus public/
@@ -202,4 +292,7 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { json(e.status || 500, { ok: false, error: e.message }); }
 });
 
-server.listen(PORT, "127.0.0.1", () => console.log(`Parture Groupwork läuft: http://127.0.0.1:${PORT}  (DB: ${DB_PFAD})`));
+server.listen(PORT, "127.0.0.1", () => {
+  console.log(`Parture Groupwork läuft: http://127.0.0.1:${PORT}  (DB: ${dbPfad()})`);
+  if (TRAFFIC_AUTO) { console.log(`Automatischer Traffic-Import: täglich ab ${TRAFFIC_UHR}:00 Uhr (Verzögerung ${process.env.TRAFFIC_VERZOEGERUNG_TAGE || 3} Tage).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
+});
