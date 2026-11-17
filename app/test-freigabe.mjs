@@ -233,3 +233,23 @@ test("eBay-Schreiber: Titel werden für XML maskiert, und eBay-Fehler kommen als
   assert.match(gesendet[0], /<Title>A &amp; B &lt;neu&gt;<\/Title>/);
   assert.equal(r.ok, false); assert.match(r.meldung, /21916.*Title cannot be changed & more/);
 });
+
+// ---------- Obergrenze pro Freigabe ----------
+test("Obergrenze: mehr als 50 Änderungen auf einmal werden schon beim Einreichen abgelehnt, nichts wird angelegt", () => {
+  const { db, id } = vorbereitet();
+  const viele = (nummer) => Array.from({ length: fg.MAX_AENDERUNGEN + 1 }, (_, i) => ({ external_id: "9" + String(i).padStart(8, "0"), title: `Holder for device ${Number(nummer) - 100}` }));
+  const r = fg.reicheEin(db, BUILDER, { id }, (n) => viele(n), JETZT);
+  assert.equal(r.ok, false); assert.equal(r.status, 409); assert.match(r.fehler, /at most 50/);
+  assert.equal(zaehle(db, "SELECT COUNT(*) n FROM aenderung"), 0);
+  assert.equal(status(db, id), "vorbereitet");
+});
+
+test("Obergrenze: auch beim Freigeben, falls doch zu viele offen sind (z. B. von Hand eingetragen), wird nichts bei eBay geändert", async () => {
+  const { db, id, p, ebay } = vorbereitet();
+  const ins = db.prepare("INSERT INTO aenderung (experiment_id, number, item_id, art, alt, neu, status, vorgeschlagen_von, vorgeschlagen_at) VALUES (?, '100', ?, 'titel', 'a', 'b', 'offen', 'anna', ?)");
+  for (let i = 0; i < fg.MAX_AENDERUNGEN + 1; i++) ins.run(id, "9" + String(i).padStart(8, "0"), JETZT.toISOString());
+  const s = ersatzSchreiber(ebay);
+  const r = await fg.erteile(db, ADMIN, { id, art: "titel" }, s, p, JETZT);
+  assert.equal(r.ok, false); assert.equal(r.status, 409);
+  assert.equal(s.aufrufe.lies, 0); assert.equal(s.aufrufe.schreibe.length, 0);
+});

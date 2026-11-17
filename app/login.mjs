@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 export const SITZUNG_STUNDEN = 12;
 export const MAX_FEHLVERSUCHE = 5;
 export const SPERRE_MINUTEN = 15;
+export const MAX_FEHLVERSUCHE_IP = 20;   // je Adresse über alle Namen, damit niemand der Reihe nach alle Konten sperren oder durchprobieren kann
 const NAME_MUSTER = /^[a-z0-9][a-z0-9._-]{2,39}$/;
 export const PASSWORT_MIN = 10;
 export const PASSWORT_MAX = 200;
@@ -32,7 +33,17 @@ const normName = (n) => (typeof n === "string" ? n.trim().toLowerCase() : "");
 // Fehlversuche werden im Speicher gezählt (pro Benutzername): nach 5 Fehlversuchen ist der Name 15 Minuten gesperrt.
 // Ein Neustart des Servers setzt die Zähler zurück. Für ein kleines Team reicht das.
 const versuche = new Map();
-export function leereVersuche() { versuche.clear(); }
+const versucheIp = new Map();
+export function leereVersuche() { versuche.clear(); versucheIp.clear(); }
+const ipGesperrt = (ip, jetzt) => !!ip && (versucheIp.get(ip)?.bis ?? 0) > jetzt.getTime();
+function merkeFehlversuchIp(ip, jetzt) {
+  if (!ip) return;
+  const v = versucheIp.get(ip);
+  const frisch = !v || (v.bis && v.bis <= jetzt.getTime()) || jetzt.getTime() - v.seit > SPERRE_MINUTEN * 60000;
+  const n = frisch ? 1 : v.n + 1;
+  versucheIp.set(ip, { n, seit: frisch ? jetzt.getTime() : v.seit, bis: n >= MAX_FEHLVERSUCHE_IP ? jetzt.getTime() + SPERRE_MINUTEN * 60000 : 0 });
+  if (versucheIp.size > 5000) versucheIp.clear();
+}
 function gesperrt(name, jetzt) {
   const v = versuche.get(name);
   return !!v && v.bis > jetzt.getTime();
@@ -71,18 +82,34 @@ export function setzePasswort(db, nameRoh, passwort) {
   return ok({ name });
 }
 
+// Passwort ändern (jede Person für sich): das alte Passwort muss stimmen, alle anderen Sitzungen dieser Person enden.
+// Liefert bei Erfolg eine neue Sitzung, damit die Person nicht rausfliegt.
+export function aendernPasswort(db, nameRoh, altes, neues, jetzt = new Date(), ip = "") {
+  const name = normName(nameRoh);
+  if (typeof altes !== "string" || typeof neues !== "string") return fehler(400, "Invalid request.");
+  if (neues.length < PASSWORT_MIN || neues.length > PASSWORT_MAX) return fehler(400, `New password: ${PASSWORT_MIN} to ${PASSWORT_MAX} characters.`);
+  if (neues === altes) return fehler(400, "The new password must be different from the current one.");
+  const pruefung = anmelden(db, name, altes, jetzt, ip);   // zählt Fehlversuche mit, wie jede Anmeldung
+  if (!pruefung.ok) return pruefung.status === 429 ? pruefung : fehler(403, "The current password is wrong.");
+  db.prepare("DELETE FROM sitzung WHERE token_hash = ?").run(sha(pruefung.wert.token));   // die Prüf-Sitzung wird nicht gebraucht
+  const r = setzePasswort(db, name, neues);
+  if (!r.ok) return r;
+  return anmelden(db, name, neues, jetzt, ip);
+}
+
 export const anzahlBenutzer = (db) => db.prepare("SELECT COUNT(*) n FROM benutzer").get().n;
 
 // Meldet an und liefert ein neues Sitzungs-Token (nur dieses eine Mal im Klartext).
-export function anmelden(db, nameRoh, passwort, jetzt = new Date()) {
+export function anmelden(db, nameRoh, passwort, jetzt = new Date(), ip = "") {
   const allgemein = fehler(401, "Wrong username or password.");
   const name = normName(nameRoh);
   if (typeof passwort !== "string" || passwort.length > PASSWORT_MAX || !name || name.length > 40) return allgemein;
+  if (ipGesperrt(ip, jetzt)) return fehler(429, `Too many failed attempts from this address. Try again in ${SPERRE_MINUTEN} minutes.`);
   if (gesperrt(name, jetzt)) return fehler(429, `Too many failed attempts. Try again in ${SPERRE_MINUTEN} minutes.`);
   const b = db.prepare("SELECT salz, hash FROM benutzer WHERE name = ?").get(name);
   const ref = b || ATTRAPPE;
   const gleich = crypto.timingSafeEqual(scrypt(passwort, ref.salz), Buffer.from(ref.hash, "hex"));
-  if (!b || !gleich) { merkeFehlversuch(name, jetzt); return allgemein; }
+  if (!b || !gleich) { merkeFehlversuch(name, jetzt); merkeFehlversuchIp(ip, jetzt); return allgemein; }
   versuche.delete(name);
   const token = crypto.randomBytes(32).toString("base64url");
   const ablauf = new Date(jetzt.getTime() + SITZUNG_STUNDEN * 3600e3);

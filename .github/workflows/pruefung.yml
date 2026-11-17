@@ -1,0 +1,28 @@
+name: Prüfung
+
+# Läuft bei jedem Pull Request und bei jedem Push auf main und vorschau. Ohne Geheimnisse: die Tests brauchen weder eBay-Keys noch Netz.
+on:
+  pull_request:
+  push:
+    branches: [main, vorschau]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # die Historie wird auf Geheimnisse geprüft
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Geheimnis-Scan (Dateien und Historie)
+        run: node scripts/geheimnis-scan.mjs --historie
+      - name: Tests
+        run: npm test

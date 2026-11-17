@@ -22,7 +22,7 @@ const appdb = path.join(verz, "app.db");
 const basis = `http://127.0.0.1:${PORT}`;
 let server;
 test.before(async () => {
-  server = spawn(process.execPath, [path.join(import.meta.dirname, "server.mjs")], { env: { ...process.env, PM_PORT: String(PORT), PM_APPDB: appdb, PM_DB: "", CF_ACCESS_TEAM_DOMAIN: "", CF_ACCESS_AUD: "", EBAY_SCHREIBEN: "", EBAY_APP_ID: "", EBAY_CERT_ID: "", EBAY_REFRESH_TOKEN: "" }, stdio: "ignore" });
+  server = spawn(process.execPath, [path.join(import.meta.dirname, "server.mjs")], { env: { ...process.env, PM_OHNE_ENV: "1", PM_PORT: String(PORT), PM_APPDB: appdb, PM_DB: "", CF_ACCESS_TEAM_DOMAIN: "", CF_ACCESS_AUD: "", EBAY_SCHREIBEN: "", EBAY_APP_ID: "", EBAY_CERT_ID: "", EBAY_REFRESH_TOKEN: "", SICHERUNG_ORDNER: path.join(verz, "sicherung"), SICHERUNG_AUTO: "aus", TRAFFIC_CACHE: path.join(verz, "kein-cache.db") }, stdio: "ignore" });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
@@ -78,4 +78,43 @@ test("Admin: Freigabe ohne Vorschlag liefert 409, nie einen Absturz, und ohne Zu
   assert.equal((await post("/api/freigabe/erteilen", { id: 1, art: "titel" }, c)).status, 409);
   assert.equal((await post("/api/freigabe/erteilen", { id: "x", art: "titel" }, c)).status, 400);
   assert.equal((await post("/api/freigabe/erteilen", { id: 1, art: "loeschen" }, c)).status, 400);
+});
+
+test("Betriebsstatus: für Angemeldete sichtbar, ohne Anmeldung gesperrt, ohne Zugangsdaten und Schalter keine Schreibrechte", async () => {
+  assert.equal((await get("/api/betrieb")).status, 401);
+  const b = (await (await get("/api/betrieb", await anmelden("anna"))).json()).daten;
+  assert.equal(b.umgebung, "lokal");
+  assert.equal(b.schreibenAn, false); assert.equal(b.zugangsdaten, false); assert.equal(b.benachrichtigung, false);
+  assert.equal(typeof b.sicherung.automatisch, "boolean");
+  assert.ok("trafficBis" in b.daten && "veraltet" in b.daten);
+  assert.ok(!JSON.stringify(b).includes(verz), "keine Serverpfade in der Antwort");
+});
+
+test("Sicherung per Knopf: Builder 403, Admin sichert, das Protokoll hält es fest, die Sicherung ist lesbar", async () => {
+  assert.equal((await post("/api/sicherung", {}, await anmelden("anna"))).status, 403);
+  const c = await anmelden("niko");
+  const r = await post("/api/sicherung", {}, c);
+  assert.equal(r.status, 200, await r.clone().text());
+  const l = (await (await get("/api/protokoll", c)).json()).daten;
+  assert.ok(l.some((z) => z.aktion === "backup" && z.ergebnis === "ok" && z.benutzer === "niko"));
+  const dateien = fs.readdirSync(path.join(verz, "sicherung")).filter((f) => f.startsWith("app-"));
+  assert.equal(dateien.length, 1);
+  const d = new Database(path.join(verz, "sicherung", dateien[0]), { readonly: true });
+  assert.ok(d.prepare("SELECT COUNT(*) n FROM benutzer").get().n >= 2); d.close();
+  assert.equal((await (await get("/api/betrieb", c)).json()).daten.sicherung.anzahl, 1);
+});
+
+test("Passwort ändern über den Server: nur mit Anmeldung, altes Passwort nötig, alte Sitzung endet, neue gilt, Protokoll ohne Passwörter", async () => {
+  assert.equal((await post("/api/passwort", { altes: "x", neues: "y" })).status, 401);
+  const c = await anmelden("anna");
+  assert.equal((await post("/api/passwort", { altes: "falsch-falsch", neues: "ein-ganz-neues-passwort" }, c)).status, 403);
+  const r = await post("/api/passwort", { altes: "ein-langes-passwort", neues: "ein-ganz-neues-passwort" }, c);
+  assert.equal(r.status, 200);
+  const neuesCookie = r.headers.get("set-cookie").split(";")[0];
+  assert.equal((await get("/api/ich", c)).status === 200 && (await (await get("/api/ich", c)).json()).daten.angemeldet, false, "alte Sitzung ist beendet");
+  assert.equal((await (await get("/api/ich", neuesCookie)).json()).daten.angemeldet, true);
+  const l = JSON.stringify((await (await get("/api/protokoll", await anmelden("niko"))).json()).daten);
+  assert.match(l, /password_changed/);
+  assert.ok(!l.includes("ein-ganz-neues-passwort") && !l.includes("ein-langes-passwort"));
+  assert.equal((await post("/api/login", { name: "anna", passwort: "ein-langes-passwort" })).status, 401);
 });

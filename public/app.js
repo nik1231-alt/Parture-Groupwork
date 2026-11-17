@@ -74,7 +74,22 @@ async function laden() {
     $("#stand").textContent = stand ? `Data as of ${new Date(stand.exportiert_at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" })}${stand.traffic_bis ? ` · traffic up to ${datum(stand.traffic_bis + "T12:00:00Z")}` : ""}` : "";
     zeichneListings();
     ladeZaehler();
+    ladeBetrieb();
   } catch (e) { zeigeFehler(e, laden); }
+}
+// Umgebung (PROD / VORSCHAU) im Kopf und eine Warnung, wenn die Traffic-Daten dem Soll hinterherhinken
+async function ladeBetrieb() {
+  try {
+    const b = await api("/api/betrieb");
+    zustand.betrieb = b;
+    const u = $("#umgebung");
+    u.hidden = b.umgebung === "lokal"; u.textContent = b.umgebung === "vorschau" ? "PREVIEW" : b.umgebung === "prod" ? "LIVE" : "";
+    u.className = "umgebung " + b.umgebung;
+    u.title = b.umgebung === "vorschau" ? "Preview environment: changes here never reach eBay." : b.version ? "Version " + b.version : "";
+    const w = $("#warnung"); const d = b.daten;
+    w.hidden = !d.veraltet;
+    if (d.veraltet) w.textContent = `Traffic data is ${d.rueckstandTage} days behind (latest day: ${d.trafficBis}, expected: ${d.soll}). The daily import may have failed, see the Log.`;
+  } catch { /* der Status ist nur eine Zugabe */ }
 }
 async function ladeZaehler() {
   try {
@@ -91,8 +106,8 @@ async function ladeZaehler() {
 let ersterAufruf = true;
 function route() {
   const [seite, arg] = location.hash.replace(/^#/, "").split("/");
-  const ansicht = ["tests", "settings", "approvals", "team", "log"].includes(seite) ? seite : "listings";
-  for (const a of ["listings", "tests", "settings", "approvals", "team", "log"]) {
+  const ansicht = ["tests", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
+  for (const a of ["listings", "tests", "settings", "approvals", "team", "log", "account"]) {
     $("#ansicht-" + a).hidden = a !== ansicht;
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
@@ -105,6 +120,7 @@ function route() {
   if (ansicht === "approvals") ladeFreigaben();
   if (ansicht === "team") ladeTeam();
   if (ansicht === "log") ladeLog();
+  if (ansicht === "account") zeichneKonto();
 }
 
 // ======================================================= Listings
@@ -228,6 +244,11 @@ function zeichneTestUebersicht() {
       el("p", { class: "leise", text: `${zahl(moeglich)} listings are flagged as “Low impressions” and free for a test. A test uses ${testGroesse} of them: the app draws them by lot, half get new titles (test group), half stay unchanged (control group).` }),
       !genug ? el("p", { class: "leise", text: "There are not enough listings for a test of this size. Lower the test size in Settings." }) : null,
       el("div", { class: "aktionen" }, neu, !genug ? el("a", { class: "knopf", href: "#settings", text: "Open Settings" }) : null)),
+    el("details", { class: "panel", ontoggle: async (ev) => {
+      const box = ev.target; if (!box.open || box.dataset.geladen) return; box.dataset.geladen = "1";
+      try { const demo = await api("/api/demo"); box.append(el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. " + demo.hinweis }), ...demo.faelle.map((f) => el("div", {}, el("h3", { text: f.titel }), urteilBox({ urteil: f.urteil })))); }
+      catch (e) { box.append(el("p", { class: "leise", text: e.message })); }
+    } }, el("summary", { style: "cursor:pointer", text: "Show an example verdict (invented numbers)" })),
     tests.length
       ? el("div", {}, el("h2", { text: "Your tests", style: "margin: 22px 0 10px" }), tests.map((t) => el("a", { class: "testkarte", href: "#tests/" + t.id },
         el("div", {}, el("div", { class: "titel", text: t.name }), el("div", { class: "leise klein", text: `${t.anzahl.test} test + ${t.anzahl.kontrolle} control listings · drawn ${datum(t.erstellt_at)}${t.gestartet_at ? " · started " + datum(t.gestartet_at) : ""}` })), badge(t))))
@@ -285,7 +306,15 @@ function detailVorbereitet(d) {
     };
     feld.addEventListener("input", () => { zaehler.textContent = `${feld.value.length} / 80`; clearTimeout(t); stand.textContent = ""; t = setTimeout(speichern, 700); });
     feld.addEventListener("change", () => { clearTimeout(t); speichern(); });
-    return el("div", { class: "angebotszeile" }, bildVon(a), listingName(a), el("div", { class: "titelfeld" }, feld, el("div", { class: "zaehlerzeile" }, stand, zaehler)));
+    // Hinweise aus den eigenen Daten: Wörter der am besten gesehenen Angebote, die hier fehlen. Ein Klick hängt das Wort an (der Mensch entscheidet).
+    const hilfe = el("div", { class: "leise klein titelhilfe" });
+    api("/api/titelhilfe?nr=" + encodeURIComponent(a.number)).then((h) => {
+      if (!h.ok) return;
+      if (!h.hinweise.length) { hilfe.textContent = "Title hint: no word stands out clearly in your best-seen listings, so the app suggests none."; return; }
+      hilfe.append("Often in your best-seen listings, missing here: ", ...h.hinweise.map((x) => el("button", { class: "wort", type: "button", title: `In ${x.top} % of the top ${h.basis.top} listings, in ${x.rest} % of the others`, text: x.wort,
+        onclick: () => { const neu = (feld.value.trim() + " " + x.wort).trim(); if (neu.length > 80) { stand.textContent = "Too long for 80 characters."; return; } feld.value = neu; zaehler.textContent = `${neu.length} / 80`; feld.dispatchEvent(new Event("change")); } })));
+    }).catch(() => {});
+    return el("div", { class: "angebotszeile" }, bildVon(a), listingName(a), el("div", { class: "titelfeld" }, feld, el("div", { class: "zaehlerzeile" }, stand, zaehler), hilfe));
   });
   const verwerfen = zweiStufig(el("button", { class: "knopf", type: "button", text: "Discard this test" }), "Really discard?", () => aktion("/api/experiment/abschluss", { id: d.id, abschluss: "zurueck" }, d.id, "Test discarded. The listings are free again."));
   return [
@@ -435,6 +464,30 @@ async function ladeFreigaben() {
   } catch (e) { zeigeFehler(e, ladeFreigaben); }
 }
 
+// ======================================================= Konto (Passwort ändern)
+function zeichneKonto() {
+  const root = $("#ansicht-account");
+  const alt = el("input", { class: "feld", type: "password", autocomplete: "current-password", required: true, maxlength: 200, "aria-label": "Current password" });
+  const neu = el("input", { class: "feld", type: "password", autocomplete: "new-password", required: true, minlength: 10, maxlength: 200, "aria-label": "New password" });
+  const neu2 = el("input", { class: "feld", type: "password", autocomplete: "new-password", required: true, minlength: 10, maxlength: 200, "aria-label": "Repeat new password" });
+  const fehler = el("p", { class: "leise", role: "alert" });
+  const knopf = el("button", { class: "knopf", type: "submit", text: "Change password" });
+  const form = el("form", { class: "panel", onsubmit: async (ev) => {
+    ev.preventDefault(); fehler.textContent = "";
+    if (neu.value !== neu2.value) { fehler.textContent = "The two new passwords are different."; return; }
+    knopf.disabled = true;
+    try { await post("/api/passwort", { altes: alt.value, neues: neu.value }); alt.value = neu.value = neu2.value = ""; meldung("Password changed. Other sessions of yours were signed out."); }
+    catch (e) { fehler.textContent = e.message; }
+    knopf.disabled = false;
+  } },
+    el("h2", { text: "Change password" }),
+    el("div", { class: "stapel" }, el("label", {}, el("span", { class: "leise klein", text: "Current password" }), alt), el("label", {}, el("span", { class: "leise klein", text: "New password (at least 10 characters)" }), neu), el("label", {}, el("span", { class: "leise klein", text: "Repeat new password" }), neu2)),
+    fehler, el("div", { class: "aktionen" }, knopf));
+  root.replaceChildren(
+    el("div", { class: "einstieg" }, el("h1", { text: "Account" }), el("p", { class: "leise", text: `Signed in as ${zustand.ich.name} (${zustand.ich.rolle === "admin" ? "admin" : "builder"}). Please never share your password, not even with the team.` })),
+    form);
+}
+
 // ======================================================= Team (Rollen)
 async function ladeTeam() {
   const root = $("#ansicht-team");
@@ -464,12 +517,16 @@ async function ladeTeam() {
 const LOG_TEXT = {
   role_changed: "Role changed", change_proposed: "Change proposed", change_approved: "Approved", change_rejected: "Rejected", revert_proposed: "Revert proposed",
   ebay_changed: "Changed on eBay", ebay_failed: "eBay change failed", ebay_refused: "Not changed (title differs or listing inactive)", ebay_already_current: "Already up to date", ebay_dry_run: "Dry run",
-  test_created: "Test created", test_started: "Test started", test_started_manually: "Test started manually", test_closed: "Test closed", traffic_sync: "Traffic import",
+  password_changed: "Password changed", backup: "Backup", test_created: "Test created", test_started: "Test started", test_started_manually: "Test started manually", test_closed: "Test closed", traffic_sync: "Traffic import",
 };
 async function ladeLog() {
   const root = $("#ansicht-log");
   try {
-    const [l, ts] = await Promise.all([api("/api/protokoll"), api("/api/traffic/status").catch(() => null)]);
+    const [l, ts, bt] = await Promise.all([api("/api/protokoll"), api("/api/traffic/status").catch(() => null), api("/api/betrieb").catch(() => null)]);
+    const sich = bt?.sicherung;
+    const sicherKnopf = sich && istAdmin()
+      ? el("button", { class: "knopf knopf-klein", type: "button", disabled: sich.laeuft, text: "Back up now", onclick: async () => { try { await post("/api/sicherung", {}); meldung("Backup done."); } catch (e) { meldung(e.message); } ladeLog(); } })
+      : null;
     const jetztKnopf = ts && istAdmin() && ts.zugangsdaten
       ? el("button", { class: "knopf knopf-klein", type: "button", disabled: ts.laeuft, text: ts.laeuft ? "Import is running …" : "Import now", onclick: async () => { try { await post("/api/traffic/import", {}); meldung("Traffic import started. It takes a few minutes, reload the Log afterwards."); setTimeout(ladeLog, 2000); } catch (e) { meldung(e.message); } } })
       : null;
@@ -482,6 +539,10 @@ async function ladeLog() {
           : "Automatic import is off. Set EBAY_TRAFFIC_AUTO=an in the .env of this computer to import traffic every day." }),
         el("p", { class: "leise klein", text: `Last successful import: ${zeitpunkt(ts.letzterErfolg)} · last failed import: ${ts.letzterFehler ? zeitpunkt(ts.letzterFehler) : "none"}` }),
         jetztKnopf ? el("div", { class: "aktionen" }, jetztKnopf) : null) : null,
+      bt ? el("div", { class: "panel" }, el("h2", { text: "System" }),
+        el("p", { class: "leise klein", text: `Environment: ${bt.umgebung === "prod" ? "live" : bt.umgebung === "vorschau" ? "preview (cannot change eBay)" : "local"} · version: ${bt.version || "n/a"} · writing to eBay: ${bt.schreibenAn ? "on" : "off"} · notifications to the admin: ${bt.benachrichtigung ? "on" : "off"}` }),
+        el("p", { class: "leise klein", text: sich.automatisch ? `Daily backup at ${sich.uhrzeit}:00 · last backup: ${zeitpunkt(sich.letzte)} · ${sich.anzahl} kept${sich.zweiterOrt ? " · copied to a second location" : " · no second location set"}` : "Automatic backup is off." }),
+        sicherKnopf ? el("div", { class: "aktionen" }, sicherKnopf) : null) : null,
       el("div", { class: "panel" }, l.length ? el("table", { class: "mini" }, el("thead", {}, el("tr", {}, ["When", "Who", "What", "Object", "Result", "Details"].map((x) => el("th", { text: x })))),
         el("tbody", {}, l.map((z) => el("tr", {}, el("td", { text: zeitpunkt(z.zeit) }), el("td", { text: z.benutzer + (z.rolle ? ` (${z.rolle})` : "") }), el("td", { text: LOG_TEXT[z.aktion] || z.aktion }), el("td", { text: z.objekt || "" }),
           el("td", {}, el("span", { class: "badge " + (z.ergebnis === "ok" ? "gut" : z.ergebnis === "error" || z.ergebnis === "refused" ? "schlecht" : ""), text: z.ergebnis })),
