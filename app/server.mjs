@@ -10,6 +10,7 @@ import { ladeProdukte, baueBewertung } from "./bewertung.mjs";
 import { leiteSchwellenAb } from "./regeln.mjs";
 import * as einstellungen from "./einstellungen.mjs";
 import * as experimente from "./experimente.mjs";
+import * as login from "./login.mjs";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
@@ -26,6 +27,7 @@ function appDb() {
   d.pragma("journal_mode = WAL");
   einstellungen.bereiteVor(d);
   experimente.bereiteVor(d);
+  login.bereiteVor(d);
   return (_appDb = d);
 }
 const einst = () => einstellungen.effektiv(appDb());
@@ -152,9 +154,37 @@ const POST_ROUTEN = {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   const json = (code, body) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(body)); };
+  // Schutz-Header für jede Antwort: kein Einbetten in fremde Seiten, kein Raten des Dateityps, Skripte nur aus der eigenen App.
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");
   try {
     if (url.pathname === "/healthz") return json(200, { ok: true });
     if (!(await accessOk(req))) return json(401, { ok: false, error: "kein gültiger Zugang (Cloudflare Access)" });
+    // ---- Login: ohne Anmeldung sind nur die Anmeldeseite, ihre Dateien und /api/login erreichbar ----
+    const sicher = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https";
+    const token = login.tokenAusCookie(req.headers.cookie);
+    const benutzer = login.sitzungFuer(appDb(), token);
+    if (req.method === "POST" && url.pathname === "/api/login") {
+      const b = await leseJson(req);
+      const r = login.anmelden(appDb(), b?.name, b?.passwort);
+      if (!r.ok) return json(r.status, { ok: false, error: r.fehler });
+      res.setHeader("Set-Cookie", login.cookie(r.wert.token, sicher));
+      return json(200, { ok: true, daten: { name: r.wert.name } });
+    }
+    if (req.method === "POST" && url.pathname === "/api/logout") {
+      await leseJson(req);
+      login.abmelden(appDb(), token);
+      res.setHeader("Set-Cookie", login.cookie("", sicher, 0));
+      return json(200, { ok: true, daten: {} });
+    }
+    if (url.pathname === "/api/ich" && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: { angemeldet: !!benutzer, name: benutzer?.name || null, keineBenutzer: benutzer ? false : login.anzahlBenutzer(appDb()) === 0 } });
+    if (!benutzer) {
+      const offen = ["/login.html", "/login.js", "/app.css"];
+      if ((req.method === "GET" || req.method === "HEAD") && (url.pathname === "/" || offen.includes(url.pathname))) url.pathname = url.pathname === "/" ? "/login.html" : url.pathname;
+      else return json(401, { ok: false, error: "Please sign in." });
+    }
     // Dieselbe Adresse darf lesen (GET) und schreiben (POST): die Methode entscheidet
     if (req.method === "POST" && Object.hasOwn(POST_ROUTEN, url.pathname)) return json(200, { ok: true, daten: await POST_ROUTEN[url.pathname](req) });
     const route = Object.hasOwn(ROUTEN, url.pathname) ? ROUTEN[url.pathname] : null;

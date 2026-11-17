@@ -401,3 +401,92 @@ test("Ablauf: die Testdauer aus den Einstellungen gilt", () => {
   assert.equal(ex.liste(v.d, v.ps, TAGE(10), { ...E, pruefungNachTagen: 7 })[0].status, "ready");
   assert.equal(ex.liste(v.d, v.ps, TAGE(10), { ...E, pruefungNachTagen: 14 })[0].status, "running");
 });
+
+// ---------- Login ----------
+import * as lg from "./login.mjs";
+const ldb = () => { const d = new Database(":memory:"); lg.bereiteVor(d); lg.leereVersuche(); return d; };
+const PW = "ein-langes-passwort";
+
+test("Login: Benutzer anlegen prüft Name und Passwort", () => {
+  const d = ldb();
+  for (const n of ["ab", "Ab c", "../x", "", null, 5, "x".repeat(41), "-abc"]) assert.equal(lg.legeBenutzerAn(d, n, PW).ok, false, String(n));
+  assert.equal(lg.legeBenutzerAn(d, "anna", "kurz").ok, false);
+  assert.equal(lg.legeBenutzerAn(d, "anna", "x".repeat(201)).ok, false);
+  assert.equal(lg.legeBenutzerAn(d, "anna", 12345678901).ok, false);
+  assert.equal(lg.legeBenutzerAn(d, "Anna", PW).ok, true, "Großschreibung wird vereinheitlicht");
+  assert.equal(lg.legeBenutzerAn(d, "anna", PW).status, 409, "doppelter Name");
+  assert.equal(lg.anzahlBenutzer(d), 1);
+});
+
+test("Login: das Passwort steht nie im Klartext in der Datenbank", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  const b = d.prepare("SELECT * FROM benutzer").get();
+  assert.ok(!JSON.stringify(b).includes(PW));
+  assert.equal(b.hash.length, 128);
+  lg.legeBenutzerAn(d, "ben", PW);
+  const hashes = d.prepare("SELECT hash FROM benutzer").all().map((x) => x.hash);
+  assert.notEqual(hashes[0], hashes[1], "gleiches Passwort, anderes Salz, anderer Hash");
+});
+
+test("Login: richtige Anmeldung liefert Sitzung, das Token steht nur als Hash in der Datenbank", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  const r = lg.anmelden(d, " ANNA ", PW, JETZT);
+  assert.equal(r.ok, true);
+  assert.deepEqual(lg.sitzungFuer(d, r.wert.token, JETZT), { name: "anna" });
+  assert.ok(!JSON.stringify(d.prepare("SELECT * FROM sitzung").all()).includes(r.wert.token));
+});
+
+test("Login: falsches Passwort, unbekannter Name und seltsame Eingaben werden abgelehnt, mit gleicher Meldung", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  const a = lg.anmelden(d, "anna", "falsch-falsch", JETZT), b = lg.anmelden(d, "niemand", PW, JETZT);
+  assert.equal(a.status, 401); assert.equal(b.status, 401); assert.equal(a.fehler, b.fehler);
+  for (const [n, p] of [[null, PW], ["anna", null], ["anna", ""], ["anna", {}], [["anna"], PW], ["", ""], ["anna", "x".repeat(500)]]) assert.equal(lg.anmelden(d, n, p, JETZT).ok, false);
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM sitzung").get().n, 0);
+});
+
+test("Login: nach 5 Fehlversuchen ist der Name gesperrt, auch mit richtigem Passwort, dann wieder frei", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  for (let i = 0; i < 5; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
+  assert.equal(lg.anmelden(d, "anna", PW, JETZT).status, 429);
+  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + 14 * 60000)).status, 429);
+  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + 16 * 60000)).ok, true);
+});
+
+test("Login: ein erfolgreicher Versuch setzt den Fehlerzähler zurück", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  for (let i = 0; i < 4; i++) lg.anmelden(d, "anna", "falsch-falsch", JETZT);
+  assert.equal(lg.anmelden(d, "anna", PW, JETZT).ok, true);
+  for (let i = 0; i < 4; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
+});
+
+test("Login: Sitzung läuft nach 12 Stunden ab, Abmelden beendet sie sofort, ein erfundenes Token gilt nicht", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  const t = lg.anmelden(d, "anna", PW, JETZT).wert.token;
+  assert.ok(lg.sitzungFuer(d, t, new Date(JETZT.getTime() + 11 * 3600e3)));
+  assert.equal(lg.sitzungFuer(d, t, new Date(JETZT.getTime() + 12 * 3600e3)), null);
+  for (const x of [null, undefined, "", "abc", {}, "x".repeat(200), t + "x"]) assert.equal(lg.sitzungFuer(d, x, JETZT), null);
+  const t2 = lg.anmelden(d, "anna", PW, JETZT).wert.token;
+  lg.abmelden(d, t2);
+  assert.equal(lg.sitzungFuer(d, t2, JETZT), null);
+  assert.doesNotThrow(() => lg.abmelden(d, null));
+});
+
+test("Login: neues Passwort beendet alte Sitzungen, das alte Passwort gilt nicht mehr", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  const t = lg.anmelden(d, "anna", PW, JETZT).wert.token;
+  assert.equal(lg.setzePasswort(d, "anna", "kurz").ok, false);
+  assert.equal(lg.setzePasswort(d, "niemand", "ein-neues-passwort").status, 404);
+  assert.equal(lg.setzePasswort(d, "anna", "ein-neues-passwort").ok, true);
+  assert.equal(lg.sitzungFuer(d, t, JETZT), null);
+  assert.equal(lg.anmelden(d, "anna", PW, JETZT).status, 401);
+  assert.equal(lg.anmelden(d, "anna", "ein-neues-passwort", JETZT).ok, true);
+});
+
+test("Login: Cookie wird gelesen und ist HttpOnly, SameSite=Strict, bei HTTPS Secure", () => {
+  assert.equal(lg.tokenAusCookie("a=1; sitzung=abc123; b=2"), "abc123");
+  assert.equal(lg.tokenAusCookie("xsitzung=zzz"), null);
+  assert.equal(lg.tokenAusCookie(undefined), null);
+  const c = lg.cookie("tok", false); assert.match(c, /HttpOnly/); assert.match(c, /SameSite=Strict/); assert.doesNotMatch(c, /Secure/);
+  assert.match(lg.cookie("tok", true), /; Secure/);
+  assert.match(lg.cookie("", true, 0), /Max-Age=0/);
+});

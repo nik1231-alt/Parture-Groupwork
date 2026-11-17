@@ -70,3 +70,17 @@ Auf dem Parture-Server läuft die App unter `C:\parture-pm` auf Port 5060 (nur l
 Sobald ein Hostname davor liegt, prüft die App das Cloudflare-Access-Token (`CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` in der
 Server-.env). Ohne gültiges Token antwortet sie 401, egal wie der Hostname konfiguriert ist.
 - Stand Server: automatisches Ausrollen alle 10 Minuten aus origin/main (ensure_pm_running.ps1).
+
+## Login
+
+Die App ist nur nach Anmeldung benutzbar. Benutzer und Sitzungen liegen in `daten/app.db` (nicht im Repo), Passwörter nur als scrypt-Hash.
+
+Benutzer anlegen (das Passwort wird verdeckt abgefragt, mindestens 10 Zeichen):
+
+```bash
+npm run benutzer -- anlegen <name>
+npm run benutzer -- passwort <name>
+npm run benutzer -- liste
+```
+
+Sitzungen laufen nach 12 Stunden ab. Nach 5 falschen Passwörtern ist der Benutzername 15 Minuten gesperrt. Das Cookie ist `HttpOnly` und `SameSite=Strict` (hinter HTTPS zusätzlich `Secure`).
