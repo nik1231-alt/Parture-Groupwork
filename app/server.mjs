@@ -51,7 +51,8 @@ const sperreLaden = () => experimente.gesperrteNummern(mitDb((db) => ladeSperre(
 const HUB_URL = process.env.HUB_URL || "";
 // Schreibzugriff auf eBay: nur mit Zugangsdaten in der .env dieses Rechners und nur, wenn EBAY_SCHREIBEN=an gesetzt ist.
 const schreiber = ebaySchreiben.erzeuge();
-const kanaeleFuer = (nummer) => mitDb((db) => db.prepare("SELECT external_id, title FROM kanal WHERE number = ? AND channel = 'ebay'").all(nummer));
+// Nur aktive eBay-Angebote mit Nummer: die Kopie vom Hub führt auch beendete (listed = 0, ohne external_id), z. B. bei 12 Produkten am 19.11.
+const kanaeleFuer = (nummer) => mitDb((db) => db.prepare("SELECT external_id, title FROM kanal WHERE number = ? AND channel = 'ebay' AND listed = 1 AND external_id IS NOT NULL").all(nummer));
 const adminNoetig = (ctx) => { if (ctx?.rolle !== "admin") throw Object.assign(new Error("Only an admin can do this."), { status: 403 }); };
 const PM_TOKEN = process.env.PM_TOKEN || "";
 // Welche Umgebung ist das? prod | vorschau | lokal (leer = lokal). Wird oben in der App angezeigt, damit niemand VORSCHAU mit PROD verwechselt.
