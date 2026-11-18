@@ -4,6 +4,9 @@
   "description": "Produktmanagement fuer den Parture-Shop — Uni-Gruppenarbeit. Arbeitet auf einer Whitelist-Kopie (pm.db), nie auf der Firmendatenbank.",
   "type": "module",
   "main": "app/server.mjs",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node app/server.mjs",
     "dev": "node --watch app/server.mjs",
