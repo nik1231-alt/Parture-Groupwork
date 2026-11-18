@@ -67,6 +67,38 @@ test("durchgefallene Tests: Rückfall auf den alten Stand, der schlechte Stand w
   assert.equal(leseStatus(prod).abgelehnt, null, "Ablehnung ist aufgehoben");
 });
 
+test("geänderte package.json: die App wird VOR npm ci gestoppt, genau einmal; ohne Änderung an den Abhängigkeiten gar nicht", async () => {
+  // Parture-Server 18.11.2026: npm ci scheiterte unter Windows, weil die laufende App better_sqlite3.node offen hielt (EPERM).
+  const prod = klone("prod-install");
+  // Ersatz für npm ci: schreibt eine Marke in den Ordner. Der Stopp-Haken merkt sich, ob die Marke da schon existierte.
+  const INSTALL = [process.execPath, ["-e", "require('fs').writeFileSync('installiert.txt', '1')"]];
+  const reihenfolge = [];
+  const stopp = async () => { reihenfolge.push(fs.existsSync(path.join(prod, "installiert.txt")) ? "stopp NACH install" : "stopp"); };
+  // 1) nur Code geändert: kein Stopp, kein Install
+  push("nur Code");
+  let e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST, installBefehl: INSTALL, vorInstallation: stopp });
+  assert.equal(e.status, "ausgerollt");
+  assert.equal(e.appGestoppt, false);
+  assert.deepEqual(reihenfolge, []);
+  assert.ok(!fs.existsSync(path.join(prod, "installiert.txt")), "ohne Abhängigkeitsänderung kein npm ci");
+  // 2) package.json geändert (nur die Version, wie bei defd8b5): Stopp, dann Install, dann Tests, dann ausgerollt
+  schreibe(werk, "package.json", JSON.stringify({ name: "probe", version: "0.2.0" })); push("Version hoch");
+  e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST, installBefehl: INSTALL, vorInstallation: stopp });
+  assert.equal(e.status, "ausgerollt");
+  assert.equal(e.appGestoppt, true, "der Aufrufer muss wissen, dass die App gestoppt wurde");
+  assert.deepEqual(reihenfolge, ["stopp"], "genau ein Stopp, und zwar vor dem Install");
+  assert.ok(fs.existsSync(path.join(prod, "installiert.txt")));
+  // 3) package.json geändert UND Tests fallen durch: Stopp einmal, Rückfall installiert den alten Stand erneut, appGestoppt gemeldet
+  fs.rmSync(path.join(prod, "installiert.txt")); reihenfolge.length = 0;
+  schreibe(werk, "package.json", JSON.stringify({ name: "probe", version: "0.3.0" })); fs.rmSync(path.join(werk, "ok.txt")); push("Version hoch, aber kaputt");
+  e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST, installBefehl: INSTALL, vorInstallation: stopp });
+  assert.equal(e.status, "abgelehnt");
+  assert.equal(e.appGestoppt, true);
+  assert.deepEqual(reihenfolge, ["stopp"], "auch beim Rückfall wird nur einmal gestoppt");
+  assert.ok(fs.existsSync(path.join(prod, "installiert.txt")), "Rückfall hat die alten Abhängigkeiten wieder installiert");
+  schreibe(werk, "ok.txt", "1"); push("repariert");
+});
+
 test("lokale Änderungen am Code blockieren das Ausrollen, nichts wird überschrieben", async () => {
   const prod = klone("prod4");
   const vorher = gitIn(prod)("rev-parse", "HEAD");
