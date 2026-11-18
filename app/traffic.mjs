@@ -8,6 +8,8 @@
 export const VERZOEGERUNG_STANDARD = 3;
 export const FENSTER_TAGE = 90;     // so viele Tage werden vorgehalten (reicht für die 30- und 90-Tage-Summen)
 export const NACHPRUEFEN_TAGE = 3;  // die letzten Tage bis zum Stichtag werden jedes Mal neu geholt und verglichen
+// Die tatsächlich geltende Verzögerung (Export, Datenstand-Warnung und Oberfläche rechnen alle mit dieser einen Funktion)
+export const verzoegerungTage = (env = process.env) => Math.max(1, Number(env.TRAFFIC_VERZOEGERUNG_TAGE) || VERZOEGERUNG_STANDARD);
 const PAKET = 200;                  // die API liefert je Aufruf höchstens 200 Listings (listing_ids-Filter, offset gilt nicht)
 const METRIKEN = "TOTAL_IMPRESSION_TOTAL,LISTING_VIEWS_TOTAL,TRANSACTION";
 

@@ -235,11 +235,11 @@ test("eBay-Schreiber: Titel werden für XML maskiert, und eBay-Fehler kommen als
 });
 
 // ---------- Obergrenze pro Freigabe ----------
-test("Obergrenze: mehr als 50 Änderungen auf einmal werden schon beim Einreichen abgelehnt, nichts wird angelegt", () => {
+test("Obergrenze: mehr als MAX_AENDERUNGEN (50) Änderungen auf einmal werden schon beim Einreichen abgelehnt, nichts wird angelegt", () => {
   const { db, id } = vorbereitet();
   const viele = (nummer) => Array.from({ length: fg.MAX_AENDERUNGEN + 1 }, (_, i) => ({ external_id: "9" + String(i).padStart(8, "0"), title: `Holder for device ${Number(nummer) - 100}` }));
   const r = fg.reicheEin(db, BUILDER, { id }, (n) => viele(n), JETZT);
-  assert.equal(r.ok, false); assert.equal(r.status, 409); assert.match(r.fehler, /at most 50/);
+  assert.equal(r.ok, false); assert.equal(r.status, 409); assert.match(r.fehler, new RegExp(`at most ${fg.MAX_AENDERUNGEN} `));
   assert.equal(zaehle(db, "SELECT COUNT(*) n FROM aenderung"), 0);
   assert.equal(status(db, id), "vorbereitet");
 });

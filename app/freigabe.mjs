@@ -37,7 +37,7 @@ const wer = (n) => ({ benutzer: n.name, rolle: n.rolle });
 const ladeExperiment = (db, id) => db.prepare("SELECT * FROM experiment WHERE id = ?").get(id);
 
 // Welche eBay-Angebote gehören zu einer Produktnummer? Gleicher Titel wie der alte, sonst das einzige eBay-Angebot der Nummer.
-export function waehleItems(kanaele, alt) {
+function waehleItems(kanaele, alt) {
   const treffer = kanaele.filter((k) => norm(k.title) === norm(alt));
   if (treffer.length) return treffer;
   return kanaele.length === 1 ? kanaele : [];
@@ -127,6 +127,13 @@ async function bearbeite(db, c, nutzer, schreiber, jetzt) {
     protokoll.schreibe(db, { ...wer(nutzer), aktion, objekt, details: { aenderung: c.id, art: c.art, number: c.number, alt: c.alt, neu: c.neu, ...details }, ergebnis: protokollErgebnis }, jetzt);
   };
   try {
+    // Probelauf ohne Zugangsdaten (VORSCHAU, lokal, Ende-zu-Ende-Test): eBay kann nicht gelesen werden, geschrieben würde ohnehin nicht.
+    // Das ist kein Fehler, sondern ein Probelauf: festgehalten wird, was geändert würde. Die Änderung bleibt offen, eBay unberührt.
+    // (Ist der Schalter an, fehlen aber die Zugangsdaten, läuft es weiter unten als Fehler: das ist eine Fehlkonfiguration.)
+    if (!schreiber.schreibenAn() && schreiber.konfiguriert && !schreiber.konfiguriert()) {
+      setze(null, "Dry run: this computer has no eBay credentials, so the listing was not read. With credentials and EBAY_SCHREIBEN=an the title would be changed. Nothing was changed on eBay.", "dry_run", "ebay_dry_run", { ohneZugangsdaten: true });
+      return "probelauf";
+    }
     const g = await schreiber.lies(c.item_id);
     if (!g.ok) { setze("fehlgeschlagen", "Could not read the listing on eBay: " + g.meldung, "error", "ebay_failed", {}); return "fehlgeschlagen"; }
     if (norm(g.titel) === norm(c.neu)) { setze("angewendet", "The title on eBay already matches. Nothing to change.", "ok", "ebay_already_current", { verkauft: g.verkauft }); return "angewendet"; }

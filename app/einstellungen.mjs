@@ -52,18 +52,19 @@ export function pruefeWert(f, wert) {
   return "Unknown field type.";
 }
 
-// Prüft eine Eingabe { key: wert, ... } (einzelne Felder genügen). Gibt { ok: true, wert } oder { ok: false, fehler } zurück.
+// Prüft eine Eingabe { key: wert, ... } (einzelne Felder genügen). Gibt { ok: true, wert } oder { ok: false, status: 400, fehler } zurück.
+const ungueltig = (fehler) => ({ ok: false, status: 400, fehler });
 export function pruefe(eingabe) {
-  if (!eingabe || typeof eingabe !== "object" || Array.isArray(eingabe)) return { ok: false, fehler: "Invalid request." };
+  if (!eingabe || typeof eingabe !== "object" || Array.isArray(eingabe)) return ungueltig("Invalid request.");
   const wert = {};
   for (const [key, v] of Object.entries(eingabe)) {
     const f = Object.hasOwn(STANDARD, key) ? feld(key) : null;
-    if (!f) return { ok: false, fehler: `Unknown setting: ${String(key).slice(0, 40)}.` };
+    if (!f) return ungueltig(`Unknown setting: ${String(key).slice(0, 40)}.`);
     const fehler = pruefeWert(f, v);
-    if (fehler) return { ok: false, fehler };
+    if (fehler) return ungueltig(fehler);
     wert[key] = v;
   }
-  if (!Object.keys(wert).length) return { ok: false, fehler: "Nothing to save." };
+  if (!Object.keys(wert).length) return ungueltig("Nothing to save.");
   return { ok: true, wert };
 }
 

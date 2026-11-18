@@ -6,8 +6,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { ladeProdukte, baueBewertung } from "./bewertung.mjs";
-import { leiteSchwellenAb } from "./regeln.mjs";
+import { ladeProdukte, ladeSperre, baueBewertung } from "./bewertung.mjs";
+import { leiteSchwellenAb, TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 import * as einstellungen from "./einstellungen.mjs";
 import * as experimente from "./experimente.mjs";
 import * as login from "./login.mjs";
@@ -19,7 +19,7 @@ import { baueDemo } from "./demo.mjs";
 import * as titelhilfe from "./titelhilfe.mjs";
 import * as sicherung from "./sicherung.mjs";
 import * as benachrichtigung from "./benachrichtigung.mjs";
-import { laDatum, addTage, VERZOEGERUNG_STANDARD } from "./traffic.mjs";
+import { laDatum, verzoegerungTage, NACHPRUEFEN_TAGE } from "./traffic.mjs";
 import { spawn } from "node:child_process";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -46,6 +46,8 @@ function appDb() {
 }
 const einst = () => einstellungen.effektiv(appDb());
 const produkteLaden = () => mitDb((db) => ladeProdukte(db));
+// Produktnummern, die gerade in keinen Test dürfen (Sperrliste vom Hub, siehe bewertung.ladeSperre); ohne Tabelle leer
+const sperreLaden = () => experimente.gesperrteNummern(mitDb((db) => ladeSperre(db)), new Date());
 const HUB_URL = process.env.HUB_URL || "";
 // Schreibzugriff auf eBay: nur mit Zugangsdaten in der .env dieses Rechners und nur, wenn EBAY_SCHREIBEN=an gesetzt ist.
 const schreiber = ebaySchreiben.erzeuge();
@@ -90,13 +92,17 @@ async function accessOk(req) {
 // würde sonst auf der alten Datei hängen.
 function mitDb(fn) {
   const DB_PFAD = dbPfad();
-  if (!fs.existsSync(DB_PFAD)) throw Object.assign(new Error("pm.db fehlt unter " + DB_PFAD + " — auf dem Server kommt sie nachts, lokal: Kopie aus dem Team holen"), { status: 503 });
+  // Die Meldung geht an die Oberfläche: englisch und ohne Serverpfad (der steht nur in der Konsole)
+  if (!fs.existsSync(DB_PFAD)) {
+    console.warn("pm.db fehlt unter " + DB_PFAD);
+    throw Object.assign(new Error("The product data (pm.db) is not available yet. On the server it arrives with the nightly export; locally, the team copy daten-team/pm.db is used. Please try again later."), { status: 503 });
+  }
   const db = new Database(DB_PFAD, { readonly: true, fileMustExist: true });
   try { return fn(db); } finally { db.close(); }
 }
 
 
-// ---- Automatischer Traffic-Import: einmal täglich, nur fertige Tage (3 Tage Verzögerung, siehe traffic.mjs) ----
+// ---- Automatischer Traffic-Import: einmal täglich, nur fertige Tage (Verzögerung siehe traffic.mjs, verzoegerungTage) ----
 // Läuft nur auf dem Rechner mit den eBay-Zugangsdaten und nur mit EBAY_TRAFFIC_AUTO=an. Der Import ist der Export (export-ebay.mjs):
 // er baut daten/pm.db neu und ersetzt die Datei erst am Ende, bei einem Fehler bleibt die alte unverändert.
 const TRAFFIC_AUTO = String(process.env.EBAY_TRAFFIC_AUTO || "").trim().toLowerCase() === "an";
@@ -105,7 +111,7 @@ const STUNDE = 3600e3;
 let importLaeuft = false;
 const letzterImport = (ergebnis) => appDb().prepare("SELECT zeit FROM protokoll WHERE aktion = 'traffic_sync' AND ergebnis = ? ORDER BY id DESC LIMIT 1").get(ergebnis)?.zeit ?? null;
 function trafficStatus() {
-  return { automatisch: TRAFFIC_AUTO, zugangsdaten: schreiber.konfiguriert(), laeuft: importLaeuft, uhrzeit: TRAFFIC_UHR, letzterErfolg: letzterImport("ok"), letzterFehler: letzterImport("error") };
+  return { automatisch: TRAFFIC_AUTO, zugangsdaten: schreiber.konfiguriert(), laeuft: importLaeuft, uhrzeit: TRAFFIC_UHR, verzoegerungTage: verzoegerungTage(), nachpruefenTage: NACHPRUEFEN_TAGE, letzterErfolg: letzterImport("ok"), letzterFehler: letzterImport("error") };
 }
 function starteTrafficImport(wer) {
   if (importLaeuft) return false;
@@ -175,18 +181,20 @@ function sicherungStatus() {
 function datenStand() {
   let bis = null; try { bis = mitDb((db) => db.prepare("SELECT traffic_bis FROM stand").get()?.traffic_bis ?? null); } catch { /* keine pm.db */ }
   if (!bis || !/^\d{4}-\d{2}-\d{2}$/.test(bis)) return { trafficBis: null, rueckstandTage: null, veraltet: false };
-  const soll = laDatum(new Date(), Number(process.env.TRAFFIC_VERZOEGERUNG_TAGE ?? VERZOEGERUNG_STANDARD) || 0);
+  const soll = laDatum(new Date(), verzoegerungTage());
   const rueckstand = Math.round((Date.parse(soll) - Date.parse(bis)) / 864e5);
   return { trafficBis: bis, soll, rueckstandTage: rueckstand, veraltet: rueckstand >= 2 };
 }
+// Die festen Zahlen der App, je aus genau einer Konstante: die Oberfläche zeigt sie von hier statt eigene Kopien zu führen
+const regelZahlen = () => ({ titelMaxZeichen: TITEL_MAX_ZEICHEN, maxAenderungen: freigabe.MAX_AENDERUNGEN, zielmarke: einst().besserAb, maxFehlversuche: login.MAX_FEHLVERSUCHE, sperreMinuten: login.SPERRE_MINUTEN, verzoegerungTage: verzoegerungTage(), nachpruefenTage: NACHPRUEFEN_TAGE });
 function betriebStatus() {
-  return { umgebung: UMGEBUNG, version: versionKurz(), schreibenAn: schreiber.schreibenAn(), zugangsdaten: schreiber.konfiguriert(), benachrichtigung: melder.konfiguriert(), sicherung: sicherungStatus(), traffic: trafficStatus(), daten: datenStand() };
+  return { umgebung: UMGEBUNG, version: versionKurz(), schreibenAn: schreiber.schreibenAn(), zugangsdaten: schreiber.konfiguriert(), benachrichtigung: melder.konfiguriert(), sicherung: sicherungStatus(), traffic: trafficStatus(), daten: datenStand(), regeln: regelZahlen() };
 }
 
 const ROUTEN = {
   "/api/stand": () => mitDb((db) => db.prepare("SELECT * FROM stand").get()),
   // Freigaben (Vorschläge für Titeländerungen bei eBay), Protokoll und Rollen
-  "/api/freigaben": () => ({ schreibenAn: schreiber.schreibenAn(), zugangsdaten: schreiber.konfiguriert(), offen: freigabe.zaehleOffen(appDb()), aenderungen: freigabe.liste(appDb()) }),
+  "/api/freigaben": () => ({ schreibenAn: schreiber.schreibenAn(), zugangsdaten: schreiber.konfiguriert(), maxAenderungen: freigabe.MAX_AENDERUNGEN, offen: freigabe.zaehleOffen(appDb()), aenderungen: freigabe.liste(appDb()) }),
   "/api/protokoll": () => protokoll.liste(appDb(), 300),
   "/api/traffic/status": () => trafficStatus(),
   "/api/betrieb": () => betriebStatus(),
@@ -203,7 +211,10 @@ const ROUTEN = {
       abgeleitet: { wenigImpressionen90d: leiteSchwellenAb(produkteLaden(), e, new Date()).wenigImpressionen90d } };
   },
   // Tests
-  "/api/experimente": () => ({ tests: experimente.liste(appDb(), produkteLaden(), new Date(), einst()), moeglich: experimente.kandidaten(appDb(), produkteLaden(), einst(), new Date()).length, testGroesse: einst().testGroesse }),
+  "/api/experimente": () => {
+    const produkte = produkteLaden(), gesperrt = sperreLaden();
+    return { tests: experimente.liste(appDb(), produkte, new Date(), einst()), moeglich: experimente.kandidaten(appDb(), produkte, einst(), new Date(), gesperrt).length, gesperrt: gesperrt.size, testGroesse: einst().testGroesse, titelMaxZeichen: TITEL_MAX_ZEICHEN };
+  },
   "/api/experiment": (q) => {
     const r = experimente.detail(appDb(), Number(q.get("id")), produkteLaden(), new Date(), einst());
     if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status });
@@ -226,7 +237,7 @@ const ROUTEN = {
   "/api/produkt": (q) => mitDb((db) => {
     const nr = q.get("nr");
     const p = db.prepare("SELECT * FROM produkt WHERE number = ?").get(nr);
-    if (!p) throw Object.assign(new Error("Produkt " + nr + " nicht gefunden"), { status: 404 });
+    if (!p) throw Object.assign(new Error("Product " + String(nr).slice(0, 40) + " not found."), { status: 404 });
     p.kanaele = db.prepare("SELECT channel, listed, external_id, preis_aktuell, kanal_status, units_total, units_90d, last_sold_at FROM kanal WHERE number = ?").all(nr);
     p.bilder = db.prepare("SELECT url, position, kind FROM bild WHERE number = ? ORDER BY position").all(nr);
     return p;
@@ -234,9 +245,9 @@ const ROUTEN = {
   "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal GROUP BY channel ORDER BY produkte DESC").all()),
   // Live-Stand vom Hub (nur auf dem Server, lokal fehlt HUB_URL): dieselbe Whitelist, aber Stand jetzt statt 04:30.
   "/api/live": async () => {
-    if (!HUB_URL || !PM_TOKEN) throw Object.assign(new Error("Live-Anbindung nur auf dem Server (HUB_URL/PM_TOKEN)"), { status: 503 });
+    if (!HUB_URL || !PM_TOKEN) throw Object.assign(new Error("Live data is only available on the server (HUB_URL/PM_TOKEN)."), { status: 503 });
     const r = await fetch(HUB_URL + "/api/pm/katalog", { headers: { "x-pm-token": PM_TOKEN } });
-    if (!r.ok) throw Object.assign(new Error("Hub antwortet " + r.status), { status: 502 });
+    if (!r.ok) throw Object.assign(new Error("The hub answered with HTTP " + r.status + "."), { status: 502 });
     return r.json();
   },
 };
@@ -266,11 +277,12 @@ const POST_ROUTEN = {
   "/api/einstellungen": async (req) => antwort(einstellungen.speichere(appDb(), (await leseJson(req))?.werte)),
   "/api/einstellungen/zuruecksetzen": async (req) => { await leseJson(req); return antwort(einstellungen.zuruecksetzen(appDb())); },
   "/api/experiment": async (req, ctx) => {
-    const r = antwort(experimente.legeAn(appDb(), await leseJson(req), produkteLaden(), einst()));
-    protokoll.schreibe(appDb(), { benutzer: ctx.name, rolle: ctx.rolle, aktion: "test_created", objekt: "test " + r.id });
+    const r = antwort(experimente.legeAn(appDb(), await leseJson(req), produkteLaden(), einst(), new Date(), undefined, sperreLaden()));
+    // Der seed steht im Protokoll: damit lässt sich das Los später mit denselben Kandidaten nachrechnen
+    protokoll.schreibe(appDb(), { benutzer: ctx.name, rolle: ctx.rolle, aktion: "test_created", objekt: "test " + r.id, details: { seed: r.seed, test: r.test, kontrolle: r.kontrolle, gesperrt: r.gesperrt } });
     return r;
   },
-  "/api/experiment/titel": async (req) => antwort(experimente.setzeTitel(appDb(), await leseJson(req), einst())),
+  "/api/experiment/titel": async (req) => antwort(experimente.setzeTitel(appDb(), await leseJson(req))),
   // Builder und Admin: Vorschlag zur Freigabe senden. Erst ein Admin lässt die Titel bei eBay ändern.
   "/api/experiment/freigabe": async (req, ctx) => {
     const b = await leseJson(req);
@@ -316,7 +328,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");
   try {
     if (url.pathname === "/healthz") return json(200, { ok: true, version: versionKurz() });
-    if (!(await accessOk(req))) return json(401, { ok: false, error: "kein gültiger Zugang (Cloudflare Access)" });
+    if (!(await accessOk(req))) return json(401, { ok: false, error: "No valid access (Cloudflare Access)." });
     // ---- Login: ohne Anmeldung sind nur die Anmeldeseite, ihre Dateien und /api/login erreichbar ----
     const sicher = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https";
     const token = login.tokenAusCookie(req.headers.cookie);
@@ -365,12 +377,12 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": MIME[path.extname(datei)] || "application/octet-stream" });
       return fs.createReadStream(datei).pipe(res);
     }
-    json(404, { ok: false, error: "nicht gefunden" });
+    json(404, { ok: false, error: "Not found." });
   } catch (e) { json(e.status || 500, { ok: false, error: e.message }); }
 });
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Parture Groupwork läuft: http://127.0.0.1:${PORT}  (DB: ${dbPfad()})`);
   if (SICH_AUTO) { setTimeout(pruefeSicherung, 45e3).unref(); setInterval(pruefeSicherung, 15 * 60e3).unref(); }
-  if (TRAFFIC_AUTO) { console.log(`Automatischer Traffic-Import: täglich ab ${TRAFFIC_UHR}:00 Uhr (Verzögerung ${process.env.TRAFFIC_VERZOEGERUNG_TAGE || 3} Tage).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
+  if (TRAFFIC_AUTO) { console.log(`Automatischer Traffic-Import: täglich ab ${TRAFFIC_UHR}:00 Uhr (Verzögerung ${verzoegerungTage()} Tage).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
 });

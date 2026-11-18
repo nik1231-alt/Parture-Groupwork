@@ -14,6 +14,18 @@ export function ladeProdukte(db) {
   return db.prepare(sql).all();
 }
 
+// Sperrliste aus pm.db (Tabelle "sperre", vom Hub: Angebote eines laufenden Preisversuchs). Die Tabelle ist optional: fehlt sie
+// (ältere pm.db, Team-Kopie), ist nichts gesperrt. Eine Zeile sperrt über die Produktnummer (sperre.number) oder über die
+// eBay-Artikelnummer (sperre.external_id, über die Tabelle kanal auf die Produktnummer abgebildet). Liefert [{ number, bis }];
+// ob "bis" schon vorbei ist, entscheidet experimente.gesperrteNummern.
+export function ladeSperre(db) {
+  const hat = (t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
+  if (!hat("sperre")) return [];
+  const direkt = db.prepare("SELECT number, bis FROM sperre WHERE number IS NOT NULL AND number != ''").all();
+  const ueberEbay = hat("kanal") ? db.prepare("SELECT k.number AS number, s.bis AS bis FROM sperre s JOIN kanal k ON k.channel = 'ebay' AND k.external_id = s.external_id WHERE s.external_id IS NOT NULL AND s.external_id != ''").all() : [];
+  return [...direkt, ...ueberEbay];
+}
+
 // einst: die gespeicherten Einstellungen. imTest: Map(number -> { id, gruppe, status }) aus experimente.imTest.
 export function baueBewertung(produkte, einst = EINSTELLUNGEN, jetzt = new Date(), imTest = new Map()) {
   const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt); // die Grenze "wenig Impressionen" kommt aus den Daten bzw. der Einstellung
