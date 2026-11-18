@@ -47,6 +47,23 @@
 | **Protokoll nur anhängen** (Datenbank-Trigger) | Nachweis, wer was wann getan hat, auch gegen Fehler der App selbst | normale Tabelle: ein Programmfehler könnte Einträge überschreiben |
 | **Titelhilfe zeigt nur Wörter**, erfindet keine Titel | Vorgabe aus dem Briefing; ein Mensch entscheidet, jede Zahl ist belegt | KI-generierte Titel: nicht nachvollziehbar, und genau das soll der Test ja erst zeigen |
 
+## Wo die App Dateien und Netz anfasst (A2.1, gezählt am 19.11.)
+
+Gesucht mit `grep -n "fetch\|new Database(" app/*.mjs` (ohne Tests). Alles andere im Code rechnet nur.
+
+| Stelle | Was | Wann |
+|---|---|---|
+| `server.mjs` `mitDb` | `pm.db`, **nur lesend**, bei jeder Anfrage neu | immer |
+| `server.mjs` `appDb` | `daten/app.db`, eigene Daten der App | immer |
+| `server.mjs` `accessOk` | Schlüssel von Cloudflare Access (`/cdn-cgi/access/certs`), höchstens stündlich | nur auf dem Server |
+| `server.mjs` `/api/live` | Hub `/api/pm/katalog` mit eigenem Token | nur auf dem Server |
+| `ebay-schreiben.mjs` | eBay OAuth + Trading-API (`GetItem`, Titel ändern) | nur nach Freigabe, nur mit Keys und Schalter |
+| `export-ebay.mjs`, `traffic.mjs` | eBay-API (lesen), baut `pm.db` selbst | nur von Hand (`npm run export`) oder mit `EBAY_TRAFFIC_AUTO=an`; auf PROD aus, der Traffic kommt aus dem Hub (B1.10) |
+| `benachrichtigung.mjs` | Telegram `sendMessage` | nur mit `TELEGRAM_*` in der `.env` |
+| `sicherung.mjs` | liest `app.db`/`traffic-tage.db`, schreibt Kopien | täglich ab 3 Uhr |
+| `benutzer.mjs` | `app.db` | Kommandozeile auf dem Server |
+| `waechter.mjs` | `/healthz` der eigenen App, `git`, `npm` | nur auf dem Server |
+
 ## Was die App bewusst nicht macht
 
 Amazon und andere Marktplätze, Kosten oder Gewinn, Kundendaten, Preisänderungen, automatische Freigabe, KI-Titel.
