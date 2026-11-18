@@ -5,11 +5,14 @@ import { bewerte, conversion, klickrate, leiteSchwellenAb, GRUPPEN, EINSTELLUNGE
 // 90-Tage-Werte: Diagnose. 30-Tage-Werte: Ausgangs- und Endzahlen der Tests.
 export function ladeProdukte(db) {
   const hatTraffic = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic'").get();
+  const hatKanal = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='kanal'").get();
   const summe = (spalte, tage) => `(SELECT SUM(${spalte}) FROM traffic t WHERE t.number = p.number AND t.tage = ${tage})`;
   const sql = "SELECT p.number, p.title, p.image_url, p.avg_price, p.units_total, p.units_90d, p.created_at, p.last_sold_at, "
     + (hatTraffic
       ? `${summe("aufrufe", 90)} AS aufrufe_90d, ${summe("impressionen", 90)} AS impressionen_90d, ${summe("aufrufe", 30)} AS aufrufe_30d, ${summe("impressionen", 30)} AS impressionen_30d, ${summe("transaktionen", 30)} AS transaktionen_30d `
       : "NULL AS aufrufe_90d, NULL AS impressionen_90d, NULL AS aufrufe_30d, NULL AS impressionen_30d, NULL AS transaktionen_30d ")
+    // ebay_aktiv: hat das Produkt ein laufendes eBay-Angebot mit Nummer? Nur solche können einen neuen Titel bekommen (siehe kandidaten)
+    + (hatKanal ? ", EXISTS (SELECT 1 FROM kanal k WHERE k.number = p.number AND k.channel = 'ebay' AND k.listed = 1 AND k.external_id IS NOT NULL) AS ebay_aktiv " : ", NULL AS ebay_aktiv ")
     + "FROM produkt p";
   return db.prepare(sql).all();
 }

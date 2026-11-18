@@ -86,7 +86,8 @@ export function imTest(db) {
 export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), gesperrt = new Set()) {
   const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt);
   const belegt = imTest(db);
-  return produkte.filter((p) => !belegt.has(p.number) && !gesperrt.has(String(p.number)) && bewerte(p, abgeleitet, jetzt).gruppe === "sichtbarkeit");
+  // ebay_aktiv === 0: kein laufendes eBay-Angebot (beendet), der Titel ließe sich nicht ändern. null = unbekannt (Daten ohne Tabelle kanal).
+  return produkte.filter((p) => !belegt.has(p.number) && !gesperrt.has(String(p.number)) && p.ebay_aktiv !== 0 && bewerte(p, abgeleitet, jetzt).gruppe === "sichtbarkeit");
 }
 
 // ---------- Anlegen ----------

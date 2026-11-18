@@ -124,3 +124,20 @@ test("Sperrliste: ein gesperrtes Angebot wird nie gezogen (200 Lose), und reicht
   const zuViel = ex.legeAn(appDb(), {}, shop(), { ...E, testGroesse: 28 }, JETZT, 1, gesperrt);
   assert.equal(zuViel.status, 409); assert.match(zuViel.fehler, /26 available, 28 needed/);
 });
+
+// ---------- 4. nur Angebote, deren Titel sich ändern lässt ----------
+test("Los: ein Produkt ohne laufendes eBay-Angebot (ebay_aktiv 0) wird nie gezogen, unbekannt (null) zählt mit", () => {
+  const p = shop(); p[0].ebay_aktiv = 0; p[1].ebay_aktiv = null; p[2].ebay_aktiv = 1;
+  const k = ex.kandidaten(appDb(), p, E, JETZT).map((x) => x.number);
+  assert.ok(!k.includes("P00"), "beendetes Angebot kein Kandidat");
+  assert.ok(k.includes("P01") && k.includes("P02"));
+});
+
+test("ladeProdukte: ebay_aktiv aus kanal (laufend mit Nummer = 1, beendet ohne Nummer = 0)", async () => {
+  const { ladeProdukte } = await import("./bewertung.mjs");
+  const d = new Database(":memory:");
+  d.exec("CREATE TABLE produkt (number TEXT, title TEXT, image_url TEXT, avg_price REAL, units_total INTEGER, units_90d INTEGER, created_at TEXT, last_sold_at TEXT); CREATE TABLE kanal (number TEXT, channel TEXT, listed INTEGER, external_id TEXT, title TEXT)");
+  d.exec("INSERT INTO produkt (number, title) VALUES ('A', 'a'), ('B', 'b'); INSERT INTO kanal VALUES ('A', 'ebay', 1, '406000000001', 'a'), ('B', 'ebay', 0, NULL, 'b'), ('B', 'shopify', 1, 'x', 'b')");
+  const m = Object.fromEntries(ladeProdukte(d).map((r) => [r.number, r.ebay_aktiv]));
+  assert.deepEqual(m, { A: 1, B: 0 });
+});
