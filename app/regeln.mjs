@@ -11,6 +11,10 @@
 //        Grenze = unteres Viertel des Shops (einstellbar) oder eine feste Zahl
 //   4. sonst                                         -> ok
 
+// eBay-Titel dürfen höchstens so lang sein (Vorgabe von eBay, daher fest und nicht in den Settings). Die einzige Stelle mit dieser Zahl:
+// Server (setzeTitel, Titelhilfe), Tests und Oberfläche (über /api/experimente) lesen sie von hier.
+export const TITEL_MAX_ZEICHEN = 80;
+
 export const EINSTELLUNGEN = {
   // Diagnose
   schonfristTage: 90,        // so lange gilt ein Angebot als "neu" und wird nicht bewertet
@@ -22,9 +26,8 @@ export const EINSTELLUNGEN = {
   testGroesse: 40,           // so viele Angebote kommen in einen Test (je zur Hälfte Test- und Kontrollgruppe)
   pruefungNachTagen: 30,     // so lange läuft ein Test, bevor geurteilt wird (das Datenfenster der App ist 30 Tage)
   mindestImpressionen30: 150, // darunter wird nicht geurteilt (Mindestmenge aus dem Briefing)
-  besserAb: 0.2,             // die Testgruppe muss gegenüber der Kontrollgruppe um mindestens 20 % mehr Impressionen haben
+  besserAb: 0.2,             // Zielmarke: die Testgruppe muss gegenüber der Kontrollgruppe um mindestens 20 % mehr Impressionen haben (einzige Stelle; Oberfläche liest sie aus der Auswertung)
   schutzGrenze: 0.2,         // die Verkäufe der Testgruppe dürfen gegenüber der Kontrollgruppe um höchstens 20 % fallen
-  titelMaxZeichen: 80,       // eBay-Titel dürfen höchstens so lang sein (fest, nicht einstellbar)
 };
 
 // Reihenfolge = Reihenfolge der Reiter in der Oberfläche
@@ -34,7 +37,7 @@ export const GRUPPEN = {
   warten: { label: "Wait", empfehlung: "Wait and check again", regel: "listed less than the grace period ago, or no impression numbers yet" },
 };
 
-export function istNeu(erstellt, jetzt, tage) {
+function istNeu(erstellt, jetzt, tage) {
   const t = Date.parse(erstellt);
   if (Number.isNaN(t)) return false;
   return jetzt.getTime() - t < tage * 86400000;

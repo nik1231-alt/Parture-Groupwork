@@ -93,7 +93,7 @@ export async function aktualisiere({ ordner = WURZEL, branch, hart = false, test
 }
 
 // Port der App aus der .env des Ordners (die App liest sie selbst; der Wächter braucht sie nur für /healthz)
-export function portAusEnv(ordner) {
+function portAusEnv(ordner) {
   try {
     const m = fs.readFileSync(path.join(ordner, ".env"), "utf8").match(/^\s*PM_PORT\s*=\s*(\d+)/m);
     if (m) return Number(m[1]);

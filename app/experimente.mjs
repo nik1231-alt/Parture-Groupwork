@@ -12,7 +12,7 @@
 // Titel bei eBay ändert die App nur nach Freigabe durch einen Admin (siehe freigabe.mjs). Status "freigabe": Vorschlag wartet auf den Admin.
 // Die App protokolliert und rechnet.
 import crypto from "node:crypto";
-import { bewerte, leiteSchwellenAb, EINSTELLUNGEN } from "./regeln.mjs";
+import { bewerte, leiteSchwellenAb, EINSTELLUNGEN, TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 import { baueAuswertung } from "./auswertung.mjs";
 
 export const ABSCHLUSS = ["behalten", "zurueck"];
@@ -53,12 +53,26 @@ function mulberry32(start) {
 }
 
 // Zieht n Angebote und teilt sie zufällig je zur Hälfte in test und kontrolle. Gleicher seed = gleiche Ziehung.
+// Doppelte Nummern in den Kandidaten zählen nur einmal (sonst könnte ein Angebot in beiden Gruppen landen).
+// Bei ungerader Anzahl hat die Kontrollgruppe eines mehr: die Gruppen unterscheiden sich nie um mehr als 1.
 export function ziehe(kandidaten, n, seed) {
-  const liste = [...kandidaten].sort((a, b) => (a.number < b.number ? -1 : a.number > b.number ? 1 : 0)); // feste Ausgangsreihenfolge
+  const eindeutig = [...new Map(kandidaten.map((p) => [String(p.number), p])).values()];
+  const liste = eindeutig.sort((a, b) => (String(a.number) < String(b.number) ? -1 : String(a.number) > String(b.number) ? 1 : 0)); // feste Ausgangsreihenfolge
   const zufall = mulberry32(seed);
   for (let i = liste.length - 1; i > 0; i--) { const j = Math.floor(zufall() * (i + 1)); [liste[i], liste[j]] = [liste[j], liste[i]]; }
   const gezogen = liste.slice(0, n);
-  return { test: gezogen.slice(0, n / 2), kontrolle: gezogen.slice(n / 2) };
+  const haelfte = Math.floor(gezogen.length / 2);
+  return { test: gezogen.slice(0, haelfte), kontrolle: gezogen.slice(haelfte) };
+}
+
+// Sperrliste (Tabelle "sperre" in pm.db, kommt vom Hub): Angebote eines laufenden Preisversuchs im Shop dürfen in keinen Titeltest,
+// sonst wüsste niemand, ob der Titel oder der Preis gewirkt hat. zeilen: [{ number, bis }] (siehe bewertung.ladeSperre, dort sind
+// eBay-Artikelnummern schon auf Produktnummern abgebildet). bis = letzter gesperrter Tag (ISO-Datum); leer = unbefristet.
+// Ein unlesbares Datum sperrt weiter (lieber ein Angebot zu wenig im Los als eines im falschen Versuch).
+export function gesperrteNummern(zeilen, jetzt = new Date()) {
+  const heute = jetzt.toISOString().slice(0, 10);
+  const aktiv = (bis) => { const b = String(bis ?? "").trim(); return !b || !/^\d{4}-\d{2}-\d{2}/.test(b) || b.slice(0, 10) >= heute; };
+  return new Set((zeilen || []).filter((z) => z?.number != null && String(z.number) !== "" && aktiv(z.bis)).map((z) => String(z.number)));
 }
 
 // Angebote, die gerade in einem nicht abgeschlossenen Test stecken: Map(number -> { id, gruppe, status })
@@ -67,21 +81,25 @@ export function imTest(db) {
   return new Map(zeilen.map((r) => [r.number, { id: r.id, gruppe: r.gruppe, status: r.status }]));
 }
 
-// Anzahl der Angebote, die heute für einen neuen Test infrage kommen (Low impressions und in keinem Test)
-export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date()) {
+// Angebote, die heute für einen neuen Test infrage kommen (Low impressions, in keinem Test, nicht gesperrt).
+// gesperrt: Set der Produktnummern aus gesperrteNummern (fehlt die Sperrliste, ist es leer).
+export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), gesperrt = new Set()) {
   const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt);
   const belegt = imTest(db);
-  return produkte.filter((p) => !belegt.has(p.number) && bewerte(p, abgeleitet, jetzt).gruppe === "sichtbarkeit");
+  // ebay_aktiv === 0: kein laufendes eBay-Angebot (beendet), der Titel ließe sich nicht ändern. null = unbekannt (Daten ohne Tabelle kanal).
+  return produkte.filter((p) => !belegt.has(p.number) && !gesperrt.has(String(p.number)) && p.ebay_aktiv !== 0 && bewerte(p, abgeleitet, jetzt).gruppe === "sichtbarkeit");
 }
 
 // ---------- Anlegen ----------
-export function legeAn(db, eingabe, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), seed = crypto.randomInt(1, 2147483646)) {
+// Der seed wird in experiment.seed gespeichert und zurückgegeben (der Server schreibt ihn ins Protokoll): mit denselben Kandidaten
+// ergibt derselbe seed dieselbe Ziehung, das Los ist also nachprüfbar.
+export function legeAn(db, eingabe, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), seed = crypto.randomInt(1, 2147483646), gesperrt = new Set()) {
   if (eingabe != null && (typeof eingabe !== "object" || Array.isArray(eingabe))) return fehler(400, "Invalid request.");
   if (eingabe?.name !== undefined && typeof eingabe.name !== "string") return fehler(400, "The name must be text.");
   const name = (eingabe?.name ?? "").trim();
   if (name.length > MAX_NAME) return fehler(400, `The name is too long (at most ${MAX_NAME} characters).`);
   const n = einst.testGroesse;
-  const frei = kandidaten(db, produkte, einst, jetzt);
+  const frei = kandidaten(db, produkte, einst, jetzt, gesperrt);
   if (frei.length < n) return fehler(409, `Not enough listings for a test: ${frei.length} available, ${n} needed. Lower the test size in Settings, or wait until more listings are flagged.`);
   const { test, kontrolle } = ziehe(frei, n, seed);
   const schreibe = db.transaction(() => {
@@ -93,14 +111,17 @@ export function legeAn(db, eingabe, produkte, einst = EINSTELLUNGEN, jetzt = new
     for (const p of kontrolle) ins.run(id, p.number, "kontrolle", String(p.title ?? ""));
     return id;
   });
-  return { ok: true, wert: { id: schreibe() } };
+  return { ok: true, wert: { id: schreibe(), seed, test: test.length, kontrolle: kontrolle.length, gesperrt: gesperrt.size } };
 }
 
 const lade = (db, id) => db.prepare("SELECT * FROM experiment WHERE id = ?").get(id);
 const pruefeId = (id) => Number.isInteger(id) && id >= 1;
 
 // ---------- Neuen Titel eintragen ----------
-export function setzeTitel(db, eingabe, einst = EINSTELLUNGEN) {
+// Nur im Status "vorbereitet": nach "Send for approval" (Status "freigabe") ist der Vorschlag gesperrt (409), damit der Admin
+// genau das freigibt, was er gesehen hat. Lehnt er ab, geht der Test zurück zu "vorbereitet" und die Titel sind wieder offen.
+// Der dritte Parameter (Einstellungen) wird nicht mehr gebraucht: die Titellänge ist fest (TITEL_MAX_ZEICHEN).
+export function setzeTitel(db, eingabe) {
   if (!eingabe || typeof eingabe !== "object" || Array.isArray(eingabe)) return fehler(400, "Invalid request.");
   const { id, number, neu } = eingabe;
   if (!pruefeId(id)) return fehler(400, "Invalid test id.");
@@ -108,7 +129,7 @@ export function setzeTitel(db, eingabe, einst = EINSTELLUNGEN) {
   if (typeof neu !== "string") return fehler(400, "The new title must be text.");
   const titel = neu.replace(/\s+/g, " ").trim();
   if (!titel) return fehler(400, "Please enter the new title.");
-  if (titel.length > einst.titelMaxZeichen) return fehler(400, `The title is too long (${titel.length} of at most ${einst.titelMaxZeichen} characters).`);
+  if (titel.length > TITEL_MAX_ZEICHEN) return fehler(400, `The title is too long (${titel.length} of at most ${TITEL_MAX_ZEICHEN} characters).`);
   if (/[\u0000-\u001f\u007f]/.test(titel)) return fehler(400, "The title contains invalid characters.");
   const e = lade(db, id);
   if (!e) return fehler(404, "Test not found.");

@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { laDatum, tageListe, planeTage, zaehleAbweichungen, fensterSummen, abdeckung, holeTag, holeZeitraum, holeKontrolle, FENSTER_TAGE, NACHPRUEFEN_TAGE, VERZOEGERUNG_STANDARD, LimitFehler } from "./traffic.mjs";
+import { laDatum, tageListe, planeTage, zaehleAbweichungen, fensterSummen, abdeckung, holeTag, holeZeitraum, holeKontrolle, FENSTER_TAGE, NACHPRUEFEN_TAGE, verzoegerungTage, LimitFehler } from "./traffic.mjs";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 ladeEnv(path.join(WURZEL, ".env"));
@@ -26,7 +26,7 @@ const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || "daten/pm.db");
 const TEAM_PFAD = path.resolve(WURZEL, "daten-team/pm.db");
 // Zwischenspeicher der Tageswerte: bleibt erhalten, wenn ein Lauf abbricht (z. B. eBay-Limit), der nächste macht dort weiter.
 const CACHE_PFAD = path.resolve(WURZEL, process.env.PM_TRAFFIC_CACHE || "daten/traffic-tage.db");
-const VERZOEGERUNG = Math.max(1, Number(process.env.TRAFFIC_VERZOEGERUNG_TAGE) || VERZOEGERUNG_STANDARD);
+const VERZOEGERUNG = verzoegerungTage();
 const MIN_ABDECKUNG = Number(process.env.TRAFFIC_MIN_ABDECKUNG) || 0.8; // darunter gilt der Lauf als fehlerhaft und die alte Datei bleibt
 const SITE_DE = "77";
 const TAGE_HISTORIE = 360; // so weit zurück werden Bestellungen gelesen (für last_sold_at)
@@ -40,14 +40,14 @@ function ladeEnv(p) {
 }
 
 async function accessToken() {
-  if (!EBAY_APP_ID || !EBAY_CERT_ID || !EBAY_REFRESH_TOKEN) throw new Error("EBAY_APP_ID, EBAY_CERT_ID und EBAY_REFRESH_TOKEN fehlen in der .env");
+  if (!EBAY_APP_ID || !EBAY_CERT_ID || !EBAY_REFRESH_TOKEN) throw new Error("EBAY_APP_ID, EBAY_CERT_ID and EBAY_REFRESH_TOKEN are missing in the .env");
   const r = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: "Basic " + Buffer.from(`${EBAY_APP_ID}:${EBAY_CERT_ID}`).toString("base64") },
     body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: EBAY_REFRESH_TOKEN }),
   });
   const j = await r.json();
-  if (!j.access_token) throw new Error("eBay-Token nicht erhalten: " + (j.error_description || j.error || r.status));
+  if (!j.access_token) throw new Error("eBay did not issue an access token: " + (j.error_description || j.error || r.status));
   return j.access_token;
 }
 
@@ -251,7 +251,7 @@ if (!vollstaendig) {
     for (const n of [30, 90]) fenster[n] = await holeZeitraum(token, tageListe(stichtag, n)[0], stichtag, ids, { drosselMs: 300 });
   } catch (e) {
     cache.close();
-    throw new Error("Traffic konnte nicht geholt werden (" + e.message + "). Die alte pm.db bleibt unverändert, der Zwischenspeicher enthält " + tage.size + " Tage.");
+    throw new Error("Could not fetch traffic (" + e.message + "). The old pm.db stays unchanged, the cache holds " + tage.size + " days.");
   }
 }
 cache.close();
@@ -259,7 +259,7 @@ const kontrolle = await holeKontrolle(token, alleTage[0], stichtag);
 const ab = abdeckung(tage, kontrolle, alleTage);
 if (ab) console.log(`  Kontrolle gegen die Kontosumme: im Mittel ${(100 * ab.mittel).toFixed(1)} %, schwächster Tag ${ab.schlechtester} mit ${(100 * ab.min).toFixed(1)} % (${ab.tage} Tage geprüft)`);
 else console.log("  Kontrolle gegen die Kontosumme war nicht möglich.");
-if (ab && ab.mittel < MIN_ABDECKUNG) throw new Error(`Traffic-Kontrolle fehlgeschlagen: die Listings erklären im Mittel nur ${(100 * ab.mittel).toFixed(1)} % der Kontosumme (Grenze ${(100 * MIN_ABDECKUNG).toFixed(0)} %). Die alte Datei bleibt unverändert.`);
+if (ab && ab.mittel < MIN_ABDECKUNG) throw new Error(`Traffic check failed: the listings explain only ${(100 * ab.mittel).toFixed(1)} % of the account total on average (limit ${(100 * MIN_ABDECKUNG).toFixed(0)} %). The old file stays unchanged.`);
 
 const { produkte, nK, nB, nT } = schreibe(items, vk, tage, stichtag, { abdeckung: ab, fenster });
 const ohneNr = [...produkte.keys()].filter((k) => k.startsWith("ID")).length;

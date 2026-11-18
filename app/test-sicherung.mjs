@@ -45,7 +45,7 @@ test("Prüfung: eine kaputte Datei gilt nicht als heil und wird nicht zurückges
   fs.writeFileSync(kaputt, "das ist keine Datenbank, nur genug Text um länger als ein Header zu sein ".repeat(50));
   assert.equal(istHeil(kaputt), false);
   assert.equal(istHeil(path.join(wurzel, "gibt-es-nicht.db")), false);
-  assert.throws(() => stelleWiederHer(kaputt, appPfad), /nicht unversehrt/);
+  assert.throws(() => stelleWiederHer(kaputt, appPfad), /failed the integrity check/);
   assert.deepEqual(lese(appPfad), ["alex", "niko"], "die echte Datei blieb unberührt");
 });
 

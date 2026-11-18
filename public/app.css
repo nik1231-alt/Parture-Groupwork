@@ -26,7 +26,7 @@
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
-h1, h2, h3 { font-family: var(--serif); font-weight: 500; letter-spacing: -.01em; margin: 0; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 500; letter-spacing: -.01em; margin: 0; overflow-wrap: break-word; }
 h1 { font-size: clamp(26px, 4vw, 34px); line-height: 1.2; }
 h2 { font-size: 21px; } h3 { font-size: 17px; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -44,7 +44,7 @@ a { color: inherit; }
 .marke { display: flex; align-items: center; gap: 10px; }
 .marke-zeichen { width: 28px; height: 28px; border-radius: 50%; background: var(--akzent); color: var(--akzent-text); display: grid; place-items: center; font-family: var(--serif); font-weight: 600; font-size: 16px; }
 .marke-name { font-family: var(--serif); font-size: 19px; font-weight: 600; }
-.nav { display: flex; gap: 4px; }
+.nav { display: flex; gap: 4px; flex-wrap: wrap; }
 .nav-knopf { text-decoration: none; padding: 7px 14px; border-radius: 999px; color: var(--leise); }
 .nav-knopf:hover { background: var(--karte-leise); color: var(--text); }
 .nav-knopf[aria-current="page"] { background: var(--akzent-weich); color: var(--text); font-weight: 500; }
@@ -124,7 +124,7 @@ a { color: inherit; }
 .aktionen { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 
 /* Tests: Karten, Tabellen, Urteil */
-.testkarte { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; align-items: center; padding: 16px 20px; margin-bottom: 10px; background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); text-decoration: none; box-shadow: var(--schatten); }
+.testkarte { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; padding: 16px 20px; margin-bottom: 10px; background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); text-decoration: none; box-shadow: var(--schatten); }
 .testkarte:hover { border-color: var(--linie-stark); background: var(--karte-leise); }
 .mini { width: 100%; border-collapse: collapse; font-size: 14px; }
 .mini th, .mini td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--linie); }
@@ -148,7 +148,7 @@ a { color: inherit; }
 .abschnitt > p { margin: 4px 0 14px; }
 .einstellung { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 6px 28px; padding: 14px 0; border-top: 1px solid var(--linie); align-items: start; }
 .einstellung label, .einstellung .beschriftung { font-weight: 500; }
-.eingabezeile { display: flex; align-items: center; gap: 10px; }
+.eingabezeile { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; }
 .eingabezeile .feld { max-width: 180px; }
 .eingabezeile select.feld { max-width: 280px; }
 .einheit { color: var(--leise); font-size: 14px; }
@@ -177,6 +177,30 @@ a { color: inherit; }
 }
 @media (min-width: 861px) { .kennzahlen-kurz { display: none; } }
 
+/* Zeilen mit fester Spaltenaufteilung (statt Inline-Stil, damit sie auf schmalen Bildschirmen umbrechen können) */
+.angebotszeile.zwei { grid-template-columns: 48px minmax(0, 1fr); }
+.angebotszeile.titelpaar { grid-template-columns: 48px minmax(0, 1fr) minmax(0, 1fr); }
+.angebotszeile.vergleich { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 150px; }
+/* Breite Tabellen (Log, Team, Zahlen) scrollen in ihrem eigenen Kasten, nie die ganze Seite */
+.rollbar { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.mini td.details { min-width: 220px; overflow-wrap: anywhere; }
+.mini.protokoll td { vertical-align: top; }
+/* Telefon-Breite (bis etwa 400 px): nichts darf breiter werden als der Bildschirm */
+@media (max-width: 600px) {
+  .angebotszeile.vergleich { grid-template-columns: minmax(0, 1fr); }
+  .angebotszeile.titelpaar { grid-template-columns: 48px minmax(0, 1fr); }
+  .angebotszeile.titelpaar > .kasten { grid-column: 2; }
+}
+@media (max-width: 520px) {
+  .seite { padding-left: 14px; padding-right: 14px; }
+  .kopf-innen { padding: 10px 14px; }
+  .nav { justify-content: center; }
+  .nav-knopf { padding: 6px 10px; }
+  .panel { padding: 14px; }
+  .badge { white-space: normal; }
+  .testkarte { grid-template-columns: minmax(0, 1fr); padding: 14px; }
+}
+
 /* Anmeldeseite */
 .login-seite { display: grid; place-items: center; min-height: 100vh; padding: 20px; }
 .login-karte { width: 100%; max-width: 380px; background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); box-shadow: var(--schatten); padding: 32px 28px; }
@@ -189,7 +213,7 @@ a { color: inherit; }
 .login-formular .knopf-akzent { margin-top: 18px; background: var(--akzent); color: var(--akzent-text); border-color: var(--akzent); padding: 11px 18px; }
 .login-formular .knopf-akzent:hover { filter: brightness(.95); background: var(--akzent); }
 .login-formular .knopf:disabled { opacity: .6; cursor: default; }
-.kopf-rechts { display: flex; align-items: center; gap: 12px; }
+.kopf-rechts { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; min-width: 0; }
 
 /* Diagramme der Testauswertung */
 .auswertung .d-block { margin-top: 22px; }
