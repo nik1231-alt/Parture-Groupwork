@@ -4,9 +4,13 @@
 //   node app/waechter.mjs --branch vorschau --hart --intervall 60   VORSCHAU: folgt dem Branch auch bei Force-Push, jede Minute
 //   node app/waechter.mjs                                  nur überwachen (kein Auto-Deploy)
 //
-// Ablauf je Prüfung: git fetch → liegt der Branch vor dem lokalen Stand → vorwärts ziehen → (bei geänderter package-lock: npm ci)
-// → npm test (ohne eBay-Keys, ohne Netz) → bestanden: App neu starten. Durchgefallen: sofort zurück auf den alten Stand, die App läuft
-// unverändert weiter, der abgelehnte Stand wird gemerkt und nicht erneut getestet, bis ein neuer Stand kommt.
+// Ablauf je Prüfung: git fetch → liegt der Branch vor dem lokalen Stand → vorwärts ziehen → (bei geänderter package.json/-lock:
+// App stoppen, dann npm ci) → npm test (ohne eBay-Keys, ohne Netz) → bestanden: App neu starten. Durchgefallen: sofort zurück auf
+// den alten Stand, die App läuft unverändert weiter (bzw. startet wieder), der abgelehnte Stand wird gemerkt und nicht erneut
+// getestet, bis ein neuer Stand kommt.
+// WARUM die App vor npm ci stoppt (Parture-Server, 18.11.2026): npm ci löscht node_modules und legt es neu an. Unter Windows hält
+// die laufende App better_sqlite3.node offen, die Datei lässt sich dann nicht löschen (EPERM), npm ci scheitert, und der Stand wurde
+// abgelehnt, obwohl weder Code noch Tests ein Problem hatten (defd8b5 auf VORSCHAU, Grund: nur die Version in package.json).
 // Fehlt die Antwort auf /healthz dreimal hintereinander, wird die App beendet und neu gestartet. Stürzt sie ab, startet sie mit Pause wieder.
 // Der Wächter selbst läuft als Dienst bzw. geplante Aufgabe (siehe docs/server-einrichtung.md).
 import { execFile, spawn } from "node:child_process";
@@ -40,7 +44,11 @@ function schreibeStatus(ordner, teil) {
 
 // Eine Prüfung. Liefert { status, von, nach, grund }:
 //   unveraendert | ausgerollt | abgelehnt (Tests durchgefallen, alter Stand bleibt) | blockiert (lokale Änderungen / kein Fast-Forward) | fehler (z. B. kein Netz)
-export async function aktualisiere({ ordner = WURZEL, branch, hart = false, testBefehl = [npm, ["test"]], jetzt = () => new Date() } = {}) {
+// `vorInstallation` wird genau dann (und höchstens einmal) aufgerufen, wenn npm ci nötig ist — der Wächter stoppt darin die App,
+// damit keine geöffnete native Datei den Austausch von node_modules blockiert. Das Ergebnis trägt `appGestoppt: true`, wenn das
+// geschah; der Aufrufer startet die App dann wieder, falls nicht ohnehin ausgerollt wird.
+export async function aktualisiere({ ordner = WURZEL, branch, hart = false, testBefehl = [npm, ["test"]],
+  installBefehl = [npm, ["ci", "--no-audit", "--no-fund"]], vorInstallation = null, jetzt = () => new Date() } = {}) {
   const f = (grund) => ({ status: "fehler", grund });
   let r = await git(ordner, "fetch", "--quiet", "origin", branch);
   if (!r.ok) return f("git fetch: " + r.ausgabe.trim().split("\n").slice(-1)[0]);
@@ -60,23 +68,28 @@ export async function aktualisiere({ ordner = WURZEL, branch, hart = false, test
     if (!r.ok) return f("git reset: " + r.ausgabe.trim());
   }
 
+  let appGestoppt = false;
+  const installiere = async () => {
+    if (!appGestoppt && vorInstallation) { await vorInstallation(); appGestoppt = true; }
+    return lauf(installBefehl[0], installBefehl[1], { cwd: ordner });
+  };
   const zurueck = async (grund, ausgabe) => {
     await git(ordner, "reset", "--hard", "--quiet", lokal);
-    if (lockGeaendert) await lauf(npm, ["ci", "--no-audit", "--no-fund"], { cwd: ordner });
+    if (lockGeaendert) await installiere();   // node_modules wieder zum alten Stand, die App startet danach damit
     schreibeStatus(ordner, { abgelehnt: fern, abgelehntGrund: grund, abgelehntAm: jetzt().toISOString() });
-    return { status: "abgelehnt", von: lokal, nach: fern, grund, ausgabe: String(ausgabe || "").split("\n").slice(-25).join("\n") };
+    return { status: "abgelehnt", von: lokal, nach: fern, grund, appGestoppt, ausgabe: String(ausgabe || "").split("\n").slice(-25).join("\n") };
   };
   const geaendert = (await git(ordner, "diff", "--name-only", lokal, fern)).ausgabe.split("\n");
   const lockGeaendert = geaendert.some((n) => n === "package-lock.json" || n === "package.json");
   if (lockGeaendert) {
-    r = await lauf(npm, ["ci", "--no-audit", "--no-fund"], { cwd: ordner });
+    r = await installiere();
     if (!r.ok) return zurueck("npm ci fehlgeschlagen", r.ausgabe);
   }
   // Tests ohne Geheimnisse und ohne die .env des Ordners (PM_OHNE_ENV wird von den Tests selbst gesetzt)
   r = await lauf(testBefehl[0], testBefehl[1], { cwd: ordner, env: bereinigt(process.env) });
   if (!r.ok) return zurueck("Tests fehlgeschlagen", r.ausgabe);
   schreibeStatus(ordner, { commit: fern, branch, ausgerolltAm: jetzt().toISOString(), abgelehnt: null, abgelehntGrund: null, abgelehntAm: null });
-  return { status: "ausgerollt", von: lokal, nach: fern };
+  return { status: "ausgerollt", von: lokal, nach: fern, appGestoppt };
 }
 
 // Port der App aus der .env des Ordners (die App liest sie selbst; der Wächter braucht sie nur für /healthz)
@@ -145,9 +158,12 @@ async function haupt() {
     if (!branch || pruefLaeuft || beendet) return;
     pruefLaeuft = true;
     try {
-      const e = await aktualisiere({ ordner, branch, hart });
+      // App vor npm ci stoppen (siehe Kopf); der Neustart-Timer des exit-Handlers wird dabei entschärft, sonst liefe die App
+      // mitten in npm ci wieder an und hielte die Dateien erneut offen.
+      const vorInstallation = async () => { log("Abhängigkeiten geändert: App wird für npm ci gestoppt."); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } };
+      const e = await aktualisiere({ ordner, branch, hart, vorInstallation });
       if (e.status === "ausgerollt") { log(`Ausgerollt: ${e.von.slice(0, 7)} → ${e.nach.slice(0, 7)} (Tests bestanden). Neustart.`); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } starte(); }
-      else if (e.status === "abgelehnt") log(`ABGELEHNT ${e.nach.slice(0, 7)}: ${e.grund}. Alter Stand ${e.von.slice(0, 7)} läuft weiter.\n${e.ausgabe}`);
+      else if (e.status === "abgelehnt") { log(`ABGELEHNT ${e.nach.slice(0, 7)}: ${e.grund}. Alter Stand ${e.von.slice(0, 7)} läuft weiter.\n${e.ausgabe}`); if (e.appGestoppt) starte(); }
       else if (e.status === "blockiert" || e.status === "fehler") { if (e.grund !== leseStatus(ordner).letzterHinweis) { log(`${e.status.toUpperCase()}: ${e.grund}`); schreibeStatus(ordner, { letzterHinweis: e.grund }); } }
       else if (leseStatus(ordner).letzterHinweis) schreibeStatus(ordner, { letzterHinweis: null });
       schreibeStatus(ordner, { geprueftAm: new Date().toISOString() });
