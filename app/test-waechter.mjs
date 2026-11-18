@@ -170,7 +170,8 @@ http.createServer((q, s) => {
   const prod = klone("prod8");
   schreibe(prod, ".env", `PM_PORT=${port}\n`);
   const kind = spawn(process.execPath, [path.join(prod, "app", "waechter.mjs"), "--branch", "main", "--intervall", "1"], { cwd: prod, env: { ...process.env, WAECHTER_GESUNDHEIT_S: "1", WAECHTER_ANLAUF_S: "0", PM_PORT: String(port) }, stdio: "ignore" });
-  const hole = async () => (await fetch(`http://127.0.0.1:${port}/x`, { signal: AbortSignal.timeout(1500) })).json();
+  let appPid = null;   // die App ist ein Kind des Wächters: kill() auf den Wächter beendet sie unter Windows nicht mit
+  const hole = async () => { const x = await (await fetch(`http://127.0.0.1:${port}/x`, { signal: AbortSignal.timeout(1500) })).json(); appPid = x.pid ?? appPid; return x; };
   try {
     const a = await warte(hole);
     assert.equal(a.stand, "eins", "App läuft");
@@ -193,7 +194,12 @@ http.createServer((q, s) => {
   } catch (e) {
     try { process.stderr.write("\nLOG:\n" + fs.readFileSync(path.join(prod, "daten", "waechter.log"), "utf8").slice(-1500), fs.existsSync(path.join(prod, "daten", "app.log")) ? fs.readFileSync(path.join(prod, "daten", "app.log"), "utf8").slice(-800) : ""); } catch { /* kein Log */ }
     throw e;
-  } finally { kind.kill(); await new Promise((r) => setTimeout(r, 400)); }
+  } finally {
+    // Erst Wächter UND App beenden und auf beide warten, dann aufräumen: sonst hält die App Dateien offen (EBUSY unter Windows)
+    if (kind.exitCode === null) { const weg = new Promise((r) => kind.once("exit", r)); kind.kill(); await weg; }
+    if (appPid) { try { process.kill(appPid); } catch { /* schon beendet */ } }
+    for (let i = 0; i < 30; i++) { try { await fetch(`http://127.0.0.1:${port}/x`, { signal: AbortSignal.timeout(200) }); } catch { break; } await new Promise((r) => setTimeout(r, 100)); }
+  }
 });
 
 test.after(() => fs.rmSync(wurzel, { recursive: true, force: true }));
