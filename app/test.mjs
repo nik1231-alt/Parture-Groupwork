@@ -522,3 +522,46 @@ test("Login: falsche alte Passwörter beim Ändern zählen als Fehlversuche und 
   for (let i = 0; i < 5; i++) lg.aendernPasswort(d, "anna", "falsch-falsch", "ein-neues-passwort", JETZT);
   assert.equal(lg.aendernPasswort(d, "anna", PW, "ein-neues-passwort", JETZT).status, 429);
 });
+
+// ---------- Sicherheit: Passwort-Hash, Grenzen, keine Kundendaten (Checkliste A3.3, A3.13) ----------
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+
+test("Login: Hash ist scrypt (N=16384, r=8, p=1, 64 Byte) mit eigenem 16-Byte-Salz je Benutzer", () => {
+  const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
+  const b = d.prepare("SELECT salz, hash FROM benutzer WHERE name = 'anna'").get();
+  assert.match(b.salz, /^[0-9a-f]{32}$/, "16 Byte Zufallssalz, hex");
+  assert.equal(b.hash, crypto.scryptSync(PW, b.salz, 64, { N: 16384, r: 8, p: 1 }).toString("hex"), "Hash lässt sich nur mit Salz und scrypt nachrechnen");
+  assert.notEqual(b.hash, crypto.createHash("sha256").update(PW).digest("hex"));
+});
+
+test("Login: Mindestlänge genau 10 Zeichen, Sperre nach genau 5 Fehlversuchen je Name und 20 je Adresse, 15 Minuten", () => {
+  assert.deepEqual([lg.PASSWORT_MIN, lg.MAX_FEHLVERSUCHE, lg.MAX_FEHLVERSUCHE_IP, lg.SPERRE_MINUTEN, lg.SITZUNG_STUNDEN], [10, 5, 20, 15, 12]);
+  const d = ldb();
+  assert.equal(lg.legeBenutzerAn(d, "anna", "x".repeat(9)).status, 400, "9 Zeichen sind zu kurz");
+  assert.equal(lg.legeBenutzerAn(d, "anna", "x".repeat(10)).ok, true, "10 Zeichen reichen");
+  assert.equal(lg.setzePasswort(d, "anna", "y".repeat(9)).status, 400);
+  assert.equal(lg.aendernPasswort(d, "anna", "x".repeat(10), "y".repeat(9), JETZT).status, 400);
+  for (let i = 0; i < 4; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
+  assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401, "der 5. Fehlversuch zählt noch normal");
+  assert.equal(lg.anmelden(d, "anna", "x".repeat(10), JETZT).status, 429, "ab jetzt gesperrt");
+});
+
+test("Keine Kundendaten: pm.db hat keine Spalten für Käufer, und der Export liest aus Bestellungen nur Artikel, Menge, Preis, Datum", () => {
+  const wurzel = path.join(import.meta.dirname, "..");
+  const pm = new Database(path.join(wurzel, "daten-team", "pm.db"), { readonly: true });
+  const spalten = pm.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()
+    .flatMap((t) => pm.prepare(`PRAGMA table_info(${t.name})`).all().map((c) => `${t.name}.${c.name}`));
+  pm.close();
+  assert.ok(spalten.length > 10);
+  const verdaechtig = /buyer|kaeufer|käufer|kunde|customer|e?mail|adress|address|strasse|street|phone|telefon|plz|zip|order|bestell|user|name/i;
+  assert.deepEqual(spalten.filter((s) => verdaechtig.test(s.split(".")[1])), [], "keine Spalte mit Personen- oder Bestellbezug");
+  // export-ebay.mjs: in verkaeufe() werden von einer Bestellung (o) und ihren Positionen (li) nur diese Felder gelesen
+  const q = fs.readFileSync(path.join(wurzel, "app", "export-ebay.mjs"), "utf8");
+  const fn = q.slice(q.indexOf("async function verkaeufe("), q.indexOf("\n}", q.indexOf("async function verkaeufe(")));
+  const felder = [...new Set([...fn.matchAll(/\b(o|li)\.(\w+)/g)].map((m) => `${m[1]}.${m[2]}`))].sort();
+  assert.deepEqual(felder, ["li.legacyItemId", "li.lineItemCost", "li.quantity", "o.creationDate", "o.lineItems"]);
+  const code = q.split(/\r?\n/).filter((z) => !/^\s*\/\//.test(z)).join("\n");
+  assert.doesNotMatch(code, /buyer|shippingAddress|fulfillmentStartInstructions|contactAddress|email/i, "keine Käuferfelder im Export-Code");
+});
