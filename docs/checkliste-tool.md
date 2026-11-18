@@ -14,6 +14,45 @@ in der Gruppe verteilen, aber jeder Punkt braucht genau einen Namen.
 Der Kurs bewertet: **Code-Qualität und Tests, Git-Zusammenarbeit, Funktion und Oberfläche, Präsentation und Doku,
 Sicherheit.** Die Abschnitte A1 bis A6 folgen genau diesen fünf Kriterien plus dem Datenweg.
 
+## Abgearbeitet am 19.11.2026 (Server-KI, im Auftrag von Niko)
+
+Alles liegt als Pull Request bereit und zusammen auf VORSCHAU (Stand `df0ccd8`, 172 Tests grün). **Gemergt nach `main`
+ist noch nichts**: das macht die Gruppe nach Review (A5.2). Reihenfolge zum Mergen: #10 → #11 → #29 → #30, dann #12, #13, #14.
+
+| Punkt | Stand | Beleg |
+|---|---|---|
+| A1.3, B1.4 Los reproduzierbar, gleich groß, nichts doppelt, Sperrliste, nur laufende eBay-Angebote | erledigt | #30, `app/test-los.mjs`; Hub liefert `sperre` (50 Angebote bis 01.12.) |
+| A1.4, A1.6, A1.7 Titelregeln, Probelauf, Protokoll | erledigt | #30 `test-durchlauf.mjs`, bestehende Tests in `test-freigabe.mjs` |
+| A1.8 Evaluation-Panel nach `main` | PR offen | #11 (Code von EmbletonNova) |
+| A1.10 Fehlerbilder | erledigt (Sitzung abgelaufen in der Oberfläche ohne automatischen Test) | #30 `test-fehlerbilder-http.mjs` |
+| A1.11 nur Englisch | erledigt | #30 `test-oberflaeche.mjs` |
+| A1.12 Telefonbreite | erledigt, gemessen 400/360 px | #30 |
+| A1.1, A1.2, A1.5, A1.9, A6.6 Screenshots | offen (Gruppe) | Issue #19 |
+| A2.1 Datenzugriffe | erledigt | #14 `docs/architektur.md` |
+| A2.2, A4.8 Konstanten | erledigt | #30, `/api/betrieb.regeln` |
+| A2.3 Team-Kopie | erledigt | #13 |
+| A2.4 Meldung bei altem Datenstand | offen (kein Muss, Telegram auf PROD fehlt, B2.6) | — |
+| A3.1–A3.13, A6.3 Sicherheit | erledigt | #29 `docs/sicherheit.md`, `test-routen-schutz.mjs`, `test-xss.mjs` |
+| A4.1 Modul → Test | erledigt | #14 `docs/tests.md` |
+| A4.2 Ende-zu-Ende-Test | erledigt | #30 |
+| A4.3 Laufzeit, Kindprozesse abwarten | erledigt (ca. 37 s) | #12 |
+| A4.4, A4.6 Konvention, toter Code | erledigt | #30, `npm run tote` |
+| A4.5 CI auf Windows | fertig, nicht gepusht (Token ohne Scope `workflow`) | Issue #18 |
+| A4.7 Kommentare | offen (Review) | Issue #21 |
+| A5.1, A5.2, A5.3 Verteilung, Reviews, Branch-Schutz | offen (Gruppe, Niko) | Issues #15, #16, #17 |
+| A5.4 Issues | erledigt | #15–#28 |
+| A5.5 PR-Vorlage, A5.7 `.mailmap`, A5.8 KI-Anteil | erledigt, A5.8 von der Gruppe zu prüfen | #14 |
+| A5.6 alte Branches löschen | offen: erst nach dem Merge | — |
+| A6.1, A6.2, A6.4, A6.5 README, Architektur, Entwicklung, Glossar | erledigt; A6.1 blind nachmachen offen | #14, #12, Issue #20 |
+| B1.1 Lions Freigabe | erledigt: Lion per Telegram 19.11. „Ja 1123“ | Nachrichtenzentrale #1123 |
+| B1.5, B1.9 Shopify-Hinweis, Revert-Plan | erledigt (Vorlage) | #14 `docs/belege/revert-plan.md` |
+| B1.10 kein eigener Analytics-Abruf | geprüft: `EBAY_TRAFFIC_AUTO` auf PROD leer | — |
+| B2.2, B2.3 Sicherung, Wächter-Logs | geprüft 19.11.: Sicherung 18.11. an beiden Orten, Logs ohne Fehler seit dem Fix vom 18.11. | vor der Vorführung wiederholen |
+| B1.2, B1.3, B1.6–B1.8, B2.1, B2.4–B2.6, B3, C | offen (Menschen) | Issues #22–#28 |
+
+Nebenbei gefunden und im Hub behoben: `pm.db` trug als `created_at` die Uhrzeit des nächtlichen Neubaus, dadurch stand
+auf PROD jedes Angebot auf „Wait“ und kein Test fand Kandidaten. Seit dem 19.11. steht dort das echte Anlagedatum.
+
 ## Ist-Stand (gemessen 18.11.2026, nicht geschätzt)
 
 | Messung | Wert | Bedeutung für die Checkliste |
