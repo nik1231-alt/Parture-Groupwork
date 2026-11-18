@@ -13,6 +13,7 @@
 // Die App protokolliert und rechnet.
 import crypto from "node:crypto";
 import { bewerte, leiteSchwellenAb, EINSTELLUNGEN } from "./regeln.mjs";
+import { baueAuswertung } from "./auswertung.mjs";
 
 export const ABSCHLUSS = ["behalten", "zurueck"];
 const HYPOTHESE = "A better title and better search terms raise the impressions of a listing without lowering its sales.";
@@ -203,6 +204,8 @@ function baueDetail(e, angebote, aktuell, jetzt, einst) {
     erstellt_at: e.erstellt_at, gestartet_at: e.gestartet_at, tage, bereit_am: bereitAm, pruefungNachTagen: einst.pruefungNachTagen,
     anzahl: { test: zeilen.filter((z) => z.gruppe === "test").length, kontrolle: zeilen.filter((z) => z.gruppe === "kontrolle").length, titel: zeilen.filter((z) => z.gruppe === "test" && z.neu).length },
     angebote: zeilen, urteil,
+    // Zahlen für die Diagramme (erst nach dem Start; vor Ablauf der Prüfzeit nur ein Zwischenstand)
+    auswertung: e.gestartet_at ? baueAuswertung(zeilen, einst) : null,
   };
 }
 
@@ -210,7 +213,7 @@ export function liste(db, produkte, jetzt = new Date(), einst = EINSTELLUNGEN) {
   const aktuell = new Map(produkte.map((p) => [p.number, p]));
   return db.prepare("SELECT * FROM experiment ORDER BY id DESC").all().map((e) => {
     const d = baueDetail(e, db.prepare("SELECT * FROM experiment_angebot WHERE experiment_id = ?").all(e.id), aktuell, jetzt, einst);
-    const { angebote, ...kopf } = d; // die Liste braucht die einzelnen Angebote nicht
+    const { angebote, auswertung, ...kopf } = d; // die Liste braucht weder die einzelnen Angebote noch die Diagrammdaten
     return kopf;
   });
 }
