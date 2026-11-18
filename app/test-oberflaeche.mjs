@@ -1,0 +1,62 @@
+// Oberfläche nur englisch (Checkliste A1.11): sichtbare Texte in public/ und Fehlermeldungen der Module, die bei der Oberfläche
+// ankommen, enthalten keine Umlaute und kein ß. Kommentare dürfen deutsch bleiben, deshalb werden sie vorher entfernt.
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+const WURZEL = path.join(import.meta.dirname, "..");
+const DEUTSCH = /[äöüÄÖÜß]/;
+
+// Zerlegt JavaScript grob in Zeichenketten ('…', "…", `…`) und überspringt Kommentare. Regex-Literale werden nicht erkannt;
+// in den Dateien hier enthält keines ein Anführungszeichen, und ein Fehlgriff würde den Test eher rot als falsch grün machen.
+function zeichenketten(quelle) {
+  const aus = []; let i = 0;
+  while (i < quelle.length) {
+    const c = quelle[i], n = quelle[i + 1];
+    if (c === "/" && n === "/") { const e = quelle.indexOf("\n", i); i = e < 0 ? quelle.length : e; continue; }
+    if (c === "/" && n === "*") { const e = quelle.indexOf("*/", i + 2); i = e < 0 ? quelle.length : e + 2; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      let j = i + 1, text = "";
+      while (j < quelle.length && quelle[j] !== c) { if (quelle[j] === "\\") { text += quelle[j + 1]; j += 2; continue; } if (c !== "`" && quelle[j] === "\n") break; text += quelle[j]; j++; }
+      aus.push({ text, zeile: quelle.slice(0, i).split("\n").length }); i = j + 1; continue;
+    }
+    i++;
+  }
+  return aus;
+}
+
+test("Zerleger: findet Zeichenketten und überspringt Kommentare (auch mit Umlauten und Adressen)", () => {
+  const z = zeichenketten('// Kommentar mit Ä\nconst a = "eins"; /* Größe */ const b = `zwei ${x}`; const u = "https://x.y/z"; // noch ein Ö');
+  assert.deepEqual(z.map((x) => x.text), ["eins", "zwei ${x}", "https://x.y/z"]);
+  assert.ok(zeichenketten('const t = "Fehler: ungültig";').some((x) => DEUTSCH.test(x.text)), "ein deutscher Text würde gefunden");
+});
+
+test("public/*.js: keine Umlaute oder ß in Zeichenketten (alles Sichtbare ist englisch)", () => {
+  const funde = [];
+  for (const f of fs.readdirSync(path.join(WURZEL, "public")).filter((x) => x.endsWith(".js")))
+    for (const z of zeichenketten(fs.readFileSync(path.join(WURZEL, "public", f), "utf8"))) if (DEUTSCH.test(z.text)) funde.push(`${f}:${z.zeile} ${z.text.slice(0, 80)}`);
+  assert.deepEqual(funde, []);
+});
+
+test("public/*.html: keine Umlaute oder ß außerhalb von Kommentaren", () => {
+  const funde = [];
+  for (const f of fs.readdirSync(path.join(WURZEL, "public")).filter((x) => x.endsWith(".html"))) {
+    const ohne = fs.readFileSync(path.join(WURZEL, "public", f), "utf8").replace(/<!--[\s\S]*?-->/g, "");
+    ohne.split("\n").forEach((zeile, i) => { if (DEUTSCH.test(zeile)) funde.push(`${f}:${i + 1} ${zeile.trim().slice(0, 80)}`); });
+  }
+  assert.deepEqual(funde, []);
+});
+
+test("app/*.mjs: Fehlermeldungen an die Oberfläche (new Error, fehler(status, …)) sind englisch", () => {
+  // Nur Dateien, deren Meldungen über den Server bei der Oberfläche ankommen (Befehlszeilen-Werkzeuge wie benutzer.mjs und waechter.mjs bleiben deutsch)
+  const ui = ["auswertung", "bewertung", "demo", "ebay-schreiben", "einstellungen", "experimente", "export-ebay", "freigabe", "login", "protokoll", "regeln", "rollen", "server", "sicherung", "titelhilfe", "traffic"];
+  const muster = /(?:new Error|fehler)\(\s*(?:\d+\s*,\s*)?(["'`])((?:\\.|(?!\1).)*)\1/g;
+  const woerter = /\b(nicht|nur|fehlt|gefunden|antwortet|bitte|unter|kein|keine|ungültig)\b/i;
+  const funde = [];
+  for (const name of ui) {
+    const q = fs.readFileSync(path.join(WURZEL, "app", name + ".mjs"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((z) => z.replace(/(^|\s)\/\/.*$/, "")).join("\n");
+    for (const m of q.matchAll(muster)) if (DEUTSCH.test(m[2]) || woerter.test(m[2])) funde.push(`${name}.mjs: ${m[2].slice(0, 80)}`);
+  }
+  assert.deepEqual(funde, []);
+});

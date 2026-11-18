@@ -25,12 +25,24 @@ const aenderung = (v) => (v == null ? "n/a" : (v >= 0 ? "+" : "") + Math.round(1
 const datum = (s) => (s && !Number.isNaN(Date.parse(s)) ? new Date(s).toLocaleDateString(LOCALE) : "–");
 const bildUrl = (u) => (typeof u === "string" && /^https:\/\//i.test(u) ? u : null);
 const SEITENGROESSE = 40;
+// Breite Tabellen scrollen in ihrem eigenen Kasten, nie die ganze Seite (Telefon-Breite)
+const rollbar = (tabelle) => el("div", { class: "rollbar" }, tabelle);
 
 const zustand = { ich: { name: "", rolle: "builder" }, daten: null, tests: null, einst: null, tab: "sichtbarkeit", suche: "", sortierung: "potential", sichtbar: SEITENGROESSE };
 
+// Kleiner Zwischenspeicher im Tab (sessionStorage): ungespeicherte Titel überstehen so eine abgelaufene Sitzung und die neue Anmeldung.
+// Kann fehlen oder gesperrt sein (privates Fenster): dann geht es ohne.
+const entwurf = {
+  lies: (k) => { try { return sessionStorage.getItem("entwurf:" + k); } catch { return null; } },
+  merke: (k, v) => { try { sessionStorage.setItem("entwurf:" + k, v); } catch { /* ohne Zwischenspeicher */ } },
+  weg: (k) => { try { sessionStorage.removeItem("entwurf:" + k); } catch { /* ohne Zwischenspeicher */ } },
+};
+
 async function api(pfad, optionen) {
   const r = await fetch(pfad, optionen);
-  if (r.status === 401) { location.replace("/"); throw new Error("Please sign in."); } // Sitzung abgelaufen: zurück zur Anmeldung
+  // Sitzung abgelaufen: dieselbe Adresse neu laden. Der Server zeigt dann die Anmeldeseite, die Adresse (#tests/5) bleibt stehen,
+  // nach der Anmeldung geht es genau dorthin zurück, und eingetippte Titel liegen im Zwischenspeicher (entwurf).
+  if (r.status === 401) { location.reload(); throw new Error("Your session has expired. Please sign in again."); }
   let j;
   try { j = await r.json(); } catch { throw new Error("Unexpected response from the server."); }
   if (!j.ok) throw new Error(j.error || "Unknown error");
@@ -227,7 +239,7 @@ function schritteListe(aktuell, fertigBis) {
 function zeichneTestUebersicht() {
   $("#test-detail").hidden = true;
   const root = $("#tests-uebersicht"); root.hidden = false;
-  const { tests, moeglich, testGroesse } = zustand.tests;
+  const { tests, moeglich, testGroesse, gesperrt } = zustand.tests;
   const genug = moeglich >= testGroesse;
   const neu = el("button", { class: "knopf knopf-akzent", type: "button", text: "Draw a new test", disabled: !genug });
   neu.addEventListener("click", async () => {
@@ -242,6 +254,7 @@ function zeichneTestUebersicht() {
     el("div", { class: "panel" },
       el("h2", { text: "New test" }),
       el("p", { class: "leise", text: `${zahl(moeglich)} listings are flagged as “Low impressions” and free for a test. A test uses ${testGroesse} of them: the app draws them by lot, half get new titles (test group), half stay unchanged (control group).` }),
+      gesperrt ? el("p", { class: "leise klein", text: `${zahl(gesperrt)} listing${gesperrt === 1 ? " is" : "s are"} excluded from the draw because ${gesperrt === 1 ? "it is" : "they are"} part of a running price experiment in the shop.` }) : null,
       !genug ? el("p", { class: "leise", text: "There are not enough listings for a test of this size. Lower the test size in Settings." }) : null,
       el("div", { class: "aktionen" }, neu, !genug ? el("a", { class: "knopf", href: "#settings", text: "Open Settings" }) : null)),
     el("details", { class: "panel", ontoggle: async (ev) => {
@@ -281,7 +294,7 @@ function kontrollAngebote(d) { return d.angebote.filter((a) => a.gruppe === "kon
 function kontrollePanel(d) {
   return el("details", { class: "panel" },
     el("summary", { style: "cursor:pointer", text: `Control group (${d.anzahl.kontrolle} listings): leave these unchanged` }),
-    kontrollAngebote(d).map((a) => el("div", { class: "angebotszeile", style: "grid-template-columns: 48px minmax(0,1fr)" }, bildVon(a), listingName(a))));
+    kontrollAngebote(d).map((a) => el("div", { class: "angebotszeile zwei" }, bildVon(a), listingName(a))));
 }
 
 function detailVorbereitet(d) {
@@ -291,20 +304,25 @@ function detailVorbereitet(d) {
   const wegen = el("span", {});
   const fortschritt = el("span", { class: "leise", text: `${d.anzahl.titel} of ${d.anzahl.test} titles entered` });
   const aktualisiere = () => { const n = testAngebote(d).filter((a) => a.neu).length; fortschritt.textContent = `${n} of ${d.anzahl.test} titles entered`; start.disabled = n !== d.anzahl.test; if (manuell) manuell.disabled = n !== d.anzahl.test; };
+  const max = zustand.tests.titelMaxZeichen;   // vom Server (TITEL_MAX_ZEICHEN in regeln.mjs), keine eigene Kopie der Zahl
   const zeilen = testAngebote(d).map((a) => {
-    const feld = el("input", { class: "feld", type: "text", maxlength: "80", "aria-label": "New title for product " + a.number, placeholder: "New title (up to 80 characters)" });
+    const feld = el("input", { class: "feld", type: "text", maxlength: String(max), "aria-label": "New title for product " + a.number, placeholder: `New title (up to ${max} characters)` });
+    const schluessel = d.id + ":" + a.number;
     feld.value = a.neu || "";
     const stand = el("span", { class: "leise klein" });
-    const zaehler = el("span", { text: `${feld.value.length} / 80` });
+    const zaehler = el("span", { text: `${feld.value.length} / ${max}` });
     let t;
     const speichern = async () => {
       const wert = feld.value;
-      if (!wert.trim() || wert === (a.neu || "")) return;
+      if (!wert.trim() || wert === (a.neu || "")) { if (wert === (a.neu || "")) entwurf.weg(schluessel); return; }
       stand.textContent = "Saving…"; feld.removeAttribute("aria-invalid");
-      try { const r = await post("/api/experiment/titel", { id: d.id, number: a.number, neu: wert }); a.neu = r.neu; stand.textContent = "Saved"; aktualisiere(); }
+      try { const r = await post("/api/experiment/titel", { id: d.id, number: a.number, neu: wert }); a.neu = r.neu; if (feld.value === wert) entwurf.weg(schluessel); stand.textContent = "Saved"; aktualisiere(); }
       catch (e) { feld.setAttribute("aria-invalid", "true"); stand.textContent = e.message; }
     };
-    feld.addEventListener("input", () => { zaehler.textContent = `${feld.value.length} / 80`; clearTimeout(t); stand.textContent = ""; t = setTimeout(speichern, 700); });
+    // Ein Entwurf aus dem Zwischenspeicher (z. B. nach abgelaufener Sitzung) wird wieder eingesetzt und gespeichert
+    const gemerkt = entwurf.lies(schluessel);
+    if (gemerkt != null && gemerkt !== feld.value) { feld.value = gemerkt; zaehler.textContent = `${gemerkt.length} / ${max}`; stand.textContent = "Restored your unsaved title."; t = setTimeout(speichern, 300); }
+    feld.addEventListener("input", () => { entwurf.merke(schluessel, feld.value); zaehler.textContent = `${feld.value.length} / ${max}`; clearTimeout(t); stand.textContent = ""; t = setTimeout(speichern, 700); });
     feld.addEventListener("change", () => { clearTimeout(t); speichern(); });
     // Hinweise aus den eigenen Daten: Wörter der am besten gesehenen Angebote, die hier fehlen. Ein Klick hängt das Wort an (der Mensch entscheidet).
     const hilfe = el("div", { class: "leise klein titelhilfe" });
@@ -312,7 +330,7 @@ function detailVorbereitet(d) {
       if (!h.ok) return;
       if (!h.hinweise.length) { hilfe.textContent = "Title hint: no word stands out clearly in your best-seen listings, so the app suggests none."; return; }
       hilfe.append("Often in your best-seen listings, missing here: ", ...h.hinweise.map((x) => el("button", { class: "wort", type: "button", title: `In ${x.top} % of the top ${h.basis.top} listings, in ${x.rest} % of the others`, text: x.wort,
-        onclick: () => { const neu = (feld.value.trim() + " " + x.wort).trim(); if (neu.length > 80) { stand.textContent = "Too long for 80 characters."; return; } feld.value = neu; zaehler.textContent = `${neu.length} / 80`; feld.dispatchEvent(new Event("change")); } })));
+        onclick: () => { const neu = (feld.value.trim() + " " + x.wort).trim(); if (neu.length > max) { stand.textContent = `Too long for ${max} characters.`; return; } feld.value = neu; entwurf.merke(schluessel, neu); zaehler.textContent = `${neu.length} / ${max}`; feld.dispatchEvent(new Event("change")); } })));
     }).catch(() => {});
     return el("div", { class: "angebotszeile" }, bildVon(a), listingName(a), el("div", { class: "titelfeld" }, feld, el("div", { class: "zaehlerzeile" }, stand, zaehler), hilfe));
   });
@@ -332,7 +350,7 @@ function summe(zeilen, feld) {
   return zeilen.filter((z) => z.vorher && z.nachher).reduce((s, z) => ({ imp: s.imp + z[feld].imp, auf: s.auf + z[feld].auf, trans: s.trans + z[feld].trans }), { imp: 0, auf: 0, trans: 0 });
 }
 const titelListe = (d) => el("details", { class: "panel" }, el("summary", { style: "cursor:pointer", text: `Changed titles (${d.anzahl.test})` }),
-  testAngebote(d).map((a) => el("div", { class: "angebotszeile", style: "grid-template-columns: 48px minmax(0,1fr) minmax(0,1fr)" }, bildVon(a), kasten("Old title", a.alt, false), kasten("New title", a.neu || "", false))));
+  testAngebote(d).map((a) => el("div", { class: "angebotszeile titelpaar" }, bildVon(a), kasten("Old title", a.alt, false), kasten("New title", a.neu || "", false))));
 
 function kasten(beschriftung, text, mitKopie) {
   return el("div", { class: "kasten", style: "margin:0" }, el("div", { class: "kasten-kopf" }, el("span", { class: "leise", text: beschriftung }), mitKopie ? el("button", { class: "knopf knopf-klein", type: "button", onclick: () => kopiere(text), text: "Copy" }) : null), el("div", { class: "kasten-text", text }));
@@ -358,9 +376,9 @@ function detailLaeuft(d) {
     el("div", { class: "panel" },
       el("h2", { text: "Waiting for data" }),
       el("p", { class: "leise", text: `The test started on ${datum(d.gestartet_at)}. It is day ${d.tage} of ${d.pruefungNachTagen}. The verdict comes on ${datum(d.bereit_am)}. Until then, do not change these listings again.` }),
-      el("table", { class: "mini" }, el("thead", {}, el("tr", {}, el("th", { text: "Starting figures (30 days before the start)" }), el("th", { class: "zahl", text: "Impressions" }), el("th", { class: "zahl", text: "Sales" }))),
+      rollbar(el("table", { class: "mini" }, el("thead", {}, el("tr", {}, el("th", { text: "Starting figures (30 days before the start)" }), el("th", { class: "zahl", text: "Impressions" }), el("th", { class: "zahl", text: "Sales" }))),
         el("tbody", {}, el("tr", {}, el("td", { text: `Test group (${d.anzahl.test})` }), el("td", { class: "zahl", text: zahl(t.imp) }), el("td", { class: "zahl", text: zahl(t.trans) })),
-          el("tr", {}, el("td", { text: `Control group (${d.anzahl.kontrolle})` }), el("td", { class: "zahl", text: zahl(k.imp) }), el("td", { class: "zahl", text: zahl(k.trans) })))),
+          el("tr", {}, el("td", { text: `Control group (${d.anzahl.kontrolle})` }), el("td", { class: "zahl", text: zahl(k.imp) }), el("td", { class: "zahl", text: zahl(k.trans) }))))),
       el("div", { class: "aktionen" }, stop)),
     auswertungPanel(d.auswertung, true), titelListe(d), kontrollePanel(d),
   ];
@@ -391,10 +409,10 @@ function urteilBox(d) {
   return el("div", { class: "urteil " + info.klasse },
     el("div", { class: "urteil-titel", text: info.text }),
     el("p", { text: info.satz }),
-    el("table", { class: "mini" }, el("thead", {}, el("tr", {}, el("th", { text: "Last 30 days" }), el("th", { class: "zahl", text: "Before" }), el("th", { class: "zahl", text: "After" }), el("th", { class: "zahl", text: "Change" }))),
+    rollbar(el("table", { class: "mini" }, el("thead", {}, el("tr", {}, el("th", { text: "Last 30 days" }), el("th", { class: "zahl", text: "Before" }), el("th", { class: "zahl", text: "After" }), el("th", { class: "zahl", text: "Change" }))),
       el("tbody", {},
         zeileMit("Impressions, test group", u.test.vorher.imp, u.test.nachher.imp), zeileMit("Impressions, control group", u.kontrolle.vorher.imp, u.kontrolle.nachher.imp),
-        zeileMit("Sales, test group", u.test.vorher.trans, u.test.nachher.trans), zeileMit("Sales, control group", u.kontrolle.vorher.trans, u.kontrolle.nachher.trans))),
+        zeileMit("Sales, test group", u.test.vorher.trans, u.test.nachher.trans), zeileMit("Sales, control group", u.kontrolle.vorher.trans, u.kontrolle.nachher.trans)))),
     el("p", { class: "leise klein", text: `Net effect on impressions compared with the control group: ${aenderung(u.primaer.netto)}. Sales check: ${u.schutz.ok ? "sales did not fall too much" : "sales fell too much"}. The control group is drawn by lot, so season and chance affect both groups alike.` }));
 }
 
@@ -447,7 +465,7 @@ function gruppenKarte(f, zeilen, danach) {
     const text = f.schreibenAn ? `Approve and change ${offen.length} on eBay` : "Approve (dry run only)";
     const frage = f.schreibenAn ? `Really change ${offen.length} title${offen.length === 1 ? "" : "s"} on eBay?` : "Run the dry run?";
     knoepfe.push(zweiStufig(el("button", { class: "knopf knopf-akzent", type: "button", text }), frage, () => fertig("/api/freigabe/erteilen", { id: erste.experiment_id, art: erste.art },
-      (r) => r.schreibenAn ? `${r.angewendet} changed on eBay, ${r.fehlgeschlagen} failed.${r.gestartet ? " The test has started." : ""}` : `Dry run done: ${r.probelauf} listings checked, nothing was changed on eBay.`)));
+      (r) => r.schreibenAn ? `${r.angewendet} changed on eBay, ${r.fehlgeschlagen} failed.${r.gestartet ? " The test has started." : ""}` : `Dry run done: ${r.probelauf} change${r.probelauf === 1 ? "" : "s"} recorded in the Log, nothing was changed on eBay.${r.fehlgeschlagen ? ` ${r.fehlgeschlagen} could not be checked, see the reason below.` : ""}`)));
     knoepfe.push(zweiStufig(el("button", { class: "knopf", type: "button", text: "Reject" }), "Really reject?", () => fertig("/api/freigabe/ablehnen", { id: erste.experiment_id, art: erste.art }, "Rejected. Nothing was changed on eBay.")));
   }
   return el("div", { class: "panel" },
@@ -456,7 +474,7 @@ function gruppenKarte(f, zeilen, danach) {
       offen.length ? el("span", { class: "badge vorbereitet", text: `${offen.length} waiting` }) : el("span", { class: "badge", text: "Done" })),
     zeilen.slice().reverse().map((z) => {
       const [name, klasse] = AENDERUNG_STATUS[z.status] || [z.status, ""];
-      return el("div", { class: "angebotszeile", style: "grid-template-columns: minmax(0,1fr) minmax(0,1fr) 150px" },
+      return el("div", { class: "angebotszeile vergleich" },
         el("div", {}, el("div", { class: "nummer", text: `No. ${z.number} · eBay item ${z.item_id}` }), kasten("Now on eBay", z.alt, false)),
         kasten("Proposed title", z.neu, false),
         el("div", {}, el("span", { class: "badge " + klasse, text: name }), z.ergebnis ? el("p", { class: "leise klein", text: z.ergebnis }) : null));
@@ -473,7 +491,7 @@ async function ladeFreigaben() {
     const gruppiert = (offenFlag) => gruppenKarten(f, (a) => offene.includes(a.experiment_id + ":" + a.art) === offenFlag, ladeFreigaben);
     root.replaceChildren(
       el("div", { class: "einstieg" }, el("h1", { text: "Approvals" }),
-        el("p", { class: "leise", text: "Builders propose new titles. An admin checks them here and approves. Only then does the app change the title on eBay, and every change is written to the Log." })),
+        el("p", { class: "leise", text: `Builders propose new titles. An admin checks them here and approves. Only then does the app change the title on eBay, and every change is written to the Log. A single approval changes at most ${f.maxAenderungen} listings.` })),
       f.schreibenAn
         ? el("div", { class: "hinweiszeile", style: "margin-bottom:14px" }, el("span", { text: "Writing to eBay is ON on this computer. Approving changes real listings." }))
         : el("div", { class: "hinweiszeile", style: "margin-bottom:14px" }, el("span", { text: f.zugangsdaten ? "Writing to eBay is OFF (dry run). Approving only checks the listings and changes nothing. To allow changes, set EBAY_SCHREIBEN=an in the .env of the admin computer." : "This computer has no eBay credentials, so nothing can be changed on eBay from here." })),
@@ -516,7 +534,7 @@ async function ladeTeam() {
       el("div", { class: "einstieg" }, el("h1", { text: "Team" }),
         el("p", { class: "leise", text: "Admins approve changes that go to eBay and assign roles. Builders prepare tests and propose titles, but cannot change eBay. New people start as builders. Accounts are created on the computer that runs the app (npm run benutzer)." })),
       el("div", { class: "panel" },
-        el("table", { class: "mini" }, el("thead", {}, el("tr", {}, el("th", { text: "User" }), el("th", { text: "Role" }), el("th", { text: "Created" }))),
+        rollbar(el("table", { class: "mini" }, el("thead", {}, el("tr", {}, el("th", { text: "User" }), el("th", { text: "Role" }), el("th", { text: "Created" }))),
           el("tbody", {}, t.benutzer.map((b) => {
             const wahl = el("select", { class: "feld", "aria-label": "Role of " + b.name }, ["admin", "builder"].map((r) => el("option", { value: r, text: r === "admin" ? "Admin" : "Builder" })));
             wahl.value = b.rolle;
@@ -527,7 +545,7 @@ async function ladeTeam() {
               ladeTeam();
             });
             return el("tr", {}, el("td", { text: b.name + (b.name === zustand.ich.name ? " (you)" : "") }), el("td", {}, wahl), el("td", { text: datum(b.erstellt_at) }));
-          })))),
+          }))))),
       el("p", { class: "leise klein", text: `${t.admins} admin${t.admins === 1 ? "" : "s"}. There is always at least one.` }));
   } catch (e) { zeigeFehler(e, ladeTeam); }
 }
@@ -538,6 +556,17 @@ const LOG_TEXT = {
   ebay_changed: "Changed on eBay", ebay_failed: "eBay change failed", ebay_refused: "Not changed (title differs or listing inactive)", ebay_already_current: "Already up to date", ebay_dry_run: "Dry run",
   password_changed: "Password changed", backup: "Backup", test_created: "Test created", test_started: "Test started", test_started_manually: "Test started manually", test_closed: "Test closed", traffic_sync: "Traffic import",
 };
+// Die Protokoll-Details haben deutsche Schlüssel (so stehen sie in der Datenbank); angezeigt werden sie englisch
+const DETAIL_TEXT = {
+  test: "test", number: "product", alt: "old title", neu: "new title", art: "kind", aenderung: "change", anzahl: "count", schreibenAn: "writing to eBay", verkauft: "sold so far",
+  ack: "eBay answer", grund: "reason", fehler: "error", hinweis: "note", von: "from", zu: "to", dateien: "files", aktuell_bei_ebay: "now on eBay", listingStatus: "listing status",
+  seed: "draw number", kontrolle: "control", gesperrt: "excluded (price experiment)", ohneZugangsdaten: "no eBay credentials", abschluss: "outcome", gekuerzt: "shortened",
+  produkte: "products", kanaele: "channels", trafficBis: "traffic up to", tageGeholt: "days fetched", tageVorhanden: "days available", vollstaendig: "complete", limitErreicht: "limit reached",
+  nachgeprueft: "days rechecked", abweichungen: "corrections", abdeckungMittel: "coverage (mean)", abdeckungMin: "coverage (min)", sekunden: "seconds",
+};
+const WERT_TEXT = { titel: "new title", zurueck: "revert", behalten: "keep", true: "yes", false: "no" };
+const ERGEBNIS_TEXT = { ok: "ok", error: "error", dry_run: "dry run", refused: "refused" };
+const detailText = (details) => Object.entries(details).map(([k, v]) => `${DETAIL_TEXT[k] || k}: ${v !== null && typeof v === "object" ? JSON.stringify(v) : WERT_TEXT[String(v)] ?? v}`).join(" · ");
 async function ladeLog() {
   const root = $("#ansicht-log");
   try {
@@ -554,7 +583,7 @@ async function ladeLog() {
         el("p", { class: "leise", text: "Everything that was proposed, approved, changed on eBay or imported, with who did it and the result. Entries are only ever added, never edited. The latest 300 are shown." })),
       ts ? el("div", { class: "panel" }, el("h2", { text: "Traffic import" }),
         el("p", { class: "leise", text: !ts.zugangsdaten ? "This computer has no eBay credentials, so it does not import traffic. Data comes from the team copy in the repository."
-          : ts.automatisch ? `Runs automatically once a day from ${ts.uhrzeit}:00. Only finished days are imported (3 days delay), and the latest days are checked again against eBay.`
+          : ts.automatisch ? `Runs automatically once a day from ${ts.uhrzeit}:00. Only finished days are imported (${ts.verzoegerungTage} days delay), and the latest ${ts.nachpruefenTage} days are checked again against eBay.`
           : "Automatic import is off. Set EBAY_TRAFFIC_AUTO=an in the .env of this computer to import traffic every day." }),
         el("p", { class: "leise klein", text: `Last successful import: ${zeitpunkt(ts.letzterErfolg)} · last failed import: ${ts.letzterFehler ? zeitpunkt(ts.letzterFehler) : "none"}` }),
         jetztKnopf ? el("div", { class: "aktionen" }, jetztKnopf) : null) : null,
@@ -562,10 +591,10 @@ async function ladeLog() {
         el("p", { class: "leise klein", text: `Environment: ${bt.umgebung === "prod" ? "live" : bt.umgebung === "vorschau" ? "preview (cannot change eBay)" : "local"} · version: ${bt.version || "n/a"} · writing to eBay: ${bt.schreibenAn ? "on" : "off"} · notifications to the admin: ${bt.benachrichtigung ? "on" : "off"}` }),
         el("p", { class: "leise klein", text: sich.automatisch ? `Daily backup at ${sich.uhrzeit}:00 · last backup: ${zeitpunkt(sich.letzte)} · ${sich.anzahl} kept${sich.zweiterOrt ? " · copied to a second location" : " · no second location set"}` : "Automatic backup is off." }),
         sicherKnopf ? el("div", { class: "aktionen" }, sicherKnopf) : null) : null,
-      el("div", { class: "panel" }, l.length ? el("table", { class: "mini" }, el("thead", {}, el("tr", {}, ["When", "Who", "What", "Object", "Result", "Details"].map((x) => el("th", { text: x })))),
+      el("div", { class: "panel" }, l.length ? rollbar(el("table", { class: "mini protokoll" }, el("thead", {}, el("tr", {}, ["When", "Who", "What", "Object", "Result", "Details"].map((x) => el("th", { text: x })))),
         el("tbody", {}, l.map((z) => el("tr", {}, el("td", { text: zeitpunkt(z.zeit) }), el("td", { text: z.benutzer + (z.rolle ? ` (${z.rolle})` : "") }), el("td", { text: LOG_TEXT[z.aktion] || z.aktion }), el("td", { text: z.objekt || "" }),
-          el("td", {}, el("span", { class: "badge " + (z.ergebnis === "ok" ? "gut" : z.ergebnis === "error" || z.ergebnis === "refused" ? "schlecht" : ""), text: z.ergebnis })),
-          el("td", { class: "klein", text: z.details ? Object.entries(z.details).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ") : "" }))))) : el("p", { class: "leise", text: "Nothing logged yet." })));
+          el("td", {}, el("span", { class: "badge " + (z.ergebnis === "ok" ? "gut" : z.ergebnis === "error" || z.ergebnis === "refused" ? "schlecht" : ""), text: ERGEBNIS_TEXT[z.ergebnis] || z.ergebnis })),
+          el("td", { class: "klein details", text: z.details ? detailText(z.details) : "" })))))) : el("p", { class: "leise", text: "Nothing logged yet." })));
   } catch (e) { zeigeFehler(e, ladeLog); }
 }
 
