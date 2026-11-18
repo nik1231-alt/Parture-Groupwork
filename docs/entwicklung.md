@@ -83,6 +83,28 @@ server/               Vorlagen für den Server (.env, Cloudflare, Windows-Aufgab
 docs/                 diese Dokumente
 ```
 
+### Feste Zahlen: jede genau einmal
+
+Server, Tests und Oberfläche lesen dieselbe Konstante; die Oberfläche bekommt sie über die API (`/api/betrieb` → `regeln`, dazu `/api/experimente`, `/api/freigaben`, `/api/traffic/status`), nie als eigene Kopie.
+
+| Zahl | Konstante | Datei |
+|---|---|---|
+| Titel höchstens 80 Zeichen | `TITEL_MAX_ZEICHEN` | `app/regeln.mjs` |
+| höchstens 50 Änderungen je Freigabe | `MAX_AENDERUNGEN` | `app/freigabe.mjs` |
+| Zielmarke +20 % (einstellbar) | `EINSTELLUNGEN.besserAb` | `app/regeln.mjs` |
+| Sperre nach 5 Fehlversuchen für 15 Minuten | `MAX_FEHLVERSUCHE`, `SPERRE_MINUTEN` | `app/login.mjs` |
+| Datenverzug 3 Tage / letzte 3 Tage nachgeprüft | `VERZOEGERUNG_STANDARD` (geltend: `verzoegerungTage()`), `NACHPRUEFEN_TAGE` | `app/traffic.mjs` |
+
+### Das Los und die Sperrliste
+
+Das Los (`experimente.ziehe`) ist reproduzierbar: der Zufallswert (`seed`) steht in `experiment.seed` und im Protokoll (`test_created`). Die Gruppen sind gleich groß (bei ungerader Zahl höchstens 1 Unterschied), kein Angebot kommt doppelt vor. Angebote aus der Tabelle `sperre` in `pm.db` (vom Hub: laufender Preisversuch; gesperrt über `number` oder über die eBay-Artikelnummer `external_id`, bis einschließlich `bis`) werden nie gezogen. Fehlt die Tabelle, ist nichts gesperrt. Tests: `app/test-los.mjs`.
+
+### Prüfskripte
+
+- `npm test`: alle Tests (rund 35 Sekunden). Darin `app/test-durchlauf.mjs`, der ganze Weg gegen den echten Server (Builder zieht und schlägt vor, Admin gibt im Probelauf frei, Protokoll, Testansicht), und `app/test-oberflaeche.mjs` (keine deutschen Reste in sichtbaren Texten).
+- `npm run tote`: exportierte Funktionen in `app/`, die keine andere Datei erwähnt. Ausgabe muss leer sein; Absichtliches steht begründet in der Ausnahmeliste im Skript.
+- Kindprozesse in Tests (Server) erst beenden und auf `exit` warten, dann Dateien löschen: unter Windows hält der laufende Prozess `app.db` offen (EBUSY).
+
 Konventionen: Module liefern `{ ok, wert }` oder `{ ok: false, status, fehler }`. Texte aus Daten (z. B. eBay-Titel) werden nie als HTML eingesetzt. Sichtbare Texte der Oberfläche sind Englisch, Code und Kommentare Deutsch. Eingaben werden im Modul geprüft (Typ, Länge, Zustand), nicht erst in der Oberfläche.
 
 ## Was Builder nicht können (und nicht sollen)
