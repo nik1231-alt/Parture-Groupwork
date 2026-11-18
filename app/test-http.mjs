@@ -20,7 +20,12 @@ test.before(async () => {
   for (let i = 0; i < 50; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
-test.after(() => { server?.kill(); fs.rmSync(verz, { recursive: true, force: true }); });
+// Erst auf das Ende des Servers warten, dann löschen: unter Windows hält der laufende Prozess app.db offen (EBUSY beim rmSync,
+// Parture-Server 18.11.2026) — dieselbe Falle wie in test-betrieb-http.mjs.
+test.after(async () => {
+  if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
+  fs.rmSync(verz, { recursive: true, force: true });
+});
 
 const post = (p, body, kopf = {}) => fetch(basis + p, { method: "POST", headers: { "Content-Type": "application/json", ...kopf }, body: JSON.stringify(body) });
 async function anmelden() {
