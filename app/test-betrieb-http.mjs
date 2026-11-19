@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { bereiteVor, legeBenutzerAn } from "./login.mjs";
-import { laDatum } from "./traffic.mjs";
+import { laDatum, VERZOEGERUNG_STANDARD } from "./traffic.mjs";
 
 const PORT = 4000 + Math.floor(Math.random() * 90);
 const verz = fs.mkdtempSync(path.join(os.tmpdir(), "parture-betrieb-"));
@@ -18,7 +18,7 @@ fs.mkdirSync(path.join(verz, "daten"), { recursive: true });
 const basis = `http://127.0.0.1:${PORT}`;
 let server;
 test.before(async () => {
-  server = spawn(process.execPath, [path.join(import.meta.dirname, "server.mjs")], { env: { ...process.env, PM_OHNE_ENV: "1", PM_PORT: String(PORT), PM_APPDB: appdb, PM_DB: pmdb, PM_UMGEBUNG: "vorschau", TRAFFIC_VERZOEGERUNG_TAGE: "3", SICHERUNG_AUTO: "aus", SICHERUNG_ORDNER: path.join(verz, "s"), CF_ACCESS_TEAM_DOMAIN: "", CF_ACCESS_AUD: "" }, stdio: "ignore" });
+  server = spawn(process.execPath, [path.join(import.meta.dirname, "server.mjs")], { env: { ...process.env, PM_OHNE_ENV: "1", PM_PORT: String(PORT), PM_APPDB: appdb, PM_DB: pmdb, PM_UMGEBUNG: "vorschau", TRAFFIC_VERZOEGERUNG_TAGE: String(VERZOEGERUNG_STANDARD), SICHERUNG_AUTO: "aus", SICHERUNG_ORDNER: path.join(verz, "s"), CF_ACCESS_TEAM_DOMAIN: "", CF_ACCESS_AUD: "" }, stdio: "ignore" });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
@@ -34,7 +34,7 @@ const betrieb = async (c) => (await (await fetch(basis + "/api/betrieb", { heade
 test("Datenstand: Soll = heute minus Verzögerung. Pünktlich ist unauffällig, 1 Tag Rückstand auch, ab 2 Tagen veraltet", async () => {
   const c = await cookie();
   for (const [rueck, veraltet] of [[0, false], [1, false], [2, true], [6, true]]) {
-    setzeStand(laDatum(new Date(), 3 + rueck));
+    setzeStand(laDatum(new Date(), VERZOEGERUNG_STANDARD + rueck));
     const d = (await betrieb(c)).daten;
     assert.equal(d.rueckstandTage, rueck); assert.equal(d.veraltet, veraltet, `Rückstand ${rueck}`);
   }

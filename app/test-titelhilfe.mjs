@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { woerter, hinweiseFuer } from "./titelhilfe.mjs";
+import { TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 
 const p = (nr, title, imp) => ({ number: String(nr), title, impressionen_90d: imp });
 // 10 gut gesehene Angebote mit "halterung" und "magnetisch", 30 schlecht gesehene ohne
@@ -25,7 +26,7 @@ test("Hinweise: nur Wörter, die oben oft und unten selten vorkommen und im eige
   assert.ok(!w.includes("handy"), "steht schon im eigenen Titel");
   assert.ok(!w.includes("modell"), "kommt oben wie unten gleich oft vor");
   assert.equal(r.hinweise.find((h) => h.wort === "halterung").top, 100);
-  assert.equal(r.freieZeichen, 80 - "Handy Ständer Tisch".length);
+  assert.equal(r.freieZeichen, TITEL_MAX_ZEICHEN - "Handy Ständer Tisch".length);
 });
 
 test("Hinweise: zu wenig Daten oder unbekanntes Produkt liefern ok:false statt Raten", () => {

@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { bewerte, conversion, klickrate, leiteSchwellenAb, EINSTELLUNGEN, GRUPPEN } from "./regeln.mjs";
+import { bewerte, conversion, klickrate, leiteSchwellenAb, EINSTELLUNGEN, GRUPPEN, TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 import * as einst from "./einstellungen.mjs";
 import * as ex from "./experimente.mjs";
 import { baueBewertung } from "./bewertung.mjs";
@@ -93,7 +93,7 @@ test("Einstellungen: Startwerte, Speichern, Überschreiben, Zurücksetzen", () =
 
 test("Einstellungen: ungültige Werte werden abgelehnt und nichts wird gespeichert", () => {
   const d = db();
-  const abgelehnt = (e, muster) => { const r = einst.speichere(d, e); assert.equal(r.ok, false); assert.match(r.fehler, muster); };
+  const abgelehnt = (e, muster) => { const r = einst.speichere(d, e); assert.equal(r.ok, false); assert.equal(r.status, 400); assert.match(r.fehler, muster); };
   abgelehnt({ anteilUnten: 0.9 }, /between 5 and 50/);        // zu groß
   abgelehnt({ anteilUnten: 0.01 }, /between 5 and 50/);       // zu klein
   abgelehnt({ anteilUnten: "25" }, /enter a number/);         // falscher Typ
@@ -252,8 +252,9 @@ test("Titel eintragen: nur für die Testgruppe, geprüft, überschreibbar", () =
   const f = (e) => ex.setzeTitel(v.d, { id: v.id, number: t, ...e }, E);
   assert.equal(f({ neu: "" }).status, 400);
   assert.equal(f({ neu: "   " }).status, 400);
-  assert.equal(f({ neu: "x".repeat(81) }).status, 400);
-  assert.equal(f({ neu: "x".repeat(80) }).ok, true);                         // genau 80 sind erlaubt
+  assert.equal(f({ neu: "x".repeat(TITEL_MAX_ZEICHEN + 1) }).status, 400);
+  assert.match(f({ neu: "x".repeat(TITEL_MAX_ZEICHEN + 1) }).fehler, new RegExp(`at most ${TITEL_MAX_ZEICHEN} characters`));
+  assert.equal(f({ neu: "x".repeat(TITEL_MAX_ZEICHEN) }).ok, true);          // genau TITEL_MAX_ZEICHEN (80) sind erlaubt
   assert.equal(f({ neu: "Titel\u0000mit Steuerzeichen" }).status, 400);
   assert.equal(f({ neu: 5 }).status, 400);
   assert.equal(f({ neu: v.d.prepare("SELECT alt FROM experiment_angebot WHERE number = ?").get(t).alt }).status, 400); // unverändert
@@ -305,10 +306,11 @@ test("Urteil: wächst die Kontrollgruppe genauso, ist es kein Unterschied (Saiso
   assert.equal(r.urteil, "no_difference"); assert.equal(r.empfehlung, "revert"); // zählt wie "nicht besser"
 });
 
-test("Urteil: Grenze bei genau 20 % Mehr, knapp darunter ist es kein Unterschied", () => {
+test("Urteil: Grenze bei genau der Zielmarke (besserAb, Standard +20 %), knapp darunter ist es kein Unterschied", () => {
   const k = G(S(1000, 50, 10), S(1000, 50, 10));
-  assert.equal(ex.urteile(G(S(1000, 0, 10), S(1200, 0, 10)), k, E).urteil, "better");
-  assert.equal(ex.urteile(G(S(1000, 0, 10), S(1199, 0, 10)), k, E).urteil, "no_difference");
+  const marke = Math.round(1000 * (1 + EINSTELLUNGEN.besserAb));   // 1200 bei +20 %
+  assert.equal(ex.urteile(G(S(1000, 0, 10), S(marke, 0, 10)), k, E).urteil, "better");
+  assert.equal(ex.urteile(G(S(1000, 0, 10), S(marke - 1, 0, 10)), k, E).urteil, "no_difference");
 });
 
 test("Urteil: weniger Impressionen oder zu viel weniger Verkäufe -> schlechter (Schutzkennzahl)", () => {
@@ -444,19 +446,20 @@ test("Login: falsches Passwort, unbekannter Name und seltsame Eingaben werden ab
   assert.equal(d.prepare("SELECT COUNT(*) n FROM sitzung").get().n, 0);
 });
 
-test("Login: nach 5 Fehlversuchen ist der Name gesperrt, auch mit richtigem Passwort, dann wieder frei", () => {
+test("Login: nach MAX_FEHLVERSUCHE (5) Fehlversuchen ist der Name SPERRE_MINUTEN (15) gesperrt, auch mit richtigem Passwort, dann wieder frei", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
-  for (let i = 0; i < 5; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
-  assert.equal(lg.anmelden(d, "anna", PW, JETZT).status, 429);
-  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + 14 * 60000)).status, 429);
-  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + 16 * 60000)).ok, true);
+  for (let i = 0; i < lg.MAX_FEHLVERSUCHE; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
+  const gesperrt = lg.anmelden(d, "anna", PW, JETZT);
+  assert.equal(gesperrt.status, 429); assert.match(gesperrt.fehler, new RegExp(`${lg.SPERRE_MINUTEN} minutes`));
+  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + (lg.SPERRE_MINUTEN - 1) * 60000)).status, 429);
+  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + (lg.SPERRE_MINUTEN + 1) * 60000)).ok, true);
 });
 
 test("Login: ein erfolgreicher Versuch setzt den Fehlerzähler zurück", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
-  for (let i = 0; i < 4; i++) lg.anmelden(d, "anna", "falsch-falsch", JETZT);
+  for (let i = 0; i < lg.MAX_FEHLVERSUCHE - 1; i++) lg.anmelden(d, "anna", "falsch-falsch", JETZT);
   assert.equal(lg.anmelden(d, "anna", PW, JETZT).ok, true);
-  for (let i = 0; i < 4; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
+  for (let i = 0; i < lg.MAX_FEHLVERSUCHE - 1; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
 });
 
 test("Login: Sitzung läuft nach 12 Stunden ab, Abmelden beendet sie sofort, ein erfundenes Token gilt nicht", () => {
@@ -497,7 +500,7 @@ test("Login: Sperre je Adresse über alle Namen, andere Adressen und der richtig
   for (let i = 0; i < lg.MAX_FEHLVERSUCHE_IP; i++) assert.equal(lg.anmelden(d, "name" + i, "falsch-falsch", JETZT, "1.2.3.4").status, 401, "jeder Name nur einmal falsch: keine Namenssperre");
   assert.equal(lg.anmelden(d, "anna", PW, JETZT, "1.2.3.4").status, 429, "die Adresse ist gesperrt, auch mit richtigem Passwort");
   assert.equal(lg.anmelden(d, "anna", PW, JETZT, "5.6.7.8").ok, true, "eine andere Adresse kann sich anmelden");
-  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + 16 * 60000), "1.2.3.4").ok, true, "nach der Sperrzeit wieder frei");
+  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + (lg.SPERRE_MINUTEN + 1) * 60000), "1.2.3.4").ok, true, "nach der Sperrzeit wieder frei");
 });
 
 test("Login: Passwort ändern prüft das alte, verlangt ein neues, beendet andere Sitzungen und gibt eine neue", () => {
@@ -519,7 +522,7 @@ test("Login: Passwort ändern prüft das alte, verlangt ein neues, beendet ander
 
 test("Login: falsche alte Passwörter beim Ändern zählen als Fehlversuche und sperren irgendwann", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
-  for (let i = 0; i < 5; i++) lg.aendernPasswort(d, "anna", "falsch-falsch", "ein-neues-passwort", JETZT);
+  for (let i = 0; i < lg.MAX_FEHLVERSUCHE; i++) lg.aendernPasswort(d, "anna", "falsch-falsch", "ein-neues-passwort", JETZT);
   assert.equal(lg.aendernPasswort(d, "anna", PW, "ein-neues-passwort", JETZT).status, 429);
 });
 

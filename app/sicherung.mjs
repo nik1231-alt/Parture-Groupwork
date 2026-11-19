@@ -38,7 +38,7 @@ export async function sichere({ quellen, ziel, ziel2 = "", behalte = 14, jetzt =
       db.close(); db = null;
       // Die Kopie behält sonst den WAL-Modus der Quelle und legt beim Öffnen Nebendateien (-wal, -shm) an: zurück auf eine einzelne Datei
       { const k = new Database(datei); try { k.pragma("journal_mode = DELETE"); } finally { k.close(); } }
-      if (!istHeil(datei)) { fs.rmSync(datei, { force: true }); throw new Error("Sicherung ist nicht unversehrt"); }
+      if (!istHeil(datei)) { fs.rmSync(datei, { force: true }); throw new Error("The backup copy failed the integrity check"); }
       if (ziel2) { fs.mkdirSync(ziel2, { recursive: true }); fs.copyFileSync(datei, path.join(ziel2, path.basename(datei))); }
       gesichert.push({ name: q.name, datei, bytes: fs.statSync(datei).size });
     } catch (e) { fehler.push(`${q.name}: ${e.message}`); try { db?.close(); } catch { /* schon zu */ } }
@@ -48,7 +48,7 @@ export async function sichere({ quellen, ziel, ziel2 = "", behalte = 14, jetzt =
 }
 
 // Pro Quelle nur die neuesten "behalte" Dateien lassen (die Namen sortieren nach Zeit)
-export function aufraeumen(ordner, namen, behalte) {
+function aufraeumen(ordner, namen, behalte) {
   for (const n of namen) {
     const dateien = fs.readdirSync(ordner).filter((f) => new RegExp(`^${n}-\\d{4}-\\d{2}-\\d{2}-\\d{4}\\.db$`).test(f)).sort();
     for (const alt of dateien.slice(0, Math.max(0, dateien.length - behalte))) fs.rmSync(path.join(ordner, alt), { force: true });
@@ -63,14 +63,14 @@ export function liste(ordner) {
 
 // Spielt eine Sicherung zurück. Die bisherige Datei wird nicht gelöscht, sondern daneben abgelegt.
 export function stelleWiederHer(sicherung, zielDatei, jetzt = new Date()) {
-  if (!fs.existsSync(sicherung)) throw new Error("Sicherung nicht gefunden: " + sicherung);
-  if (!istHeil(sicherung)) throw new Error("Diese Sicherung ist nicht unversehrt, sie wird nicht zurückgespielt.");
+  if (!fs.existsSync(sicherung)) throw new Error("Backup not found: " + sicherung);
+  if (!istHeil(sicherung)) throw new Error("This backup failed the integrity check, it is not restored.");
   let alt = null;
   if (fs.existsSync(zielDatei)) { alt = `${zielDatei}.vor-wiederherstellung-${stempel(jetzt)}`; fs.renameSync(zielDatei, alt); }
   for (const e of ["-wal", "-shm"]) fs.rmSync(zielDatei + e, { force: true });   // Reste der alten Datei dürfen nicht an der neuen hängen
   fs.mkdirSync(path.dirname(zielDatei), { recursive: true });
   fs.copyFileSync(sicherung, zielDatei);
-  if (!istHeil(zielDatei)) throw new Error("Zurückgespielte Datei ist nicht unversehrt" + (alt ? "; die alte liegt unter " + alt : ""));
+  if (!istHeil(zielDatei)) throw new Error("The restored file failed the integrity check" + (alt ? "; the previous file is at " + alt : ""));
   return { alt };
 }
 
