@@ -112,3 +112,16 @@ Konventionen: Module liefern `{ ok, wert }` oder `{ ok: false, status, fehler }`
 - Bei eBay schreiben: die Keys liegen nur bei Niko auf PROD.
 - Freigeben oder Rollen ändern: nur Admin (der Server prüft das, nicht nur die Oberfläche).
 - Ungeprüften Code auf PROD bringen: dafür muss er über `main`, Review und Tests.
+
+## Drei Regeln aus dem Serverbetrieb (17./18.11.2026)
+
+- **Kindprozesse in Tests immer zu Ende warten, erst dann aufräumen.** `kill()` beendet einen Prozess nicht sofort; unter Windows hält er Dateien wie `app.db` noch offen und `rmSync` scheitert mit `EBUSY`. Muster:
+  ```js
+  if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
+  fs.rmSync(verz, { recursive: true, force: true });
+  ```
+  Startet ein Prozess selbst Kinder (der Wächter startet die App), beendet `kill()` auf den Elternprozess unter Windows das Kind **nicht** mit: die PID des Kindes merken und es selbst beenden (`app/test-waechter.mjs`).
+- **Vor `npm ci` stoppt der Wächter die App** (Haken `vorInstallation`, seit PR #9). Windows sperrt die geladene `better_sqlite3.node`; ein `npm ci` bei laufender App scheitert mit `EPERM` und hinterlässt ein fast leeres `node_modules`. Wer `package.json` ändert, löst diesen Weg aus.
+- **Der Wächter lädt seinen eigenen Code nur beim Start.** Eine Änderung an `app/waechter.mjs` wirkt erst, wenn die Aufgabe neu gestartet ist: Aufgabe stoppen, den alten `node …\app\server.mjs` per PID beenden (er überlebt `Stop-ScheduledTask` und hält den Port), Aufgabe starten. Das macht Niko oder die Server-KI, nicht der Wächter selbst.
+
+Die CI prüft seit dem 19.11. auf Ubuntu **und** Windows (`.github/workflows/pruefung.yml`, Matrix), weil die beiden Fehler oben nur unter Windows auftraten. `npm test` dauert lokal rund 35 Sekunden; über 60 Sekunden gilt als Fehler, der behoben wird.
