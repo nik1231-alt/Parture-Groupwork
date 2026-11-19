@@ -1,23 +1,21 @@
-// KI-Titel für Stufe 1 der Leiter: Claude schlägt drei neue eBay-Titel vor, der Regelprüfer (titel-regeln.mjs) lässt nur sichere durch.
+// KI-Titel für Stufe 1 der Leiter: Google Gemini schlägt drei neue eBay-Titel vor, der Regelprüfer (titel-regeln.mjs) lässt nur sichere durch.
 // Die KI entscheidet nichts allein: Der beste regelkonforme Vorschlag geht zur Freigabe, ein Admin gibt ihn frei oder nicht.
 //
-// Schlüssel: ANTHROPIC_API_KEY in der .env des Servers (nur Admin, nie im Repo, genau wie die eBay-Keys).
+// Schlüssel: GOOGLE_API_KEY in der .env des Servers (nur Admin, nie im Repo, genau wie die eBay-Keys).
 // Ohne Schlüssel gibt es einen Regelvorschlag aus der Titelhilfe (häufige Wörter der meistgesehenen eigenen Angebote),
-// klar als "ohne KI" gekennzeichnet. Modell: KI_MODELL in der .env, sonst claude-opus-5-5.
-import Anthropic from "@anthropic-ai/sdk";
+// klar als "ohne KI" gekennzeichnet. Modell: KI_MODELL in der .env, sonst gemini-3.5-flash.
+// Aufruf über die REST-Schnittstelle der Gemini-API mit fetch, ohne zusätzliche Abhängigkeit.
 import { pruefeTitel, REGELN_FUER_KI, FUELL } from "./titel-regeln.mjs";
 import { TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 
+const ENDPUNKT = "https://generativelanguage.googleapis.com/v1beta/models/";
+// Antwortformat, das Gemini einhalten muss (festes JSON statt freiem Text)
 const SCHEMA = {
-  type: "object",
+  type: "OBJECT",
   properties: {
-    vorschlaege: {
-      type: "array",
-      items: { type: "object", properties: { titel: { type: "string" }, begruendung: { type: "string" } }, required: ["titel", "begruendung"], additionalProperties: false },
-    },
+    vorschlaege: { type: "ARRAY", items: { type: "OBJECT", properties: { titel: { type: "STRING" }, begruendung: { type: "STRING" } }, required: ["titel", "begruendung"] } },
   },
   required: ["vorschlaege"],
-  additionalProperties: false,
 };
 
 const auftrag = ({ alt, hinweisWoerter }) => [
@@ -46,27 +44,30 @@ export function regelVorschlag(alt, hinweisWoerter) {
   return genutzt.length ? { titel: t, begruendung: `Adds words that often appear in the most-seen listings: ${genutzt.join(", ")}.` } : null;
 }
 
-// client: zum Testen austauschbar (gleiche Form wie das Anthropic-SDK: client.beta.messages.create).
-export function erzeuge({ env = process.env, client = null } = {}) {
-  const schluessel = env.ANTHROPIC_API_KEY || "";
-  const modell = env.KI_MODELL || "claude-opus-5-5";
-  const konfiguriert = () => !!(client || schluessel);
-  const ki = () => client || new Anthropic({ apiKey: schluessel, timeout: 60_000, maxRetries: 2 });
+// fetchFn: zum Testen austauschbar (die Tests bauen die Gemini-Antwort nach, ohne Netz).
+export function erzeuge({ env = process.env, fetchFn = fetch } = {}) {
+  const schluessel = env.GOOGLE_API_KEY || "";
+  const modell = env.KI_MODELL || "gemini-3.5-flash";
+  const konfiguriert = () => !!schluessel;
 
   async function frageKi(eingabe) {
-    const antwort = await ki().beta.messages.create({
-      model: modell,
-      max_tokens: 4000,
-      // Lehnt die Sicherheitsprüfung ab, rechnet die API die Anfrage selbst auf einem passenden Modell neu (statt nur abzulehnen)
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "low", format: { type: "json_schema", schema: SCHEMA } },
-      messages: [{ role: "user", content: auftrag(eingabe) }],
+    const r = await fetchFn(ENDPUNKT + encodeURIComponent(modell) + ":generateContent", {
+      method: "POST", signal: AbortSignal.timeout(60000),
+      headers: { "x-goog-api-key": schluessel, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: auftrag(eingabe) }] }],
+        generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA },
+      }),
     });
-    if (antwort.stop_reason === "refusal") throw new Error("The AI declined this request.");
-    if (antwort.stop_reason === "max_tokens") throw new Error("The AI answer was cut off.");
-    const text = antwort.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-    const daten = JSON.parse(text);
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 400 || r.status === 401 || r.status === 403) throw new Error(`The AI key is not valid or not allowed (${r.status}${j.error?.message ? ": " + j.error.message.slice(0, 120) : ""}).`);
+    if (r.status === 429) throw new Error("The AI is busy (rate limit), try again later.");
+    if (!r.ok) throw new Error(`The AI answered with an error (${r.status}).`);
+    const kandidat = j.candidates?.[0];
+    if (!kandidat || kandidat.finishReason === "SAFETY" || j.promptFeedback?.blockReason) throw new Error("The AI declined this request.");
+    if (kandidat.finishReason === "MAX_TOKENS") throw new Error("The AI answer was cut off.");
+    const text = (kandidat.content?.parts || []).map((p) => p.text || "").join("").replace(/```json|```/g, "").trim();
+    let daten; try { daten = JSON.parse(text); } catch { throw new Error("The AI answer was not readable."); }
     return (daten.vorschlaege || []).slice(0, 5).map((v) => ({ titel: String(v.titel || "").replace(/\s+/g, " ").trim(), begruendung: String(v.begruendung || "").slice(0, 300) }));
   }
 
@@ -82,15 +83,13 @@ export function erzeuge({ env = process.env, client = null } = {}) {
           if (p.ok && v.titel !== alt) return { ok: true, wert: { ...v, quelle: "ki", modell, pruefung: p, verworfen } };
           verworfen.push({ titel: v.titel, verstoesse: p.ok ? [{ regel: "gleich", text: "Same as the old title." }] : p.verstoesse });
         }
-      } catch (e) {
-        kiFehler = e instanceof Anthropic.AuthenticationError ? "The AI key is not valid." : e instanceof Anthropic.RateLimitError ? "The AI is busy (rate limit), try again later." : e instanceof Anthropic.APIError ? `The AI answered with an error (${e.status}).` : e.message;
-      }
+      } catch (e) { kiFehler = e.name === "TimeoutError" ? "The AI did not answer in time." : e.message; }
     }
     const r = regelVorschlag(alt, hinweisWoerter);
     const p = r ? pruefeTitel(r.titel, alt) : null;
     if (r && p.ok) return { ok: true, wert: { ...r, quelle: "regel", pruefung: p, verworfen, hinweis: kiFehler || (konfiguriert() ? "No AI suggestion passed the rule check." : "No AI key on this computer, so this suggestion comes from the title help.") } };
     const grund = kiFehler || (verworfen.length ? "No suggestion passed the rule check."
-      : konfiguriert() ? "The AI gave no suggestion." : "There is no AI key on this computer (ANTHROPIC_API_KEY), and the title help found no fitting words.");
+      : konfiguriert() ? "The AI gave no suggestion." : "There is no AI key on this computer (GOOGLE_API_KEY), and the title help found no fitting words.");
     return { ok: false, status: 409, fehler: grund + " Enter a title by hand.", verworfen };
   }
 
