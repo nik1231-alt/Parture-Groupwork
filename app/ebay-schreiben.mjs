@@ -15,6 +15,9 @@ const alle = (x, t) => [...x.matchAll(new RegExp(`<${t}(?:\\s[^>]*)?>([\\s\\S]*?
 
 export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date.now() } = {}) {
   const schreibenAn = () => String(env.EBAY_SCHREIBEN || "").trim().toLowerCase() === "an";
+  // Werbung und Preis kosten Geld bzw. Marge: je ein eigener Schalter zusätzlich zu EBAY_SCHREIBEN (Leiter, Stufe 2 und 3)
+  const werbungAn = () => String(env.EBAY_WERBUNG || "").trim().toLowerCase() === "an";
+  const preisAn = () => String(env.EBAY_PREIS || "").trim().toLowerCase() === "an";
   const konfiguriert = () => !!(env.EBAY_APP_ID && env.EBAY_CERT_ID && env.EBAY_REFRESH_TOKEN);
   let token = { wert: null, bis: 0 };
 
@@ -45,11 +48,69 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { http: r.status, ack, fehler: fehlerListe, xml: x };
   }
 
-  // Liest Titel, Status und Verkäufe eines Angebots (nur lesen).
+  // Liest Titel, Status, Verkäufe und Preis eines Angebots (nur lesen). Bei Varianten-Angeboten: Preis je Variante (SKU).
   async function lies(itemId) {
-    const r = await trading("GetItem", `<ItemID>${xmlText(itemId)}</ItemID><OutputSelector>Item.Title</OutputSelector><OutputSelector>Item.SellingStatus.QuantitySold</OutputSelector><OutputSelector>Item.SellingStatus.ListingStatus</OutputSelector>`);
+    const felder = ["Item.Title", "Item.SellingStatus.QuantitySold", "Item.SellingStatus.ListingStatus", "Item.StartPrice", "Item.Variations.Variation.SKU", "Item.Variations.Variation.StartPrice"];
+    const r = await trading("GetItem", `<ItemID>${xmlText(itemId)}</ItemID>${felder.map((f) => `<OutputSelector>${f}</OutputSelector>`).join("")}`);
     if (r.ack === "Failure" || r.http !== 200) return { ok: false, meldung: r.fehler.map((f) => f.text).join(" ") || "eBay answered with HTTP " + r.http };
-    return { ok: true, titel: entities(tag(r.xml, "Title")), status: tag(r.xml, "ListingStatus"), verkauft: Number(tag(r.xml, "QuantitySold") || 0) };
+    const variationen = alle(r.xml, "Variation").map((v) => ({ sku: entities(tag(v, "SKU")), preis: Number(tag(v, "StartPrice")) }));
+    const ohneVariationen = r.xml.replace(/<Variations>[\s\S]*<\/Variations>/, "");
+    return { ok: true, titel: entities(tag(r.xml, "Title")), status: tag(r.xml, "ListingStatus"), verkauft: Number(tag(r.xml, "QuantitySold") || 0), preis: Number(tag(ohneVariationen, "StartPrice")) || null, variationen };
+  }
+
+  // Setzt den Preis (Leiter, Stufe 3). skus leer = Angebot ohne Varianten; sonst bekommen alle Varianten denselben Preis.
+  // ReviseInventoryStatus nimmt höchstens 4 Einträge je Aufruf.
+  async function setzePreis(itemId, skus, preis) {
+    if (!schreibenAn() || !preisAn()) return { ok: false, meldung: "Changing prices on eBay is switched off (EBAY_SCHREIBEN and EBAY_PREIS must be 'an')." };
+    if (!(preis > 0)) return { ok: false, meldung: "Invalid price." };
+    const eintraege = (skus.length ? skus : [null]).map((sku) => `<InventoryStatus><ItemID>${xmlText(itemId)}</ItemID>${sku ? `<SKU>${xmlText(sku)}</SKU>` : ""}<StartPrice>${preis.toFixed(2)}</StartPrice></InventoryStatus>`);
+    const meldungen = [];
+    for (let i = 0; i < eintraege.length; i += 4) {
+      const r = await trading("ReviseInventoryStatus", eintraege.slice(i, i + 4).join(""));
+      const m = r.fehler.map((f) => (f.code ? `[${f.code}] ` : "") + f.text).join(" ");
+      if (!(r.http === 200 && (r.ack === "Success" || r.ack === "Warning"))) return { ok: false, meldung: (m || "eBay answered with HTTP " + r.http) + (i ? ` (the first ${i} variants were already changed)` : "") };
+      if (m) meldungen.push(m);
+    }
+    return { ok: true, meldung: meldungen.join(" ") };
+  }
+
+  // REST-Aufruf (Marketing-API) mit demselben Zugangstoken. Gibt { status, daten, ort } zurück.
+  async function rest(methode, pfad, body) {
+    const iaf = await accessToken();
+    const r = await fetchFn("https://api.ebay.com" + pfad, {
+      method: methode, signal: AbortSignal.timeout(30000),
+      headers: { Authorization: "Bearer " + iaf, "Content-Type": "application/json", "X-EBAY-C-MARKETPLACE-ID": "EBAY_DE" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await r.text();
+    let daten = null; try { daten = text ? JSON.parse(text) : null; } catch { daten = { roh: text.slice(0, 300) }; }
+    return { status: r.status, daten, ort: r.headers.get("location") || "" };
+  }
+  const restFehler = (r) => (r.daten?.errors || []).map((e) => `[${e.errorId}] ${e.longMessage || e.message}`).join(" ") || "eBay answered with HTTP " + r.status;
+
+  // Schaltet Werbung für ein Angebot ein (Leiter, Stufe 2): eBay Promoted Listings Standard, Kosten nur bei Verkauf.
+  // Alle Angebote der Leiter liegen in einer eigenen Kampagne "Parture Ladder" (wird beim ersten Mal angelegt).
+  // Braucht beim eBay-Zugang zusätzlich die Berechtigung sell.marketing; fehlt sie, meldet eBay das und es wird nichts geändert.
+  const KAMPAGNE = "Parture Ladder";
+  let kampagneId = env.EBAY_KAMPAGNE_ID || null;
+  async function setzeWerbung(itemId, satz) {
+    if (!schreibenAn() || !werbungAn()) return { ok: false, meldung: "Ads on eBay are switched off (EBAY_SCHREIBEN and EBAY_WERBUNG must be 'an')." };
+    if (!(satz >= 0.02 && satz <= 1)) return { ok: false, meldung: "Invalid ad rate." };
+    const prozent = (satz * 100).toFixed(1);
+    if (!kampagneId) {
+      const such = await rest("GET", "/sell/marketing/v1/ad_campaign?campaign_name=" + encodeURIComponent(KAMPAGNE));
+      if (such.status !== 200 && such.status !== 404) return { ok: false, meldung: "Could not read the ad campaigns: " + restFehler(such) };
+      kampagneId = such.daten?.campaigns?.[0]?.campaignId || null;
+    }
+    if (!kampagneId) {
+      const neu = await rest("POST", "/sell/marketing/v1/ad_campaign", { campaignName: KAMPAGNE, marketplaceId: "EBAY_DE", startDate: new Date(jetzt()).toISOString(), fundingStrategy: { fundingModel: "COST_PER_SALE", bidPercentage: prozent } });
+      if (neu.status !== 201) return { ok: false, meldung: "Could not create the ad campaign: " + restFehler(neu) };
+      kampagneId = neu.ort.split("/").pop() || null;
+      if (!kampagneId) return { ok: false, meldung: "eBay created the campaign but did not return its id." };
+    }
+    const r = await rest("POST", `/sell/marketing/v1/ad_campaign/${encodeURIComponent(kampagneId)}/ad`, { listingId: String(itemId), bidPercentage: prozent });
+    if (r.status === 201 || r.status === 200) return { ok: true, meldung: `Ad switched on at ${prozent} % (campaign ${kampagneId}).` };
+    return { ok: false, meldung: restFehler(r) };
   }
 
   // Ändert den Titel. Gibt nie etwas anderes als { ok, ack, meldung } zurück.
@@ -61,5 +122,5 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: false, ack: r.ack, meldung: meldung || "eBay answered with HTTP " + r.http };
   }
 
-  return { schreibenAn, konfiguriert, lies, setzeTitel };
+  return { schreibenAn, werbungAn, preisAn, konfiguriert, lies, setzeTitel, setzePreis, setzeWerbung };
 }

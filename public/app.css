@@ -253,3 +253,22 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
 .titelhilfe { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .wort { font: inherit; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--linie-stark); background: var(--karte); cursor: pointer; }
 .wort:hover, .wort:focus-visible { border-color: var(--fokus); }
+
+/* Leiter: Trichter mit den Stufen, Karten je Angebot, Fortschritt der Prüfzeit */
+.trichter { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0 0 14px; }
+.stufe { background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--schatten); position: relative; }
+.stufe:not(:last-child)::after { content: "→"; position: absolute; right: -9px; top: 50%; transform: translateY(-50%); color: var(--leise); font-size: 14px; }
+.stufe.gut { border-color: var(--gut); background: var(--gut-weich); }
+.stufe-zahl { font-family: var(--serif); font-size: 26px; line-height: 1.1; }
+.stufe-titel { font-size: 14px; font-weight: 500; margin-top: 2px; }
+.leiter-kopf { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-bottom: 10px; }
+.fortschritt { height: 8px; border-radius: 999px; background: var(--karte-leise); border: 1px solid var(--linie); overflow: hidden; margin: 6px 0; }
+.fortschritt span { display: block; height: 100%; background: var(--g-warten); }
+.lebenslauf { margin: 6px 0 0; padding-left: 20px; }
+.lebenslauf li { margin: 2px 0; }
+@media (max-width: 860px) {
+  .trichter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stufe::after { display: none; }
+  .leiter-kopf { grid-template-columns: 48px minmax(0, 1fr); }
+  .leiter-kopf .badge { grid-column: 1 / -1; justify-self: start; }
+}
