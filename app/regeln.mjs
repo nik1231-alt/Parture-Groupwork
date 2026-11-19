@@ -28,6 +28,13 @@ export const EINSTELLUNGEN = {
   mindestImpressionen30: 150, // darunter wird nicht geurteilt (Mindestmenge aus dem Briefing)
   besserAb: 0.2,             // Zielmarke: die Testgruppe muss gegenüber der Kontrollgruppe um mindestens 20 % mehr Impressionen haben (einzige Stelle; Oberfläche liest sie aus der Auswertung)
   schutzGrenze: 0.2,         // die Verkäufe der Testgruppe dürfen gegenüber der Kontrollgruppe um höchstens 20 % fallen
+  // Leiter (siehe leiter.mjs): Prüfzeit je Stufe, wie viele Angebote gleichzeitig, Werbesatz und Preisschritt
+  leiterTageTitel: 14,       // so lange läuft der neue Titel, bevor die Impressionen wieder geprüft werden
+  leiterTageWerbung: 14,     // Prüfzeit nach dem Einschalten der Werbung
+  leiterTagePreis: 21,       // Prüfzeit nach der Preissenkung (Verkäufe reagieren langsamer)
+  leiterMax: 20,             // höchstens so viele Angebote stehen gleichzeitig auf der Leiter
+  werbesatz: 0.1,            // Werbesatz für eBay Promoted Listings (Anteil am Verkaufspreis, nur bei Verkauf fällig)
+  preisSchritt: 0.1,         // um diesen Anteil wird der Preis in Stufe 3 gesenkt
 };
 
 // Reihenfolge = Reihenfolge der Reiter in der Oberfläche

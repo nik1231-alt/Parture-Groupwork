@@ -7,6 +7,7 @@ import { EINSTELLUNGEN } from "./regeln.mjs";
 export const ABSCHNITTE = [
   { id: "diagnose", titel: "Which listings need attention?", text: "A listing is flagged as “Low impressions” when buyers rarely see it. Impressions are counted over the last 90 days." },
   { id: "tests", titel: "Tests", text: "A test compares a test group with a control group after the same time. Only the test group gets the change." },
+  { id: "leiter", titel: "Ladder", text: "Listings with low impressions go through three steps: a new title, then ads, then a lower price. After each step the app waits and checks whether the listing is seen again. If not, the next step follows; after the third, a person checks the listing." },
 ];
 
 // typ: zahl (faktor = Anzeige-Umrechnung, z. B. 100 für Prozent), auswahl, text. ganz: nur ganze Zahlen. gerade: nur gerade Zahlen.
@@ -30,6 +31,18 @@ export const SCHEMA = [
     hilfe: "How much more the test group must grow than the control group." },
   { key: "schutzGrenze", abschnitt: "tests", typ: "zahl", label: "Sales may fall by at most", einheit: "% compared with control", faktor: 100, min: 0.01, max: 1, schritt: 1,
     hilfe: "Safety check: more impressions must not cost sales. If sales fall more than this, the change counts as worse." },
+  { key: "leiterTageTitel", abschnitt: "leiter", typ: "zahl", label: "Wait after the new title", einheit: "days", ganz: true, min: 7, max: 90, schritt: 1,
+    hilfe: "How long the new title runs before the app checks the impressions again." },
+  { key: "leiterTageWerbung", abschnitt: "leiter", typ: "zahl", label: "Wait after switching on ads", einheit: "days", ganz: true, min: 7, max: 90, schritt: 1,
+    hilfe: "How long the ads run before the app checks again." },
+  { key: "leiterTagePreis", abschnitt: "leiter", typ: "zahl", label: "Wait after lowering the price", einheit: "days", ganz: true, min: 7, max: 90, schritt: 1,
+    hilfe: "Sales react more slowly to a price, so this is longer by default." },
+  { key: "leiterMax", abschnitt: "leiter", typ: "zahl", label: "Listings on the ladder at the same time", einheit: "listings", ganz: true, min: 1, max: 50, schritt: 1,
+    hilfe: "Keeps the approvals manageable." },
+  { key: "werbesatz", abschnitt: "leiter", typ: "zahl", label: "Ad rate", einheit: "% of the sale price", faktor: 100, min: 0.02, max: 0.2, schritt: 1,
+    hilfe: "eBay Promoted Listings (standard): the fee is only due when an item sells after a click on the ad." },
+  { key: "preisSchritt", abschnitt: "leiter", typ: "zahl", label: "Price step", einheit: "% lower", faktor: 100, min: 0.02, max: 0.2, schritt: 1,
+    hilfe: "The price is lowered once by this share. The app does not know the costs, so the admin checks the new price before approving." },
 ];
 
 export const STANDARD = Object.fromEntries(SCHEMA.map((f) => [f.key, EINSTELLUNGEN[f.key]]));

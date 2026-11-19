@@ -11,6 +11,7 @@ Bei eBay geändert wird nur, was ein Admin freigegeben hat, und jede Aktion steh
 |---|---|---|
 | **Listings** | alle | alle Angebote mit Bereich („Low impressions“ …), Empfehlung, Begründung, Traffic 30/90 Tage |
 | **Tests** | alle | Test per Los ziehen, neue Titel eintragen (mit Titelhilfe), zur Freigabe senden, Auswertung mit Diagrammen, Beispiel-Urteil |
+| **Ladder** | alle (Freigabe: Admin) | die Leiter für Angebote mit wenig Impressionen: KI-Titel → Werbung → Preis → manuelle Prüfung, mit Prüfzeit und Lebenslauf je Angebot |
 | **Approvals** | Admin | alter und neuer Titel nebeneinander, Approve / Reject, höchstens 50 Angebote je Freigabe |
 | **Team** | Admin | Rollen vergeben |
 | **Log** | alle | Protokoll (nur anhängen) und Betriebsstatus: Umgebung, Version, Schreibschalter, Sicherung, Datenstand |
@@ -69,6 +70,27 @@ Port 5060 sperrt Chrome (`ERR_UNSAFE_PORT`), deshalb 5070. `npm run dev` startet
 3. Vor jeder Änderung liest die App den aktuellen Titel. Weicht er vom erwarteten ab, wird nichts überschrieben.
 4. Lehnt eBay ab, steht eBays Meldung am Vorschlag und im Log; geändert ist dann nichts.
 5. Ein Test, der mit **revert** geschlossen wird, erzeugt Rückänderungen auf die alten Titel. Auch die gibt ein Admin frei.
+
+## Leiter
+
+Angebote mit der Diagnose **Low impressions** steigen Stufe für Stufe, bis Käufer sie wieder sehen (`app/leiter.mjs`):
+
+```
+Low impressions ─► 1 neuer Titel (KI) ─14 Tage─► wieder gesehen? ja ─► raus („Seen again“)
+                                                              nein
+                   2 Werbung 10 %     ─14 Tage─► wieder gesehen? ja ─► raus
+                                                              nein
+                   3 Preis −10 %      ─21 Tage─► wieder gesehen? ja ─► raus
+                                                              nein
+                   4 manuelle Prüfung: Admin entscheidet überarbeiten / offline nehmen / behalten (mit Begründung)
+```
+
+- **Wieder gesehen** heißt: Impressionen je Tag während der Prüfzeit, hochgerechnet auf 90 Tage, liegen nicht mehr unter der Grenze der Diagnose (unteres Viertel des Shops). Die Grenze wandert mit dem ganzen Shop, eine ruhige Saison lässt ein Angebot also nicht fälschlich scheitern.
+- **Täglicher Lauf** ab 6 Uhr (oder Knopf *Run the ladder now*): Prüfzeiten auswerten, neue Angebote aufnehmen (höchstens 20 gleichzeitig, bewährte zuerst, nichts aus Titeltests oder der Sperrliste), Titel vorschlagen. Der Lauf ändert nichts bei eBay.
+- **KI-Titel:** Google Gemini (wie auf dem Parture-Server) schlägt drei Titel vor, der **Regelprüfer** (`app/titel-regeln.mjs`) lässt nur abmahnsichere durch: keine Superlative, Prüfsiegel, Umwelt- oder Preisversprechen, nie „Original“; Marken nur als „passend für …“ und nur, wenn sie schon im alten Titel standen; keine neuen Zahlen, Maße oder Farben; keine Schlagwortlisten. Geprüft gegen alle 745 echten Titel. Ohne `GOOGLE_API_KEY` kommt der Vorschlag aus der Titelhilfe oder wird von Hand eingetragen; auch der muss durch den Regelprüfer.
+- **Freigabe** jeder Stufe nur durch einen Admin. Vor jeder Änderung liest die App den Stand bei eBay (Titel, Preis); weicht er ab, passiert nichts. Werbung und Preis haben je einen eigenen Schalter (`EBAY_WERBUNG=an`, `EBAY_PREIS=an`) zusätzlich zu `EBAY_SCHREIBEN`, weil sie Geld kosten. Ohne Schalter: Probelauf, oder *Done by hand*, wenn der Admin es selbst bei eBay gemacht hat.
+- **Preis:** ein Schritt nach unten. Haben die Varianten verschiedene Preise, senkt die App nicht (Preisstaffel), sondern schickt das Angebot zur manuellen Prüfung. Die App kennt keine Kosten: Der Admin prüft den neuen Preis vor der Freigabe.
+- Prüfzeiten, Höchstzahl, Werbesatz und Preisschritt stehen unter **Settings → Ladder**. Jeder Schritt steht im Lebenslauf des Angebots und im Log.
 
 ## Server
 

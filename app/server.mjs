@@ -20,6 +20,9 @@ import * as titelhilfe from "./titelhilfe.mjs";
 import * as sicherung from "./sicherung.mjs";
 import * as benachrichtigung from "./benachrichtigung.mjs";
 import { laDatum, verzoegerungTage, NACHPRUEFEN_TAGE } from "./traffic.mjs";
+import * as leiter from "./leiter.mjs";
+import * as kiTitel from "./ki-titel.mjs";
+import { pruefeTitel } from "./titel-regeln.mjs";
 import { spawn } from "node:child_process";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -42,18 +45,67 @@ function appDb() {
   rollen.bereiteVor(d);
   protokoll.bereiteVor(d);
   freigabe.bereiteVor(d);
+  leiter.bereiteVor(d);
   return (_appDb = d);
 }
 const einst = () => einstellungen.effektiv(appDb());
 const produkteLaden = () => mitDb((db) => ladeProdukte(db));
 // Produktnummern, die gerade in keinen Test dürfen (Sperrliste vom Hub, siehe bewertung.ladeSperre); ohne Tabelle leer
-const sperreLaden = () => experimente.gesperrteNummern(mitDb((db) => ladeSperre(db)), new Date());
+const sperreHub = () => experimente.gesperrteNummern(mitDb((db) => ladeSperre(db)), new Date());
+// Für Titeltests zusätzlich gesperrt: alles, was gerade auf der Leiter steht (sonst misst ein Test zwei Änderungen auf einmal)
+const sperreLaden = () => new Set([...sperreHub(), ...leiter.aktiveNummern(appDb())]);
 const HUB_URL = process.env.HUB_URL || "";
 // Schreibzugriff auf eBay: nur mit Zugangsdaten in der .env dieses Rechners und nur, wenn EBAY_SCHREIBEN=an gesetzt ist.
 const schreiber = ebaySchreiben.erzeuge();
 // Nur aktive eBay-Angebote mit Nummer: die Kopie vom Hub führt auch beendete (listed = 0, ohne external_id), z. B. bei 12 Produkten am 19.11.
 const kanaeleFuer = (nummer) => mitDb((db) => db.prepare("SELECT external_id, title FROM kanal WHERE number = ? AND channel = 'ebay' AND listed = 1 AND external_id IS NOT NULL").all(nummer));
 const adminNoetig = (ctx) => { if (ctx?.rolle !== "admin") throw Object.assign(new Error("Only an admin can do this."), { status: 403 }); };
+
+// ---- Leiter (siehe leiter.mjs): Titel per KI, dann Werbung, dann Preis, dann manuelle Prüfung ----
+const ki = kiTitel.erzeuge();
+const tabelleDa = (db, t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
+// Impressionen je Tag eines Produkts für die Tage nach "von" bis einschließlich "bis" (JJJJ-MM-TT), aus den Tageswerten in pm.db
+const impTag = (nummer, von, bis) => mitDb((db) => {
+  const tage = Math.round((Date.parse(bis) - Date.parse(von)) / 864e5);
+  if (tage <= 0 || !tabelleDa(db, "traffic_tag")) return 0;
+  return (db.prepare("SELECT SUM(impressionen) s FROM traffic_tag WHERE number = ? AND datum > ? AND datum <= ?").get(nummer, von, bis).s || 0) / tage;
+});
+const trafficBis = () => { try { return mitDb((db) => db.prepare("SELECT traffic_bis FROM stand").get()?.traffic_bis ?? null); } catch { return null; } };
+// Preis und Varianten eines Produkts für den Preisvorschlag der Stufe 3
+const leiterKontext = (nummer) => mitDb((db) => {
+  const kanaele = db.prepare("SELECT external_id, title, skus, preis_aktuell FROM kanal WHERE number = ? AND channel = 'ebay' AND listed = 1 AND external_id IS NOT NULL").all(nummer);
+  let varianten = []; try { varianten = JSON.parse(db.prepare("SELECT variant_meta FROM produkt WHERE number = ?").get(nummer)?.variant_meta || "null")?.values || []; } catch { /* ohne Varianten */ }
+  return { kanaele, varianten };
+});
+const leiterDaten = (produkte = produkteLaden()) => ({ impTag, trafficBis: trafficBis(), grenze90: leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d, einst: einst(), fuer: leiterKontext });
+// KI-Titelvorschlag für ein Produkt auf Stufe 1 (geht durch den Regelprüfer, siehe ki-titel.mjs)
+async function titelVorschlag(nummer, produkte, wer) {
+  const p = produkte.find((x) => x.number === nummer);
+  const alt = kanaeleFuer(nummer)[0]?.title || p?.title || "";
+  const h = titelhilfe.hinweiseFuer(produkte, nummer);
+  const r = await ki.vorschlag({ alt, hinweisWoerter: h.ok ? h.hinweise.map((x) => x.wort) : [] });
+  if (!r.ok) { leiter.merkeFehlschlag(appDb(), nummer, r.fehler, r.verworfen); return r; }
+  return leiter.setzeTitelVorschlag(appDb(), { name: wer }, nummer, { ...r.wert, alt });
+}
+let leiterLaeuft = false;
+// Ein Lauf: Prüfzeiten auswerten, neue Angebote aufnehmen, für Stufe 1 Titel vorschlagen. Ändert nichts bei eBay.
+async function leiterLauf(wer) {
+  if (leiterLaeuft) return null;
+  leiterLaeuft = true;
+  try {
+    const produkte = produkteLaden(), daten = leiterDaten(produkte);
+    const ausgewertet = leiter.werteAus(appDb(), daten);
+    const neu = leiter.nimmAuf(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() });
+    let vorschlaege = 0, ohne = 0;
+    for (const n of leiter.ohneTitelVorschlag(appDb())) { const r = await titelVorschlag(n, produkte, "system"); if (r.ok) vorschlaege++; else ohne++; }
+    const details = { ausgewertet: ausgewertet.length, erholt: ausgewertet.filter((a) => a.erholt).length, aufgenommen: neu.length, titelVorschlaege: vorschlaege, ohneVorschlag: ohne, ki: ki.konfiguriert() };
+    protokoll.schreibe(appDb(), { benutzer: wer, rolle: wer === "system" ? null : "admin", aktion: "ladder_run", objekt: "ladder", details });
+    return details;
+  } catch (e) {
+    try { protokoll.schreibe(appDb(), { benutzer: wer, rolle: wer === "system" ? null : "admin", aktion: "ladder_run", objekt: "ladder", details: { fehler: e.message }, ergebnis: "error" }); } catch { /* Protokoll nicht erreichbar */ }
+    throw e;
+  } finally { leiterLaeuft = false; }
+}
 const PM_TOKEN = process.env.PM_TOKEN || "";
 // Welche Umgebung ist das? prod | vorschau | lokal (leer = lokal). Wird oben in der App angezeigt, damit niemand VORSCHAU mit PROD verwechselt.
 const UMGEBUNG = ["prod", "vorschau"].includes(String(process.env.PM_UMGEBUNG || "").toLowerCase()) ? String(process.env.PM_UMGEBUNG).toLowerCase() : "lokal";
@@ -189,7 +241,23 @@ function datenStand() {
 // Die festen Zahlen der App, je aus genau einer Konstante: die Oberfläche zeigt sie von hier statt eigene Kopien zu führen
 const regelZahlen = () => ({ titelMaxZeichen: TITEL_MAX_ZEICHEN, maxAenderungen: freigabe.MAX_AENDERUNGEN, zielmarke: einst().besserAb, maxFehlversuche: login.MAX_FEHLVERSUCHE, sperreMinuten: login.SPERRE_MINUTEN, verzoegerungTage: verzoegerungTage(), nachpruefenTage: NACHPRUEFEN_TAGE });
 function betriebStatus() {
-  return { umgebung: UMGEBUNG, version: versionKurz(), schreibenAn: schreiber.schreibenAn(), zugangsdaten: schreiber.konfiguriert(), benachrichtigung: melder.konfiguriert(), sicherung: sicherungStatus(), traffic: trafficStatus(), daten: datenStand(), regeln: regelZahlen() };
+  return { umgebung: UMGEBUNG, version: versionKurz(), schreibenAn: schreiber.schreibenAn(), zugangsdaten: schreiber.konfiguriert(), benachrichtigung: melder.konfiguriert(), sicherung: sicherungStatus(), traffic: trafficStatus(), daten: datenStand(), regeln: regelZahlen(), leiter: leiterStatus() };
+}
+
+// ---- Täglicher Lauf der Leiter (ab LEITER_UHRZEIT, Standard 6 Uhr, nach dem Traffic-Import). LEITER_AUTO=aus schaltet ihn ab. ----
+// Der Lauf ändert nichts bei eBay: er wertet aus, nimmt auf und schlägt Titel vor. Geändert wird erst nach einer Freigabe.
+const LEITER_AUTO = String(process.env.LEITER_AUTO || "an").trim().toLowerCase() !== "aus";
+const LEITER_UHR = Math.min(23, Math.max(0, Number(process.env.LEITER_UHRZEIT ?? 6) || 0));
+const letzterLeiterLauf = () => appDb().prepare("SELECT zeit, ergebnis FROM protokoll WHERE aktion = 'ladder_run' ORDER BY id DESC LIMIT 1").get() || null;
+function leiterStatus() {
+  const l = letzterLeiterLauf();
+  return { automatisch: LEITER_AUTO, uhrzeit: LEITER_UHR, laeuft: leiterLaeuft, letzterLauf: l?.zeit ?? null, letzterFehler: l?.ergebnis === "error", ki: ki.konfiguriert(), kiModell: ki.konfiguriert() ? ki.modell() : null, werbungAn: schreiber.schreibenAn() && schreiber.werbungAn(), preisAn: schreiber.schreibenAn() && schreiber.preisAn() };
+}
+function pruefeLeiter() {
+  if (!LEITER_AUTO || leiterLaeuft || new Date().getHours() < LEITER_UHR) return;
+  const l = letzterLeiterLauf();
+  if (l && Date.now() - Date.parse(l.zeit) < (l.ergebnis === "error" ? 2 : 20) * STUNDE) return;
+  leiterLauf("system").catch((e) => { console.log("Leiter-Lauf fehlgeschlagen: " + e.message); melder.fehler("Leiter-Lauf", e.message); });
 }
 
 const ROUTEN = {
@@ -243,6 +311,11 @@ const ROUTEN = {
     p.bilder = db.prepare("SELECT url, position, kind FROM bild WHERE number = ? ORDER BY position").all(nr);
     return p;
   }),
+  // Leiter: jede Stufe mit ihren Angeboten, Zwischenständen und Lebensläufen, dazu Schalter und letzter Lauf
+  "/api/leiter": () => {
+    const produkte = produkteLaden(), daten = leiterDaten(produkte);
+    return { ...leiter.uebersicht(appDb(), produkte, daten), kandidaten: leiter.kandidaten(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() }).length, status: leiterStatus() };
+  },
   "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal GROUP BY channel ORDER BY produkte DESC").all()),
   // Live-Stand vom Hub (nur auf dem Server, lokal fehlt HUB_URL): dieselbe Whitelist, aber Stand jetzt statt 04:30.
   "/api/live": async () => {
@@ -317,6 +390,31 @@ const POST_ROUTEN = {
   },
   "/api/sicherung": async (req, ctx) => { adminNoetig(ctx); await leseJson(req); const r = await fuehreSicherungAus(ctx.name); if (!r) throw Object.assign(new Error("A backup is already running."), { status: 409 }); if (!r.gut) throw Object.assign(new Error("Backup failed: " + r.fehler.join("; ")), { status: 500 }); return r; },
   "/api/rolle": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(rollen.setzeRolle(appDb(), ctx, b?.name, b?.rolle)); },
+  // ---- Leiter ----
+  "/api/leiter/lauf": async (req, ctx) => { adminNoetig(ctx); await leseJson(req); const r = await leiterLauf(ctx.name); if (!r) throw Object.assign(new Error("The ladder is already running."), { status: 409 }); return r; },
+  "/api/leiter/freigabe": async (req, ctx) => {
+    adminNoetig(ctx);
+    const nr = String((await leseJson(req))?.number ?? "").slice(0, 40);
+    return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag }));
+  },
+  "/api/leiter/vonhand": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.starteVonHand(appDb(), ctx, String(b?.number ?? "").slice(0, 40), { impTag })); },
+  "/api/leiter/ueberspringen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.ueberspringe(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund, einst(), { fuer: leiterKontext })); },
+  "/api/leiter/entscheidung": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.entscheide(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.entscheidung, b?.notiz)); },
+  "/api/leiter/abbrechen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.brichAb(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund)); },
+  // Builder und Admin: einen Titel von Hand eintragen (muss den Regelprüfer bestehen) oder die KI erneut fragen
+  "/api/leiter/titel": async (req, ctx) => {
+    const b = await leseJson(req);
+    const nr = String(b?.number ?? "").slice(0, 40), titel = typeof b?.titel === "string" ? b.titel.replace(/\s+/g, " ").trim().slice(0, 200) : "";
+    const alt = kanaeleFuer(nr)[0]?.title || "";
+    const pruefung = pruefeTitel(titel, alt);
+    if (!pruefung.ok) throw Object.assign(new Error("The title breaks a rule: " + pruefung.verstoesse.map((v) => v.text).join(" ")), { status: 400 });
+    return antwort(leiter.setzeTitelVorschlag(appDb(), ctx, nr, { titel, alt, begruendung: "Entered by hand.", quelle: "hand", pruefung }));
+  },
+  "/api/leiter/neuvorschlag": async (req, ctx) => {
+    const nr = String((await leseJson(req))?.number ?? "").slice(0, 40);
+    const r = await titelVorschlag(nr, produkteLaden(), ctx.name);
+    return antwort(r);
+  },
 };
 
 const server = http.createServer(async (req, res) => {
@@ -385,5 +483,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Parture Groupwork läuft: http://127.0.0.1:${PORT}  (DB: ${dbPfad()})`);
   if (SICH_AUTO) { setTimeout(pruefeSicherung, 45e3).unref(); setInterval(pruefeSicherung, 15 * 60e3).unref(); }
+  if (LEITER_AUTO) { setTimeout(pruefeLeiter, 60e3).unref(); setInterval(pruefeLeiter, 15 * 60e3).unref(); }
   if (TRAFFIC_AUTO) { console.log(`Automatischer Traffic-Import: täglich ab ${TRAFFIC_UHR}:00 Uhr (Verzögerung ${verzoegerungTage()} Tage).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
 });
