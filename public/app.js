@@ -246,7 +246,7 @@ function zeichneTestUebersicht() {
       el("div", { class: "aktionen" }, neu, !genug ? el("a", { class: "knopf", href: "#settings", text: "Open Settings" }) : null)),
     el("details", { class: "panel", ontoggle: async (ev) => {
       const box = ev.target; if (!box.open || box.dataset.geladen) return; box.dataset.geladen = "1";
-      try { const demo = await api("/api/demo"); box.append(el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. " + demo.hinweis }), ...demo.faelle.map((f) => el("div", {}, el("h3", { text: f.titel }), urteilBox({ urteil: f.urteil })))); }
+      try { const demo = await api("/api/demo"); box.append(el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. " + demo.hinweis }), ...demo.faelle.map((f) => el("div", {}, el("h3", { text: f.titel }), urteilBox({ urteil: f.urteil }), auswertungPanel(f.auswertung, false)))); }
       catch (e) { box.append(el("p", { class: "leise", text: e.message })); }
     } }, el("summary", { style: "cursor:pointer", text: "Show an example verdict (invented numbers)" })),
     tests.length
@@ -362,8 +362,26 @@ function detailLaeuft(d) {
         el("tbody", {}, el("tr", {}, el("td", { text: `Test group (${d.anzahl.test})` }), el("td", { class: "zahl", text: zahl(t.imp) }), el("td", { class: "zahl", text: zahl(t.trans) })),
           el("tr", {}, el("td", { text: `Control group (${d.anzahl.kontrolle})` }), el("td", { class: "zahl", text: zahl(k.imp) }), el("td", { class: "zahl", text: zahl(k.trans) })))),
       el("div", { class: "aktionen" }, stop)),
-    titelListe(d), kontrollePanel(d),
+    auswertungPanel(d.auswertung, true), titelListe(d), kontrollePanel(d),
   ];
+}
+
+// Auswertung mit Diagrammen (siehe diagramm.js). zwischenstand: Prüfzeit läuft noch, die Zahlen sind noch nicht das Urteil.
+function auswertungPanel(a, zwischenstand) {
+  if (!a || (!a.test.anzahl && !a.kontrolle.anzahl)) return null;
+  const block = (titel, erklaerung, svg) => el("div", { class: "d-block" }, el("h3", { text: titel }), el("p", { class: "leise klein", text: erklaerung }), el("div", { class: "d-rahmen" }, svg));
+  const links = a.test.ausgelassen + a.kontrolle.ausgelassen;
+  const pz = Diagramm.proz;
+  const kurz = a.test.median == null || a.kontrolle.median == null ? null
+    : `Typical listing (median): test group ${pz(a.test.median)}, control group ${pz(a.kontrolle.median)}. ${Math.round((a.test.anteilBesser ?? 0) * a.test.anzahl)} of ${a.test.anzahl} test listings gained impressions, ${Math.round((a.kontrolle.anteilBesser ?? 0) * a.kontrolle.anzahl)} of ${a.kontrolle.anzahl} control listings.`;
+  return el("div", { class: "panel auswertung" },
+    el("h2", { text: "Evaluation" }),
+    zwischenstand ? el("p", { class: "hinweis hinweis-warnung", text: "Interim view. The test period is not over yet, so these figures are not the verdict. Do not draw conclusions from them." }) : null,
+    kurz ? el("p", { text: kurz }) : null,
+    block("Impressions before and after", "Impressions in the 30 days before the start (grey) and in the last 30 days (colour). The control group shows what happened in the shop in the meantime.", Diagramm.saeulen(a)),
+    block("Result against the goal", `The net effect compares how much the test group grew with how much the control group grew. It counts as better from ${pz(a.skala.besserAb)}. Sales must not fall by more than ${pz(a.skala.schutzGrenze, false)} compared with the control group.`, Diagramm.skala(a)),
+    block("Every listing on its own", "Each dot is one listing, the line is the median. If most test dots sit clearly to the right of the control dots, the effect is broad and not just one lucky listing.", Diagramm.punkte(a)),
+    links ? el("p", { class: "leise klein", text: `${links} listing${links === 1 ? "" : "s"} left out: no starting figures or no longer in the data.` }) : null);
 }
 
 function urteilBox(d) {
@@ -388,7 +406,7 @@ function detailBereit(d) {
     el("div", { class: "panel" }, el("h2", { text: "Verdict" }), urteilBox(d),
       el("p", { text: empf === "keep" ? "Recommendation: keep the new titles." : "Recommendation: go back to the old titles." }),
       el("div", { class: "aktionen" }, knopf("behalten", "Keep the new titles"), knopf("zurueck", "Revert to the old titles"))),
-    titelListe(d), kontrollePanel(d),
+    auswertungPanel(d.auswertung, false), titelListe(d), kontrollePanel(d),
   ];
 }
 
@@ -398,6 +416,7 @@ function detailAbgeschlossen(d) {
     el("div", { class: "panel" }, el("h2", { text: d.abschluss === "behalten" ? "Kept" : "Reverted" }),
       el("p", { class: "leise", text: `Closed on ${datum(d.abschluss_at)}.` + (d.gestartet_at ? "" : " The test never started.") }),
       d.gestartet_at ? urteilBox(d) : null),
+    d.gestartet_at ? auswertungPanel(d.auswertung, false) : null,
     zurueckGesetzt && d.gestartet_at
       ? el("div", { class: "panel" }, el("h2", { text: "Back to the old titles" }),
         el("p", { class: "leise", text: "The app changes the old titles back on eBay after an admin approves it. If the test never reached eBay, there is nothing to change." }),

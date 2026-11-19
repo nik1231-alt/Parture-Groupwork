@@ -190,6 +190,30 @@ a { color: inherit; }
 .login-formular .knopf-akzent:hover { filter: brightness(.95); background: var(--akzent); }
 .login-formular .knopf:disabled { opacity: .6; cursor: default; }
 .kopf-rechts { display: flex; align-items: center; gap: 12px; }
+
+/* Diagramme der Testauswertung */
+.auswertung .d-block { margin-top: 22px; }
+.auswertung .d-block h3 { font-size: 17px; }
+.auswertung .d-block p { margin: 2px 0 8px; }
+.d-rahmen { background: var(--karte-leise); border: 1px solid var(--linie); border-radius: var(--radius-klein); padding: 10px 8px 4px; }
+.diagramm { display: block; width: 100%; height: auto; }
+.d-text { fill: var(--text); font: 12px var(--sans); }
+.d-klein { fill: var(--leise); font-size: 11px; }
+.d-gruppe { font-size: 12.5px; font-weight: 500; }
+.d-wert { font-size: 12.5px; font-weight: 600; }
+.d-aenderung { font-size: 12px; }
+.d-plus { fill: var(--gut); } .d-minus { fill: var(--schlecht); }
+.d-achse, .d-gitter { stroke: var(--linie-stark); stroke-width: 1; }
+.d-gitter { stroke: var(--linie); }
+.d-null { stroke: var(--leise); stroke-width: 1.5; }
+rect.d-vorher { fill: var(--linie-stark); }
+rect.d-test, circle.d-test { fill: var(--akzent); }
+rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
+.d-zone-schlecht { fill: var(--schlecht-weich); } .d-zone-mitte { fill: var(--linie); } .d-zone-gut { fill: var(--gut-weich); }
+.d-marke { fill: var(--text); stroke: var(--karte); stroke-width: 2; }
+.d-punkt { fill-opacity: .8; stroke: var(--karte); stroke-width: 1; }
+.d-aussen { stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 2 2; }
+.d-median { stroke: var(--text); stroke-width: 2; }
 @media (max-width: 520px) { .seite { padding-top: 22px; } .kopf-innen { justify-content: center; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
