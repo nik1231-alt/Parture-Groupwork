@@ -55,37 +55,46 @@ test("Riskantes aus dem alten Titel blockiert nicht, wird aber als Hinweis gezei
   assert.match(r.hinweise[0].text, /Top/);
 });
 
-// ---------- KI-Vorschlag mit nachgebauter KI ----------
-const kiMit = (vorschlaege, extra = {}) => ({ beta: { messages: { create: async (anfrage) => {
-  kiMit.letzte = anfrage;
-  return { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify({ vorschlaege }) }], ...extra };
-} } } });
+// ---------- KI-Vorschlag mit nachgebauter Gemini-Antwort (kein Netz) ----------
+const ENV = { GOOGLE_API_KEY: "test-schluessel" };
+function geminiMit(antwort, status = 200) {
+  const f = async (url, opt) => { f.url = url; f.opt = opt; f.body = JSON.parse(opt.body); return { status, ok: status < 300, json: async () => antwort }; };
+  return f;
+}
+const kandidat = (vorschlaege) => ({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ vorschlaege }) }] } }] });
 
 test("KI: der erste Vorschlag, der die Regeln besteht, wird genommen; die anderen stehen mit Grund in verworfen", async () => {
-  const k = kiTitel.erzeuge({ env: {}, client: kiMit([
+  const f = geminiMit(kandidat([
     { titel: "Original Bosch L-Boxx Halter", begruendung: "a" },
     { titel: "Wandhalterung passend für Bosch L-Boxx, 2x Halter schwarz", begruendung: "moves the search word forward" },
-  ]) });
+  ]));
+  const k = kiTitel.erzeuge({ env: ENV, fetchFn: f });
   const r = await k.vorschlag({ alt: ALT, hinweisWoerter: ["wandhalterung"] });
   assert.equal(r.ok, true);
   assert.equal(r.wert.quelle, "ki");
   assert.equal(r.wert.titel, "Wandhalterung passend für Bosch L-Boxx, 2x Halter schwarz");
   assert.equal(r.wert.verworfen.length, 1);
-  // die Anfrage nennt den alten Titel und die Regeln und verlangt festes JSON
-  assert.match(kiMit.letzte.messages[0].content, /Bosch L-Boxx/);
-  assert.match(kiMit.letzte.messages[0].content, /OEM/);
-  assert.equal(kiMit.letzte.output_config.format.type, "json_schema");
+  // die Anfrage geht an Gemini, nennt den alten Titel und die Regeln und verlangt festes JSON; der Schlüssel steht im Kopf, nicht in der Adresse
+  assert.equal(f.url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent");
+  assert.equal(f.opt.headers["x-goog-api-key"], "test-schluessel");
+  assert.match(f.body.contents[0].parts[0].text, /Bosch L-Boxx/);
+  assert.match(f.body.contents[0].parts[0].text, /OEM/);
+  assert.equal(f.body.generationConfig.responseMimeType, "application/json");
 });
 
-test("KI: lehnt sie ab oder fällt alles durch, kommt der Regelvorschlag aus der Titelhilfe, klar gekennzeichnet", async () => {
-  const abgelehnt = kiTitel.erzeuge({ env: {}, client: { beta: { messages: { create: async () => ({ stop_reason: "refusal", content: [] }) } } } });
+test("KI: lehnt sie ab, ist der Schlüssel falsch oder fällt alles durch, kommt der Regelvorschlag aus der Titelhilfe, klar gekennzeichnet", async () => {
+  const abgelehnt = kiTitel.erzeuge({ env: ENV, fetchFn: geminiMit({ candidates: [{ finishReason: "SAFETY" }] }) });
   const r = await abgelehnt.vorschlag({ alt: "Halter passend für Bosch L-Boxx", hinweisWoerter: ["wandhalterung"] });
   assert.equal(r.ok, true);
   assert.equal(r.wert.quelle, "regel");
   assert.equal(r.wert.titel, "Halter passend für Bosch L-Boxx Wandhalterung");
   assert.match(r.wert.hinweis, /declined/);
+  const falsch = kiTitel.erzeuge({ env: ENV, fetchFn: geminiMit({ error: { message: "API key not valid" } }, 400) });
+  const r2 = await falsch.vorschlag({ alt: "Halter passend für Bosch L-Boxx", hinweisWoerter: [] });
+  assert.equal(r2.ok, false); assert.match(r2.fehler, /key is not valid/);
   const ohneKi = kiTitel.erzeuge({ env: {} });
   assert.equal(ohneKi.konfiguriert(), false);
-  const o = await ohneKi.vorschlag({ alt: "Halter passend für Bosch L-Boxx", hinweisWoerter: [] });
-  assert.equal(o.ok, false, "ohne KI und ohne Hinweiswörter gibt es keinen Vorschlag");
+  const o = await ohneKi.vorschlag({ alt: "Halter passend für Bosch L-Boxx", hinweisWoerter: ["passend"] });
+  assert.equal(o.ok, false, "ohne KI und nur mit Füllwörtern gibt es keinen Vorschlag");
+  assert.match(o.fehler, /GOOGLE_API_KEY/);
 });
