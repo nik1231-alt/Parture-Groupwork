@@ -113,13 +113,18 @@ async function ladeZaehler() {
     const f = await api("/api/freigaben");
     const z = $("#approvals-zaehler"); z.hidden = f.offen === 0; z.textContent = f.offen; z.setAttribute("aria-label", `${f.offen} waiting for approval`);
   } catch { /* wie oben */ }
+  try {
+    const l = await api("/api/leiter");
+    const offen = l.angebote.filter((a) => a.phase === "vorschlag" || a.phase === "offen").length;
+    const z = $("#ladder-zaehler"); z.hidden = offen === 0; z.textContent = offen; z.setAttribute("aria-label", `${offen} waiting for a decision`);
+  } catch { /* wie oben */ }
 }
 
 let ersterAufruf = true;
 function route() {
   const [seite, arg] = location.hash.replace(/^#/, "").split("/");
-  const ansicht = ["tests", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
-  for (const a of ["listings", "tests", "settings", "approvals", "team", "log", "account"]) {
+  const ansicht = ["tests", "ladder", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
+  for (const a of ["listings", "tests", "ladder", "settings", "approvals", "team", "log", "account"]) {
     $("#ansicht-" + a).hidden = a !== ansicht;
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
@@ -128,6 +133,7 @@ function route() {
   if (ansicht === "listings" && !ersterAufruf) laden();
   ersterAufruf = false;
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
+  if (ansicht === "ladder") ladeLeiter();
   if (ansicht === "settings") ladeEinstellungen();
   if (ansicht === "approvals") ladeFreigaben();
   if (ansicht === "team") ladeTeam();
@@ -501,6 +507,147 @@ async function ladeFreigaben() {
   } catch (e) { zeigeFehler(e, ladeFreigaben); }
 }
 
+// ======================================================= Leiter (Titel -> Werbung -> Preis -> manuelle Prüfung)
+const STUFE_TEXT = { titel: "1 · New title", werbung: "2 · Ads", preis: "3 · Lower price", pruefung: "4 · Manual check", raus: "Done" };
+const ERGEBNIS_LEITER = { erholt: "Seen again", ueberarbeiten: "Rework", offline: "Take offline", behalten: "Keep as is", abgebrochen: "Taken off" };
+const QUELLE_TEXT = { ki: "AI suggestion", regel: "From the title help (no AI)", hand: "Entered by hand" };
+const EREIGNIS_TEXT = { aufgenommen: "Entered the ladder (low impressions)", vorschlag: "Suggestion ready", kein_vorschlag: "No suggestion possible", freigegeben: "Approved and changed on eBay",
+  probelauf: "Dry run, nothing changed", fehlgeschlagen: "Change failed", gestartet: "Waiting time started", ausgewertet: "Checked after the waiting time", uebersprungen: "Step skipped",
+  pruefung: "Moved to the manual check", entschieden: "Decided", abgebrochen: "Taken off the ladder" };
+
+async function ladeLeiter() {
+  const root = $("#ansicht-ladder");
+  try { zeichneLeiter(await api("/api/leiter")); }
+  catch (e) { zeigeFehler(e, ladeLeiter); root.replaceChildren(); }
+}
+async function leiterAktion(pfad, body, ok) {
+  try { const r = await post(pfad, body); meldung(typeof ok === "function" ? ok(r) : ok); } catch (e) { meldung(e.message); }
+  await ladeLeiter(); ladeZaehler();
+}
+
+function zeichneLeiter(l) {
+  const root = $("#ansicht-ladder");
+  const st = l.status;
+  const warten = l.angebote.filter((a) => a.phase === "vorschlag" || a.phase === "offen");
+  const laufen = l.angebote.filter((a) => a.phase === "laeuft");
+  const fertig = l.angebote.filter((a) => a.stufe === "raus");
+  const laufKnopf = istAdmin() ? el("button", { class: "knopf knopf-akzent", type: "button", disabled: st.laeuft, text: st.laeuft ? "Running …" : "Run the ladder now",
+    onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/lauf", {}, (r) => `Done: ${r.aufgenommen} entered, ${r.ausgewertet} checked (${r.erholt} seen again), ${r.titelVorschlaege} title suggestions.`); } }) : null;
+  root.replaceChildren(
+    el("div", { class: "einstieg" }, el("h1", { text: "Ladder" }),
+      el("p", { class: "leise", text: `Listings with low impressions climb step by step: first a new title, then ads, then a lower price. After each step the app waits, then checks whether the listing is seen again (at least ${zahl(l.grenze90)} impressions in 90 days, the limit of the diagnosis). If yes, it leaves the ladder; if not, the next step follows. After the third step a person checks the listing. Nothing changes on eBay without an admin's approval.` })),
+    trichter(l),
+    el("div", { class: "panel" },
+      el("p", { class: "leise klein", text: [
+        st.ki ? `Titles: AI (${st.kiModell}), every suggestion passes the rule check first` : "Titles: no AI key on this computer, suggestions come from the title help",
+        `ads on eBay: ${st.werbungAn ? "on" : "off (dry run)"}`, `price changes on eBay: ${st.preisAn ? "on" : "off (dry run)"}`,
+        st.automatisch ? `runs daily from ${st.uhrzeit}:00` : "daily run is off", `last run: ${st.letzterLauf ? zeitpunkt(st.letzterLauf) : "never"}${st.letzterFehler ? " (failed, see Log)" : ""}`,
+        `${zahl(l.kandidaten)} more listings are waiting for a place (at most ${l.max} at a time)`].join(" · ") }),
+      laufKnopf ? el("div", { class: "aktionen" }, laufKnopf) : null),
+    el("h2", { text: `Waiting for a decision (${warten.length})`, style: "margin: 18px 0 10px" }),
+    warten.length ? warten.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "Nothing is waiting." }),
+    el("h2", { text: `Waiting time running (${laufen.length})`, style: "margin: 22px 0 10px" }),
+    laufen.length ? laufen.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "No step is running." }),
+    fertig.length ? el("details", { class: "panel", style: "margin-top:22px" }, el("summary", { style: "cursor:pointer", text: `Left the ladder (${fertig.length})` }), fertig.map(leiterKarte)) : null);
+}
+
+// Der Trichter oben: wie viele Angebote auf welcher Stufe stehen und wie viele die Leiter wie verlassen haben
+function trichter(l) {
+  const kasten = (titel, n, unter, klasse = "") => el("div", { class: "stufe " + klasse }, el("div", { class: "stufe-zahl", text: zahl(n) }), el("div", { class: "stufe-titel", text: titel }), unter ? el("div", { class: "leise klein", text: unter }) : null);
+  return el("div", { class: "trichter", role: "list", "aria-label": "Ladder steps" },
+    kasten(STUFE_TEXT.titel, l.zahl.titel, `${l.tage.titel} days`),
+    kasten(STUFE_TEXT.werbung, l.zahl.werbung, `${Math.round(l.werbesatz * 100)} % · ${l.tage.werbung} days`),
+    kasten(STUFE_TEXT.preis, l.zahl.preis, `−${Math.round(l.preisSchritt * 100)} % · ${l.tage.preis} days`),
+    kasten(STUFE_TEXT.pruefung, l.zahl.pruefung, "a person decides"),
+    kasten("Seen again", l.raus.erholt, `${l.raus.offline} offline · ${l.raus.ueberarbeiten} rework · ${l.raus.behalten} kept`, "gut"));
+}
+
+function leiterKarte(a) {
+  const b = bildUrl(a.image_url);
+  const kopf = el("div", { class: "leiter-kopf" },
+    b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
+    el("div", {}, el("div", { class: "titel", text: a.title || "(untitled)" }), el("div", { class: "leise klein", text: `No. ${a.number} · ${zahl(a.impressionen_90d)} impressions in 90 days · ${zahl(a.units_90d)} sales · on the ladder since ${datum(a.eingestiegen_at)}` })),
+    el("span", { class: "badge " + (a.stufe === "raus" ? (a.ergebnis === "erholt" ? "gut" : "") : a.phase === "laeuft" ? "laeuft" : "vorbereitet"), text: a.stufe === "raus" ? ERGEBNIS_LEITER[a.ergebnis] || a.ergebnis : STUFE_TEXT[a.stufe] }));
+  const inhalt = a.phase === "laeuft" ? leiterLaeuft(a) : a.phase === "offen" ? leiterPruefung(a) : a.phase === "vorschlag" ? leiterVorschlag(a) : [];
+  return el("div", { class: "panel leiter-karte" }, kopf, ...inhalt, lebenslauf(a));
+}
+
+function leiterLaeuft(a) {
+  const s = a.stand;
+  const anteil = Math.min(1, s.gelaufen / s.tage);
+  return [el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(anteil * 100)}%` })),
+    el("p", { class: "leise klein", text: `Day ${s.gelaufen} of ${s.tage} (with finished traffic data; checked on ${datum(s.ende + "T12:00:00Z")} or later). Before: ${zahl(s.vorher90)} impressions per 90 days${s.jetzt90 != null ? ` · so far: ${zahl(s.jetzt90)} per 90 days` : ""}.` })];
+}
+
+function leiterVorschlag(a) {
+  const v = a.vorschlag;
+  const aus = [];
+  if (a.stufe === "titel") {
+    const letzter = [...a.verlauf].reverse().find((e) => e.stufe === "titel");
+    if (v) {
+      aus.push(el("div", { class: "angebotszeile titelpaar", style: "grid-template-columns: minmax(0,1fr) minmax(0,1fr)" }, kasten("Old title", v.alt, false), kasten("New title (" + (QUELLE_TEXT[v.quelle] || v.quelle) + ")", v.titel, false)),
+        el("p", { class: "leise klein", text: v.begruendung }));
+      if (v.hinweis) aus.push(el("p", { class: "leise klein", text: "Note: " + v.hinweis }));
+      for (const h of v.pruefung?.hinweise || []) aus.push(el("p", { class: "hinweis hinweis-warnung klein", text: h.text }));
+      if (v.verworfen?.length) aus.push(el("details", { class: "klein" }, el("summary", { style: "cursor:pointer", text: `${v.verworfen.length} AI suggestion${v.verworfen.length === 1 ? " was" : "s were"} thrown away by the rule check` }),
+        el("ul", {}, v.verworfen.map((x) => el("li", { text: `“${x.titel}”: ${x.verstoesse.map((y) => y.text).join(" ")}` })))));
+    } else aus.push(el("p", { class: "leise", text: letzter?.ereignis === "kein_vorschlag" ? "No suggestion yet: " + letzter.details?.text : "No title suggestion yet. It comes with the next ladder run, or enter one below." }));
+    aus.push(titelEingabe(a, v));
+  } else if (a.stufe === "werbung") {
+    aus.push(el("p", { text: `Switch on eBay Promoted Listings (standard) at ${Math.round((v?.satz ?? 0) * 100)} % of the sale price. The fee is only due when the item sells after a click on the ad.` }));
+  } else if (a.stufe === "preis") {
+    aus.push(v?.nichtMoeglich ? el("p", { class: "hinweis hinweis-warnung", text: v.nichtMoeglich + " Skip this step to go to the manual check." })
+      : el("p", { text: `Lower the price from ${eur(v?.alt)} to ${eur(v?.neu)} (−${Math.round((v?.schritt ?? 0) * 100)} %). The app does not know the costs: check that the new price still pays off before approving.` }));
+  }
+  if (istAdmin()) {
+    const kannFrei = !!v && !v.nichtMoeglich;
+    const grund = el("input", { class: "feld", type: "text", maxlength: 200, placeholder: "Why skip? (optional)", "aria-label": "Reason for skipping" });
+    aus.push(el("div", { class: "aktionen" },
+      kannFrei ? zweiStufig(el("button", { class: "knopf knopf-akzent", type: "button", text: "Approve and change on eBay" }), "Really change on eBay?", () => leiterAktion("/api/leiter/freigabe", { number: a.number }, (r) => r.text)) : null,
+      kannFrei || a.stufe !== "titel" ? el("button", { class: "knopf", type: "button", text: "Done by hand", title: "The change was made on eBay by hand (or should count as started without a change)", onclick: () => leiterAktion("/api/leiter/vonhand", { number: a.number }, "Waiting time started.") }) : null,
+      zweiStufig(el("button", { class: "knopf", type: "button", text: "Skip this step" }), "Really skip?", () => leiterAktion("/api/leiter/ueberspringen", { number: a.number, grund: grund.value }, "Skipped. The next step is waiting."))),
+      el("div", { style: "max-width:420px; margin-top:8px" }, grund));
+  } else aus.push(el("p", { class: "leise klein", text: "An admin approves this step. Until then nothing changes on eBay." }));
+  return aus;
+}
+
+// Titel von Hand eintragen oder die KI noch einmal fragen (Builder und Admin). Der Server prüft jeden Titel mit dem Regelprüfer.
+function titelEingabe(a, v) {
+  const feld = el("input", { class: "feld", type: "text", maxlength: String(zustand.betrieb?.regeln?.titelMaxZeichen || 80), value: v?.titel || "", "aria-label": "Your own title for product " + a.number, placeholder: "Your own title" });
+  const zaehler = el("span", { class: "leise klein", text: `${feld.value.length} / ${feld.maxLength}` });
+  feld.addEventListener("input", () => { zaehler.textContent = `${feld.value.length} / ${feld.maxLength}`; });
+  return el("details", { class: "klein", style: "margin-top:8px" }, el("summary", { style: "cursor:pointer", text: "Enter a title yourself or ask the AI again" }),
+    el("div", { class: "eingabezeile", style: "margin-top:8px" }, feld, zaehler),
+    el("div", { class: "aktionen" },
+      el("button", { class: "knopf", type: "button", text: "Use my title", onclick: () => leiterAktion("/api/leiter/titel", { number: a.number, titel: feld.value }, "Title saved, it passed the rule check.") }),
+      el("button", { class: "knopf", type: "button", text: "Ask the AI again", onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/neuvorschlag", { number: a.number }, "New suggestion ready."); } })));
+}
+
+function leiterPruefung(a) {
+  const auswertungen = a.verlauf.filter((e) => e.ereignis === "ausgewertet");
+  const aus = [el("p", { text: "Title, ads and price did not bring the impressions back. Something about the product itself may be wrong: photos, fit, demand, or the competition. Please look at the listing and decide." }),
+    auswertungen.length ? el("p", { class: "leise klein", text: auswertungen.map((e) => `${STUFE_TEXT[e.stufe]}: ${zahl(e.details.vorher90)} → ${zahl(e.details.nachher90)} per 90 days`).join(" · ") }) : null];
+  if (istAdmin()) {
+    const wahl = el("select", { class: "feld", "aria-label": "Decision" }, ["ueberarbeiten", "offline", "behalten"].map((k) => el("option", { value: k, text: ERGEBNIS_LEITER[k] })));
+    const notiz = el("input", { class: "feld", type: "text", maxlength: 500, placeholder: "Why? (required)", "aria-label": "Reason for the decision" });
+    aus.push(el("div", { class: "stapel", style: "max-width:520px" }, wahl, notiz),
+      el("div", { class: "aktionen" }, el("button", { class: "knopf knopf-akzent", type: "button", text: "Save decision", onclick: () => leiterAktion("/api/leiter/entscheidung", { number: a.number, entscheidung: wahl.value, notiz: notiz.value }, "Decision saved.") })),
+      el("p", { class: "leise klein", text: "“Take offline” does not end the listing automatically; it is a task for the admin on eBay." }));
+  } else aus.push(el("p", { class: "leise klein", text: "An admin decides here." }));
+  return aus;
+}
+
+function lebenslauf(a) {
+  if (!a.verlauf.length) return null;
+  const zeile = (e) => {
+    const d = e.details || {};
+    const extra = e.ereignis === "ausgewertet" ? ` ${zahl(d.vorher90)} → ${zahl(d.nachher90)} impressions per 90 days (limit ${zahl(d.grenze90)}): ${d.erholt ? "seen again" : "still too few"}`
+      : e.ereignis === "vorschlag" && d.titel ? ` “${d.titel}”` : d.text ? " " + d.text : d.grund ? " " + d.grund : d.notiz ? ` ${ERGEBNIS_LEITER[d.entscheidung] || ""}: ${d.notiz}` : "";
+    return el("li", { text: `${zeitpunkt(e.at)} · ${STUFE_TEXT[e.stufe] || e.stufe} · ${EREIGNIS_TEXT[e.ereignis] || e.ereignis}${extra}${e.benutzer !== "system" ? ` (${e.benutzer})` : ""}` });
+  };
+  return el("details", { class: "klein", style: "margin-top:10px" }, el("summary", { style: "cursor:pointer", text: `History (${a.verlauf.length})` }), el("ol", { class: "lebenslauf" }, a.verlauf.map(zeile)));
+}
+
 // ======================================================= Konto (Passwort ändern)
 function zeichneKonto() {
   const root = $("#ansicht-account");
@@ -555,6 +702,8 @@ const LOG_TEXT = {
   role_changed: "Role changed", change_proposed: "Change proposed", change_approved: "Approved", change_rejected: "Rejected", revert_proposed: "Revert proposed",
   ebay_changed: "Changed on eBay", ebay_failed: "eBay change failed", ebay_refused: "Not changed (title differs or listing inactive)", ebay_already_current: "Already up to date", ebay_dry_run: "Dry run",
   password_changed: "Password changed", backup: "Backup", test_created: "Test created", test_started: "Test started", test_started_manually: "Test started manually", test_closed: "Test closed", traffic_sync: "Traffic import",
+  ladder_run: "Ladder run", ladder_freigegeben: "Ladder step changed on eBay", ladder_probelauf: "Ladder step: dry run", ladder_fehlgeschlagen: "Ladder step failed", ladder_started_manually: "Ladder step started by hand",
+  ladder_skipped: "Ladder step skipped", ladder_decided: "Manual check decided", ladder_removed: "Taken off the ladder",
 };
 // Die Protokoll-Details haben deutsche Schlüssel (so stehen sie in der Datenbank); angezeigt werden sie englisch
 const DETAIL_TEXT = {

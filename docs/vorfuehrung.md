@@ -36,6 +36,7 @@ Warum so:
 | 6 | Bei eBay: der Titel ist geändert (im zweiten Fenster) | „Echte Änderung, mit Niko‘s Zugang, nur nach Freigabe.“ |
 | 7 | *Log* | „Wer hat was wann vorgeschlagen, freigegeben, geändert: nicht nachträglich änderbar.“ |
 | 8 | *Tests* → „Show an example verdict“ | „Ein echtes Urteil braucht 30 Tage plus Datenverzug. So sieht es aus: besser, kein Unterschied, schlechter, mit Schutzkennzahl Verkäufe.“ |
+| 8b | *Ladder*: Trichter oben, eine Karte mit KI-Titel (alt/neu, verworfene Vorschläge mit Grund), eine laufende Stufe mit Fortschritt, den Lebenslauf aufklappen | „Was der Test im Kleinen beweist, macht die Leiter im Alltag: erst Titel, dann Werbung, dann Preis, und wenn nichts hilft, schaut ein Mensch drauf. Die KI schreibt, der Regelprüfer wirft alles raus, was abgemahnt werden könnte, und freigeben muss Niko.“ |
 | 9 | Kurz: VORSCHAU öffnen (Badge **PREVIEW**), `docs/entwicklung.md` | „Alle bauen weiter: Push auf `vorschau`, nach 1 bis 2 Minuten sichtbar, per Pull Request und Tests nach PROD.“ |
 
 Ausfallplan, falls Netz oder Server streiken: Screenshots der Schritte 1 bis 8 und ein Bildschirmvideo vorher aufnehmen; lokal läuft die App auch ohne Internet mit der Team-Kopie der Daten (`npm start`).
