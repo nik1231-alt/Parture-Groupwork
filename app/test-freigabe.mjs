@@ -253,3 +253,120 @@ test("Obergrenze: auch beim Freigeben, falls doch zu viele offen sind (z. B. von
   assert.equal(r.ok, false); assert.equal(r.status, 409);
   assert.equal(s.aufrufe.lies, 0); assert.equal(s.aufrufe.schreibe.length, 0);
 });
+
+// ---------- Zustandsautomat der Freigabe (Checkliste A3.7) ----------
+// offen/fehlgeschlagen → angewendet | abgelehnt | verworfen. Aus einem Endzustand führt kein Weg zurück: unerlaubte Übergänge liefern 409.
+const zustaende = (db) => db.prepare("SELECT status FROM aenderung ORDER BY id").all().map((z) => z.status);
+
+test("Zustandsautomat: abgelehnt ist endgültig, erneut ablehnen oder freigeben liefert 409, bei eBay passiert nichts", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT).ok, true);
+  assert.deepEqual(zustaende(v.db), ["abgelehnt", "abgelehnt"]);
+  assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT).status, 409, "nicht zweimal ablehnen");
+  const s = ersatzSchreiber(v.ebay);
+  assert.equal((await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)).status, 409, "Abgelehntes kann nicht nachträglich freigegeben werden");
+  assert.deepEqual(s.aufrufe, { lies: 0, schreibe: [] });
+  assert.deepEqual(zustaende(v.db), ["abgelehnt", "abgelehnt"]);
+});
+
+test("Zustandsautomat: angewendet ist endgültig, freigeben 409, ablehnen 409, auch wenn erst ein Teil live ist", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const erster = v.db.prepare("SELECT item_id FROM aenderung ORDER BY id").get().item_id;
+  v.ebay.set(erster, "Von Hand geändert");   // der erste wird verweigert, der zweite geht live
+  const s = ersatzSchreiber(v.ebay);
+  await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
+  assert.deepEqual(zustaende(v.db), ["fehlgeschlagen", "angewendet"]);
+  const r = fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT);
+  assert.equal(r.status, 409, "teilweise live: Ablehnen würde eBay und App auseinanderlaufen lassen"); assert.match(r.fehler, /already live/);
+  assert.deepEqual(zustaende(v.db), ["fehlgeschlagen", "angewendet"], "nichts verändert");
+  v.ebay.set(erster, v.db.prepare("SELECT alt FROM aenderung WHERE item_id = ?").get(erster).alt);
+  await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
+  assert.deepEqual(zustaende(v.db), ["angewendet", "angewendet"]);
+  assert.equal((await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)).status, 409);
+  assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT).status, 409, "Angewendetes kann nicht mehr abgelehnt werden");
+  assert.equal(s.aufrufe.schreibe.length, 2, "jeder Titel genau einmal geschrieben");
+});
+
+test("Zustandsautomat: verworfen (Test vor der Freigabe geschlossen) ist endgültig, freigeben und ablehnen liefern 409", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  ex.schliesse(v.db, { id: v.id, abschluss: "behalten" }, JETZT); fg.beimAbschluss(v.db, ADMIN, v.id, "behalten", JETZT);
+  assert.deepEqual(zustaende(v.db), ["verworfen", "verworfen"]);
+  const s = ersatzSchreiber(v.ebay);
+  assert.equal((await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)).status, 409);
+  assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT).status, 409);
+  assert.equal(s.aufrufe.lies, 0);
+});
+
+test("Eingaben: Test-Id nur als positive ganze Zahl, Art nur titel/zurueck, eBay-Artikelnummer nur aus Ziffern", async () => {
+  const v = vorbereitet();
+  for (const id of ["1", 0, -1, 1.5, null, [1]]) {
+    assert.equal(fg.reicheEin(v.db, BUILDER, { id }, kanaele).status, 400, String(id));
+    assert.equal((await fg.erteile(v.db, ADMIN, { id, art: "titel" }, ersatzSchreiber(v.ebay), v.p)).status, 400, String(id));
+    assert.equal(fg.lehneAb(v.db, ADMIN, { id, art: "titel" }).status, 400, String(id));
+  }
+  for (const art of ["loeschen", "", null, "TITEL"]) assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art }).status, 400, String(art));
+  for (const e of [null, [], "x", 5]) assert.equal(fg.reicheEin(v.db, BUILDER, e, kanaele).status, 400);
+  for (const nr of ["12345abc", "123", "1".repeat(21), "123456789012; DROP", "-123456789"]) {
+    const r = fg.reicheEin(v.db, BUILDER, { id: v.id }, (n) => [{ external_id: nr, title: `Holder for device ${Number(n) - 100}` }], JETZT);
+    assert.equal(r.status, 409, nr); assert.match(r.fehler, /invalid eBay item number/);
+  }
+  assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM aenderung"), 0, "nichts angelegt");
+  assert.equal(status(v.db, v.id), "vorbereitet");
+});
+
+// ---------- eBay-Schreibweg: ein Test je Riegel (Checkliste A3.11) ----------
+test("eBay-Riegel 1: ohne alle drei Zugangsdaten geht kein Aufruf raus, auch mit EBAY_SCHREIBEN=an", async () => {
+  let aufrufe = 0;
+  const fetchFn = async () => { aufrufe++; throw new Error("kein Netz erwartet"); };
+  for (const env of [{}, { EBAY_APP_ID: "a", EBAY_CERT_ID: "b" }, { EBAY_APP_ID: "a", EBAY_REFRESH_TOKEN: "c" }, { EBAY_CERT_ID: "b", EBAY_REFRESH_TOKEN: "c" }]) {
+    const s = erzeuge({ env: { ...env, EBAY_SCHREIBEN: "an" }, fetchFn });
+    assert.equal(s.konfiguriert(), false, JSON.stringify(env));
+    await assert.rejects(s.setzeTitel("123456789012", "Titel"), /credentials/);
+    await assert.rejects(s.lies("123456789012"), /credentials/);
+  }
+  assert.equal(aufrufe, 0);
+});
+
+test("eBay-Riegel 2: nur genau EBAY_SCHREIBEN=an schaltet das Schreiben ein", () => {
+  const an = (w) => erzeuge({ env: { EBAY_SCHREIBEN: w } }).schreibenAn();
+  for (const w of [undefined, "", "aus", "ja", "true", "1", "on", "an!", "ann"]) assert.equal(an(w), false, String(w));
+  for (const w of ["an", " AN ", "An"]) assert.equal(an(w), true, w);
+});
+
+test("eBay-Riegel 3: Lesen vor Schreiben mit dem echten Schreiber — weicht der Titel bei eBay ab, geht kein ReviseFixedPriceItem raus", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const items = v.db.prepare("SELECT item_id, alt FROM aenderung ORDER BY id").all();
+  const aufrufe = [];
+  const antwort = (text) => ({ status: 200, ok: true, json: async () => JSON.parse(text), text: async () => text });
+  const titelBeiEbay = new Map([[items[0].item_id, "Von Hand geändert"], [items[1].item_id, items[1].alt]]);
+  const fetchFn = async (url, o) => {
+    if (String(url).includes("oauth2/token")) { aufrufe.push("token"); return antwort(JSON.stringify({ access_token: "t", expires_in: 7200 })); }
+    const call = o.headers["X-EBAY-API-CALL-NAME"]; const id = o.body.match(/<ItemID>(\d+)<\/ItemID>/)[1];
+    aufrufe.push(call + " " + id);
+    if (call === "GetItem") return antwort(`<Ack>Success</Ack><Item><Title>${titelBeiEbay.get(id)}</Title><SellingStatus><QuantitySold>3</QuantitySold><ListingStatus>Active</ListingStatus></SellingStatus></Item>`);
+    return antwort("<Ack>Success</Ack>");
+  };
+  const s = erzeuge({ env: { EBAY_APP_ID: "a", EBAY_CERT_ID: "b", EBAY_REFRESH_TOKEN: "c", EBAY_SCHREIBEN: "an" }, fetchFn });
+  const r = await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
+  assert.deepEqual([r.wert.angewendet, r.wert.fehlgeschlagen], [1, 1]);
+  assert.deepEqual(aufrufe, ["token", `GetItem ${items[0].item_id}`, `GetItem ${items[1].item_id}`, `ReviseFixedPriceItem ${items[1].item_id}`],
+    "erst lesen, dann nur das Angebot mit dem erwarteten Titel schreiben");
+});
+
+test("eBay-Riegel 4: jeder Ausgang steht im Protokoll — freigegeben, verweigert, Lesefehler, Probelauf, geändert", async () => {
+  const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
+  const [a, b] = v.db.prepare("SELECT item_id, alt FROM aenderung ORDER BY id").all();
+  v.ebay.set(a.item_id, "Von Hand geändert"); v.ebay.delete(b.item_id);
+  await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, ersatzSchreiber(v.ebay), v.p, JETZT);
+  v.ebay.set(a.item_id, a.alt); v.ebay.set(b.item_id, b.alt);
+  await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, ersatzSchreiber(v.ebay, { an: false }), v.p, JETZT);
+  await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, ersatzSchreiber(v.ebay), v.p, JETZT);
+  const log = protokoll.liste(v.db, 100).reverse().filter((z) => z.aktion.startsWith("ebay_") || z.aktion === "change_approved");
+  assert.deepEqual(log.map((z) => [z.aktion, z.objekt, z.ergebnis]), [
+    ["change_approved", `test ${v.id} (titel)`, "ok"], ["ebay_refused", "item " + a.item_id, "refused"], ["ebay_failed", "item " + b.item_id, "error"],
+    ["change_approved", `test ${v.id} (titel)`, "ok"], ["ebay_dry_run", "item " + a.item_id, "dry_run"], ["ebay_dry_run", "item " + b.item_id, "dry_run"],
+    ["change_approved", `test ${v.id} (titel)`, "ok"], ["ebay_changed", "item " + a.item_id, "ok"], ["ebay_changed", "item " + b.item_id, "ok"],
+  ]);
+  assert.ok(log.every((z) => z.benutzer === "niko" && z.rolle === "admin"), "wer es ausgelöst hat, steht dabei");
+  assert.equal(log.find((z) => z.aktion === "ebay_refused").details.aktuell_bei_ebay, "Von Hand geändert");
+});
