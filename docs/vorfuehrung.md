@@ -46,3 +46,39 @@ Ausfallplan, falls Netz oder Server streiken: Screenshots der Schritte 1 bis 8 u
 - eBay kann Titeländerungen bei Angeboten mit Verkäufen ablehnen; die App zeigt dann eBays Meldung und ändert nichts.
 - Die Titelhilfe liefert nur belegte Hinweise aus den eigenen Daten und nur, wenn ein Muster klar erkennbar ist. Sie erfindet keine Titel.
 - Korrelation ist kein Beweis: genau dafür gibt es den Gruppenvergleich.
+
+## Vor und während eines echten Tests
+
+- **Shopify-Titel der Testprodukte nicht anfassen** (B1.5): Der Parture-Hub überträgt jede Titeländerung im Shopify-Shop binnen 10 Minuten nach eBay und würde den Testtitel überschreiben. Lion ist informiert.
+- Gesperrte Angebote (Tabelle `sperre` in `pm.db`, heute die 50 Angebote des Preis-Abstieg-Tests bis 01.12.) kommen in kein Los.
+- Revert-Plan ausfüllen, bevor der Schalter an geht: [`belege/revert-plan.md`](belege/revert-plan.md).
+
+## Wer hat was gebaut (A5.8, offen sagen)
+
+- **Gruppe:** Idee und fachlicher Kern: Diagnose-Regeln, Test mit Kontrollgruppe, Freigabe-Ablauf, Login und Rollen, Auswertung mit Diagrammen, Oberfläche.
+- **Server-KI** (Claude, im Git als „Parture Server-KI“ und mit `Co-Authored-By` erkennbar): Server-Betrieb (zwei Umgebungen, Cloudflare, Wächter, Sicherung), der nächtliche Datenexport aus dem Hub und, zur Abgabe am 22.11., ein Teil der Tests (Routenschutz, Ende-zu-Ende-Durchlauf), der Sicherheits- und Architektur-Doku sowie der Aufräumarbeiten aus der Checkliste.
+- Die genauen Anteile zeigt `git shortlog -sn` (mit `.mailmap`, ein Name je Person). **Diese Liste vor der Vorführung von der Gruppe prüfen und anpassen**: Was hier steht, muss stimmen.
+
+## Fragen und Antworten (B4, je zwei Sätze, eine Person zuständig)
+
+| # | Frage | Antwort | Wer |
+|---|---|---|---|
+| 1 | Warum kein Framework? | Rund 4.300 Zeilen mit einer einzigen Abhängigkeit, ohne Build-Schritt, jede Zeile lesbar. Der Preis: Routing und Sitzungen haben wir selbst geschrieben, dafür sind sie getestet. | … |
+| 2 | Warum SQLite? | Eine Datei, die nachts atomar ausgetauscht wird, Trigger für das Protokoll, kein Datenbankserver zu betreiben. Bei fünf Nutzern braucht es nichts Größeres. | … |
+| 3 | Warum keine Kosten, kein Gewinn, keine Kunden? | Der Export des Shops gibt nur eine Whitelist öffentlicher Felder heraus, das ist Firmenregel. Deshalb formulieren wir die Aufgabe über Impressionen, Menge und Preis. | … |
+| 4 | Wie ist sichergestellt, dass ein Builder nichts bei eBay ändert? | Die Rolle prüft der Server bei jeder Anfrage, mit Test für jede Route; die Keys liegen nur auf PROD, und geschrieben wird nur mit Schalter. Vor jeder Änderung liest die App den Titel, alles steht im Protokoll. | … |
+| 5 | Was, wenn eBay ablehnt? | Die App zeigt eBays Meldung am Vorschlag und im Protokoll. Geändert ist dann nichts. | … |
+| 6 | Korrelation oder Ursache? | Das Los mit Kontrollgruppe trennt den Titel-Effekt von Saison und eBay-Schwankungen; Verkäufe sind Schutzkennzahl, die Marke liegt bei +20 %. Ein echtes Urteil braucht 30 Tage, wir zeigen den Zwischenstand nach x Tagen und das Beispiel-Urteil. | … |
+| 7 | Was hat die KI gemacht, was die Gruppe? | Siehe Abschnitt oben, offen und mit Git-Zahlen. | Niko |
+| 8 | Was mit einem weiteren Monat? | Automatisches Urteil nach 30 Tagen, Titelhilfe mit mehr Daten, weitere Kanäle. | … |
+| 9 | Wie habt ihr zusammengearbeitet? | Branch je Aufgabe, Pull Request mit Review, CI mit Tests und Geheimnis-Scan, Vorschau nach einer Minute, PROD nur über `main`. Zahlen aus `git shortlog -sn` nennen. | … |
+| 10 | Wie schützt ihr Zugangsdaten? | `.env` und Datenbanken sind git-ignoriert, der Geheimnis-Scan prüft jede Datei und die ganze Historie, die Keys liegen nur auf PROD. Davor sitzt Cloudflare Access, die App prüft dessen Token zusätzlich. | … |
+
+## Sprecherrollen (B3.2, von der Gruppe auszufüllen)
+
+| Schritt | Wer spricht |
+|---|---|
+| 1–2 Listings, Datenstand | … |
+| 3–4 Test ziehen, Titel als Builder | … |
+| 5–7 Freigabe, eBay, Log (Admin) | Niko |
+| 8–9 Urteil, Zusammenarbeit | … |
