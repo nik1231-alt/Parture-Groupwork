@@ -342,3 +342,16 @@ test("schon bei eBay verkauft: nicht geeignet (eigener Grund), nie verkaufte ble
   assert.equal(leiter.nimmVonHandAuf(d, ADMIN, "A", produkte, en, T0).status, 409, "auch von Hand nicht");
   assert.equal(leiter.kandidaten(d, produkte, { ...en, leiterNurOhneVerkauf: "nein" }, T0).length, 6, "abgeschaltet: alle mit wenig Impressionen");
 });
+
+// Niko 20.11.: die vor der Regel gezogenen, schon verkauften Angebote gehen wieder runter, außer bei eBay wurde schon etwas geändert
+test("raeumeVerkaufteAb: verkaufte ohne eBay-Änderung runter (ohne Pause), geänderte bleiben, nie verkaufte bleiben", () => {
+  const d = neueDb();
+  assert.deepEqual(leiter.nimmAuf(d, shop(), E, T0), ["A", "B", "C"]);  // E: Regel aus, wie vor #49
+  d.prepare("INSERT INTO leiter_verlauf (number, stufe, ereignis, details, benutzer, at) VALUES ('B', 'titel', 'freigegeben', '{}', 'anna', ?)").run(new Date(T0.getTime() + 1000).toISOString());
+  const en = { ...E, leiterNurOhneVerkauf: "ja" };
+  assert.deepEqual(leiter.raeumeVerkaufteAb(d, shop(), en, T0).sort(), ["A", "C"]);
+  assert.deepEqual(d.prepare("SELECT number FROM leiter").all().map((r) => r.number), ["B"], "B wurde bei eBay geändert und bleibt");
+  assert.match(d.prepare("SELECT details FROM leiter_verlauf WHERE number = 'A' AND ereignis = 'zurueckgesetzt'").get().details, /Already sold on eBay/);
+  assert.deepEqual(leiter.raeumeVerkaufteAb(d, shop(), en, T0), [], "zweiter Lauf: nichts mehr zu tun");
+  assert.deepEqual(leiter.raeumeVerkaufteAb(d, shop(), E, T0), [], "Regel aus: nichts");
+});
