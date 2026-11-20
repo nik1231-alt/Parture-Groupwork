@@ -1,3 +1,6 @@
+// Tests für die Beispiel-Urteile (demo.mjs): Die Vorführung zeigt erfundene Zahlen, gerechnet mit der ECHTEN Urteilsfunktion.
+// Hier wird geprüft, dass sie genau die drei gedachten Urteile ergeben und als Beispiel gekennzeichnet sind, damit niemand
+// sie für echte Ergebnisse hält.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { baueDemo } from "./demo.mjs";

@@ -1,3 +1,5 @@
+// Tests für die Titelhilfe (titelhilfe.mjs): Sie schlägt nur Wörter vor, die in gut gesehenen Angeboten des eigenen Shops
+// vorkommen und im Titel noch fehlen; sie erfindet keine Titel. Die Daten unten sind so gebaut, dass das Ergebnis eindeutig ist.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { woerter, hinweiseFuer } from "./titelhilfe.mjs";
