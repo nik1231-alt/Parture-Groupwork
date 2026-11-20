@@ -103,6 +103,19 @@ suggestion comes from the title help, and a hand-typed title must pass the same 
 
 ## Data
 
+Analysis is scoped to the main `ebay` channel. Products without that channel do not enter the product analysis,
+diagnosis, prioritisation or new experiments. Sales, current prices and last-sale dates come from its channel rows,
+never from the catalogue's totals across platforms. Conversion is eBay units sold divided by eBay views over 90 days.
+Traffic sums and daily before/after comparisons accept a row only when both its product number and item ID match
+an `ebay` channel row. Unknown IDs and the separate `ebay-ali` account are excluded. Missing channel metrics stay
+unknown; they are not replaced by catalogue totals. Catalogue creation date remains product metadata used for the
+existing grace period; it is not an eBay listing start date.
+
+Other channels in product details and `/api/kanaele` are reference data only. `/api/live` is a raw catalogue reference
+endpoint, not an input to analysis. Older hub catalogues can contain multiple platforms; the bundled eBay exporter
+only fetches eBay. Existing saved experiment baselines and historical verdicts are not rewritten by this change;
+use newly started measurements for comparisons under the strict channel filter.
+
 ```
 Parture hub (company data) ──04:30, whitelist only──► pm.db ──read only──► app ──after approval──► eBay
                                                                              └──► app.db (users, ladder, settings, log)

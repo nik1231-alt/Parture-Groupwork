@@ -69,7 +69,7 @@ export function leiteSchwellenAb(produkte, einst = EINSTELLUNGEN, jetzt = new Da
 
 export const conversion = (p) => {
   const a = Number(p.aufrufe_90d);
-  return a > 0 ? (Number(p.units_90d) || 0) / a : null;
+  return a > 0 && p.units_90d != null ? Number(p.units_90d) / a : null;
 };
 export const klickrate = (p) => {
   const i = Number(p.impressionen_90d);
