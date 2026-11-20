@@ -98,3 +98,17 @@ test("KI: lehnt sie ab, ist der Schlüssel falsch oder fällt alles durch, kommt
   assert.equal(o.ok, false, "ohne KI und nur mit Füllwörtern gibt es keinen Vorschlag");
   assert.match(o.fehler, /GOOGLE_API_KEY/);
 });
+
+// Echte KI-Vorschläge vom 20.11.: die alte Regel verlangte nur irgendwo ein Bezugswort, "BMW X3 F25 … passend" ging durch.
+test("Marken: die Marke muss hinter „passend für …“ stehen, nicht davor; stand sie schon im alten Titel vorne, nur ein Hinweis", () => {
+  const alt = "Aufbewahrungsbox Armlehne kompatibel mit BMW X3 F25";
+  const vorne = pruefeTitel("BMW X3 F25 Armlehne Aufbewahrungsbox passend", alt);
+  assert.equal(vorne.ok, false);
+  assert.ok(vorne.verstoesse.some((v) => v.regel === "marke" && /must come after/.test(v.text)));
+  assert.equal(pruefeTitel("Dometic Kühlschrank Lüftungsgitter Knopf-Abdeckung Ersatz passend Weiß", "Ersatz Knopf-Abdeckung kompatibel mit Dometic Kühlschrank Weiß Lüftungsgitter").ok, false);
+  assert.equal(pruefeTitel("Aufbewahrungsbox Armlehne passend für BMW X3 F25", alt).ok, true);
+  assert.equal(pruefeTitel("Wandhalter Kettensäge passend für Einhell STIHL Bosch Makita Halterung", "Wandhalter Kettensäge kompatibel mit Einhell STIHL Bosch Makita Halterung").ok, true, "mehrere Marken hinter einem Bezugswort");
+  const wieVorher = pruefeTitel("Bosch Akku Halter für die Wand passend", "Bosch Akku Halter Wand passend");
+  assert.equal(wieVorher.ok, true, "stand schon so im alten Titel: kein Verstoß");
+  assert.ok(wieVorher.hinweise.some((x) => x.regel === "marke"), "aber ein Hinweis für den Admin");
+});
