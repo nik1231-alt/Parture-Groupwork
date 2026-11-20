@@ -47,7 +47,7 @@ test("pm.db missing: 503 with an understandable English text, without a server p
     assert.equal(j.ok, false);
     assert.match(j.error, /product data \(pm\.db\) is not available/);
     assert.ok(!/[äöüÄÖÜß]/.test(j.error), "englisch");
-    assert.ok(!j.error.includes(verz) && !j.error.includes("gibt-es-nicht"), "kein Serverpfad in der Meldung");
+    assert.ok(!j.error.includes(verz) && !j.error.includes("gibt-es-nicht"), "no server path in the message");
   }
   // What does not depend on pm.db keeps working (login, log, operating status with an empty data state)
   assert.equal((await fetch(basis + "/api/protokoll", { headers: { Cookie: c } })).status, 200);
@@ -61,6 +61,6 @@ test("Session expired: data answers 401 (the interface then loads the login page
   assert.equal(r.status, 401);
   assert.equal((await r.json()).error, "Please sign in.");
   const seite = await fetch(basis + "/", { headers: { Cookie: cookie } });
-  assert.equal(seite.status, 200); assert.match(await seite.text(), /Sign in/, "statt der App kommt die Anmeldeseite");
+  assert.equal(seite.status, 200); assert.match(await seite.text(), /Sign in/, "the login page comes instead of the app");
   assert.equal((await (await fetch(basis + "/api/ich", { headers: { Cookie: cookie } })).json()).daten.angemeldet, false);
 });

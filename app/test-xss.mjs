@@ -19,7 +19,7 @@ const BOESE = `<script>alert("xss")</script> Holder <img src=x onerror=alert(1)>
 test("Interface: no innerHTML, outerHTML, insertAdjacentHTML, document.write, eval or new Function in public/*.js", () => {
   const verboten = /\.(innerHTML|outerHTML)\s*[+]?=|insertAdjacentHTML|document\.write|\beval\s*\(|new\s+Function\s*\(|createContextualFragment|DOMParser|javascript:/;
   const dateien = fs.readdirSync(PUBLIC).filter((f) => f.endsWith(".js"));
-  assert.ok(dateien.length >= 3, "public/*.js nicht gefunden");
+  assert.ok(dateien.length >= 3, "public/*.js not found");
   for (const f of dateien) {
     fs.readFileSync(path.join(PUBLIC, f), "utf8").split(/\r?\n/).forEach((z, i) => {
       if (/^\s*\/\//.test(z)) return; // Comments may name the words
@@ -30,9 +30,9 @@ test("Interface: no innerHTML, outerHTML, insertAdjacentHTML, document.write, ev
 
 test("Interface: the el() helper sets text only via textContent, images only from https", () => {
   const app = fs.readFileSync(path.join(PUBLIC, "app.js"), "utf8");
-  assert.match(app, /if \(k === "text"\) n\.textContent = v;/, "el({ text }) muss textContent benutzen");
-  assert.match(app, /for \(const kind of kinder\.flat\(\)\) if \(kind != null\) n\.append\(kind\);/, "Kinder werden per append eingesetzt (Zeichenketten werden dabei zu Textknoten)");
-  assert.match(app, /const bildUrl = \(u\) => \(typeof u === "string" && \/\^https:\\\/\\\/\/i\.test\(u\) \? u : null\);/, "Bildadressen nur mit https://");
+  assert.match(app, /if \(k === "text"\) n\.textContent = v;/, "el({ text }) must use textContent");
+  assert.match(app, /for \(const kind of kinder\.flat\(\)\) if \(kind != null\) n\.append\(kind\);/, "children are inserted by append (strings become text nodes in the process)");
+  assert.match(app, /const bildUrl = \(u\) => \(typeof u === "string" && \/\^https:\\\/\\\/\/i\.test\(u\) \? u : null\);/, "image addresses only with https://");
 });
 
 test("Interface: HTML pages have no inline scripts and no on…= handlers (the CSP would block them anyway)", () => {
@@ -85,7 +85,7 @@ test("API: a title with <script> comes back as JSON text, unchanged, never as HT
   const liste = await fetch(basis + "/api/produkte?q=" + encodeURIComponent("<script>"), { headers: { Cookie: c } });
   istJson(liste);
   const treffer = (await liste.json()).daten;
-  assert.deepEqual(treffer.map((p) => [p.number, p.title]), [[NR, BOESE]], "der Titel ist Text, er wird weder ausgeführt noch verändert");
+  assert.deepEqual(treffer.map((p) => [p.number, p.title]), [[NR, BOESE]], "the title is text, it is neither executed nor changed");
   const einzel = await fetch(basis + "/api/produkt?nr=" + encodeURIComponent(NR), { headers: { Cookie: c } });
   istJson(einzel);
   assert.equal((await einzel.json()).daten.title, BOESE);

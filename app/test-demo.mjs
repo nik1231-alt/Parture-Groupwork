@@ -12,5 +12,5 @@ test("Demo: with the real rules the three examples give exactly the three intend
   assert.match(d.hinweis, /Invented/);
   assert.deepEqual(d.faelle.map((f) => f.urteil.urteil), ["better", "no_difference", "worse"]);
   assert.deepEqual(d.faelle.map((f) => f.urteil.empfehlung), ["keep", "revert", "revert"]);
-  assert.equal(d.faelle[2].urteil.schutz.ok, false, "Beispiel C scheitert an der Schutzkennzahl Verkäufe");
+  assert.equal(d.faelle[2].urteil.schutz.ok, false, "example C fails on the safety figure sales");
 });

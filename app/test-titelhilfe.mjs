@@ -25,8 +25,8 @@ test("Hints: only words that are frequent at the top and rare at the bottom and 
   assert.equal(r.ok, true);
   const w = r.hinweise.map((h) => h.wort);
   assert.ok(w.includes("halterung") && w.includes("magnetisch"), w.join(","));
-  assert.ok(!w.includes("handy"), "steht schon im eigenen Titel");
-  assert.ok(!w.includes("modell"), "kommt oben wie unten gleich oft vor");
+  assert.ok(!w.includes("handy"), "is already in the own title");
+  assert.ok(!w.includes("modell"), "occurs equally often at the top and at the bottom");
   assert.equal(r.hinweise.find((h) => h.wort === "halterung").top, 100);
   assert.equal(r.freieZeichen, TITEL_MAX_ZEICHEN - "Handy Ständer Tisch".length);
 });

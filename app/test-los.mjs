@@ -45,7 +45,7 @@ test("Draw reproducible: the seed is in the database and in the answer, the same
   // the order of the input does not matter (fixed starting order before shuffling)
   assert.deepEqual(ex.ziehe([...shop()].reverse(), 20, 4711), ex.ziehe(shop(), 20, 4711));
   const c = appDb(); const rc = ex.legeAn(c, {}, shop(), E, JETZT, 4712);
-  assert.notDeepEqual(gruppen(c, rc.wert.id), gruppen(a, ra.wert.id), "ein anderer seed ergibt eine andere Ziehung");
+  assert.notDeepEqual(gruppen(c, rc.wert.id), gruppen(a, ra.wert.id), "a different seed gives a different draw");
 });
 
 test("Draw reproducible: without a given seed one is drawn, stored and returned", () => {
@@ -84,7 +84,7 @@ test("Draw: no listing twice, neither within one test (even with duplicate candi
   assert.equal(ex.legeAn(d, {}, shop(), { ...E, testGroesse: 16 }, JETZT, 2).ok, true);
   const nummern = d.prepare("SELECT number FROM experiment_angebot").all().map((z) => z.number);
   assert.equal(nummern.length, 30); assert.equal(new Set(nummern).size, 30);
-  assert.equal(ex.legeAn(d, {}, shop(), { ...E, testGroesse: 2 }, JETZT, 3).status, 409, "alle Angebote stecken schon in Tests");
+  assert.equal(ex.legeAn(d, {}, shop(), { ...E, testGroesse: 2 }, JETZT, 3).status, 409, "all listings are already in tests");
 });
 
 // ---------- 4. Sperrliste ----------
@@ -108,8 +108,8 @@ test("Block list: blocked by product number or eBay item number; expired (until 
   const gesperrt = ex.gesperrteNummern(ladeSperre(pm), JETZT);
   assert.deepEqual([...gesperrt].sort(), ["P01", "P02", "P03", "P06", "P07"]);
   const frei = ex.kandidaten(appDb(), shop(), E, JETZT, gesperrt).map((p) => p.number);
-  assert.equal(frei.length, 25); assert.ok(frei.includes("P04"), "abgelaufene Sperre gibt das Angebot frei"); assert.ok(frei.includes("P05"));
-  assert.equal(ex.gesperrteNummern(ladeSperre(pm), new Date("2026-11-25T12:00:00Z")).has("P01"), false, "nach dem bis-Datum wieder frei");
+  assert.equal(frei.length, 25); assert.ok(frei.includes("P04"), "an expired block frees the listing"); assert.ok(frei.includes("P05"));
+  assert.equal(ex.gesperrteNummern(ladeSperre(pm), new Date("2026-11-25T12:00:00Z")).has("P01"), false, "free again after the bis date");
 });
 
 test("Block list: a blocked listing is never drawn (200 draws), and if there are not enough without blocked ones, there is a refusal instead of a blocked listing", () => {
@@ -129,7 +129,7 @@ test("Block list: a blocked listing is never drawn (200 draws), and if there are
 test("Draw: a product without a running eBay listing (ebay_aktiv 0) is never drawn, unknown (null) counts", () => {
   const p = shop(); p[0].ebay_aktiv = 0; p[1].ebay_aktiv = null; p[2].ebay_aktiv = 1;
   const k = ex.kandidaten(appDb(), p, E, JETZT).map((x) => x.number);
-  assert.ok(!k.includes("P00"), "beendetes Angebot kein Kandidat");
+  assert.ok(!k.includes("P00"), "an ended listing is no candidate");
   assert.ok(k.includes("P01") && k.includes("P02"));
 });
 
@@ -152,6 +152,6 @@ test("ladeProdukte: sales only from eBay, other platforms do not count", async (
     INSERT INTO kanal VALUES ('A', 'ebay', 1, '406000000001', 'a', 8.49, 90, 30, 8.49, '2026-11-10'), ('A', 'amazon', 1, 'X', 'a', 12.99, 410, 90, 12.99, '2026-11-19'),
       ('B', 'shopify', 1, 'y', 'b', 5, 40, 10, 5, '2026-11-18')`);
   const m = Object.fromEntries(ladeProdukte(d).map((r) => [r.number, [r.units_90d, r.units_total, r.avg_price, r.last_sold_at]]));
-  assert.deepEqual(m.A, [30, 90, 8.49, "2026-11-10"], "nur die eBay-Zeile, nicht Amazon");
-  assert.equal(m.B, undefined, "ohne eBay-Angebot: nicht Teil der Analyse");
+  assert.deepEqual(m.A, [30, 90, 8.49, "2026-11-10"], "only the eBay row, not Amazon");
+  assert.equal(m.B, undefined, "without an eBay listing: not part of the analysis");
 });

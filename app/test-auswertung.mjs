@@ -27,7 +27,7 @@ test("Sums and change per group are correct, also with an outlier", () => {
   ], E);
   assert.deepEqual(a.test.vorher, g(300, 30, 3)); assert.deepEqual(a.test.nachher, g(1200, 120, 10));
   assert.equal(a.test.aenderung.imp, 3);
-  assert.ok(Math.abs(a.test.median - 0.1) < 1e-12, "der Median zeigt: das typische Angebot gewann nur 10 %, ein Ausreißer treibt die Summe");
+  assert.ok(Math.abs(a.test.median - 0.1) < 1e-12, "the median shows: the typical listing gained only 10 %, an outlier drives the sum");
   assert.equal(a.test.anteilBesser, 2 / 3);
   assert.equal(a.kontrolle.anzahl, 2);
   assert.ok(Math.abs(a.kontrolle.aenderung.imp - 20 / 300) < 1e-12);
@@ -42,9 +42,9 @@ test("Net effect equals exactly the verdict from experimente.urteile", () => {
 
 test("Edge cases: empty groups, starting value 0, missing figures do not divide by 0 and stay JSON-safe", () => {
   const a = baueAuswertung([], E);
-  assert.equal(a.test.anzahl, 0); assert.equal(a.test.median, null); assert.equal(a.test.anteilBesser, null); assert.equal(a.netto.imp, 0, "leere Gruppen: weder Gewinn noch Verlust");
+  assert.equal(a.test.anzahl, 0); assert.equal(a.test.median, null); assert.equal(a.test.anteilBesser, null); assert.equal(a.netto.imp, 0, "empty groups: neither gain nor loss");
   const b = baueAuswertung([z("a", "test", g(0), g(50)), z("b", "kontrolle", g(0), g(0))], E);
-  assert.equal(b.test.punkte[0].aenderung, null, "Ausgangswert 0: keine Prozentzahl, kein Infinity");
+  assert.equal(b.test.punkte[0].aenderung, null, "starting value 0: no percentage, no Infinity");
   assert.equal(b.test.median, null);
   assert.doesNotThrow(() => JSON.stringify(b));
   for (const wert of [Infinity, NaN]) assert.equal(JSON.stringify(baueAuswertung([z("a", "test", g(10), g(wert))], E)).includes("Infinity"), false);
@@ -70,7 +70,7 @@ test("Demo: single listings add up exactly to the example's sums, verdict and ch
     assert.equal(f.auswertung.netto.imp, f.urteil.primaer.netto);
     assert.equal(f.auswertung.netto.trans, f.urteil.schutz.netto);
   }
-  assert.deepEqual(baueDemo(E).faelle[0].auswertung, d.faelle[0].auswertung, "gleiche Beispiele bei jedem Aufruf");
+  assert.deepEqual(baueDemo(E).faelle[0].auswertung, d.faelle[0].auswertung, "the same examples on every call");
 });
 
 // ---- Connection to the test detail ----
@@ -95,8 +95,8 @@ test("Test detail: no evaluation before the start, one afterwards, the list stay
   const v = gestarteterTest();
   const a = ex.detail(v.d, v.id, shop(2), TAGE(31), EINST).wert.auswertung;
   assert.equal(a.test.anzahl, 20); assert.equal(a.kontrolle.anzahl, 20);
-  assert.equal(a.test.aenderung.imp, 1, "heute doppelt so viele Impressionen wie beim Start");
-  assert.ok(Math.abs(a.netto.imp) < 1e-12, "Kontrolle verdoppelte sich ebenso, also kein Nettoeffekt");
+  assert.equal(a.test.aenderung.imp, 1, "twice as many impressions today as at the start");
+  assert.ok(Math.abs(a.netto.imp) < 1e-12, "the control doubled as well, so no net effect");
   assert.equal("auswertung" in ex.liste(v.d, shop(2), TAGE(31), EINST)[0], false);
   assert.doesNotThrow(() => JSON.stringify(ex.detail(v.d, v.id, shop(2), TAGE(31), EINST)));
 });

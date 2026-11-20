@@ -55,7 +55,7 @@ test("failed tests: fall back to the old version, the bad version is not tested 
   assert.equal(e.status, "abgelehnt");
   assert.match(e.ausgabe, /ok\.txt fehlt/);
   assert.equal(gitIn(prod)("rev-parse", "HEAD"), gut, "alter Stand bleibt");
-  assert.ok(!fs.existsSync(path.join(prod, "ok.txt")) === false, "Dateien sind wieder die alten");
+  assert.ok(!fs.existsSync(path.join(prod, "ok.txt")) === false, "files are the old ones again");
   assert.equal(leseStatus(prod).abgelehnt, schlecht);
   const nochmal = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(nochmal.status, "unveraendert");
@@ -64,7 +64,7 @@ test("failed tests: fall back to the old version, the bad version is not tested 
   const e2 = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(e2.status, "ausgerollt");
   assert.equal(gitIn(prod)("rev-parse", "HEAD"), repariert);
-  assert.equal(leseStatus(prod).abgelehnt, null, "Ablehnung ist aufgehoben");
+  assert.equal(leseStatus(prod).abgelehnt, null, "the rejection is lifted");
 });
 
 test("changed package.json: the app is stopped BEFORE npm ci, exactly once; not at all without a change to the dependencies", async () => {
@@ -80,13 +80,13 @@ test("changed package.json: the app is stopped BEFORE npm ci, exactly once; not 
   assert.equal(e.status, "ausgerollt");
   assert.equal(e.appGestoppt, false);
   assert.deepEqual(reihenfolge, []);
-  assert.ok(!fs.existsSync(path.join(prod, "installiert.txt")), "ohne Abhängigkeitsänderung kein npm ci");
+  assert.ok(!fs.existsSync(path.join(prod, "installiert.txt")), "no npm ci without a change to the dependencies");
   // 2) package.json changed (only the version, as with defd8b5): stop, then install, then tests, then rolled out
   schreibe(werk, "package.json", JSON.stringify({ name: "probe", version: "0.2.0" })); push("Version hoch");
   e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST, installBefehl: INSTALL, vorInstallation: stopp });
   assert.equal(e.status, "ausgerollt");
-  assert.equal(e.appGestoppt, true, "der Aufrufer muss wissen, dass die App gestoppt wurde");
-  assert.deepEqual(reihenfolge, ["stopp"], "genau ein Stopp, und zwar vor dem Install");
+  assert.equal(e.appGestoppt, true, "the caller must know that the app was stopped");
+  assert.deepEqual(reihenfolge, ["stopp"], "exactly one stop, and before the install");
   assert.ok(fs.existsSync(path.join(prod, "installiert.txt")));
   // 3) package.json changed AND tests fail: stop once, the fall back installs the old version again, appGestoppt (app stopped) reported
   fs.rmSync(path.join(prod, "installiert.txt")); reihenfolge.length = 0;
@@ -94,8 +94,8 @@ test("changed package.json: the app is stopped BEFORE npm ci, exactly once; not 
   e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST, installBefehl: INSTALL, vorInstallation: stopp });
   assert.equal(e.status, "abgelehnt");
   assert.equal(e.appGestoppt, true);
-  assert.deepEqual(reihenfolge, ["stopp"], "auch beim Rückfall wird nur einmal gestoppt");
-  assert.ok(fs.existsSync(path.join(prod, "installiert.txt")), "Rückfall hat die alten Abhängigkeiten wieder installiert");
+  assert.deepEqual(reihenfolge, ["stopp"], "also on the fall back it is stopped only once");
+  assert.ok(fs.existsSync(path.join(prod, "installiert.txt")), "the fall back installed the old dependencies again");
   schreibe(werk, "ok.txt", "1"); push("repariert");
 });
 
@@ -174,22 +174,22 @@ http.createServer((q, s) => {
   const hole = async () => { const x = await (await fetch(`http://127.0.0.1:${port}/x`, { signal: AbortSignal.timeout(1500) })).json(); appPid = x.pid ?? appPid; return x; };
   try {
     const a = await warte(hole);
-    assert.equal(a.stand, "eins", "App läuft");
+    assert.equal(a.stand, "eins", "app is running");
     // Auto-deploy: new version on GitHub (the mini project's tests pass through npm test) → the app then runs with the new version
     schreibe(werk, "stand.txt", "zwei"); const neuerStand = push("Stand zwei");
     const z = await warte(async () => { const x = await hole(); return x.stand === "zwei" ? x : null; }, 30000);
-    assert.notEqual(z.pid, a.pid, "App wurde neu gestartet");
+    assert.notEqual(z.pid, a.pid, "the app was restarted");
     assert.equal(leseStatus(prod).commit, neuerStand);
     a.pid = z.pid;
     // Crash: the app ends itself, the watcher restarts it (different PID)
     await fetch(`http://127.0.0.1:${port}/absturz`).catch(() => {});
     const b = await warte(async () => { const x = await hole(); return x.pid !== a.pid ? x : null; });
-    assert.ok(b.pid !== a.pid, "nach Absturz neu gestartet");
+    assert.ok(b.pid !== a.pid, "restarted after a crash");
     // Hanging app: no longer answers, the watcher ends and restarts it
     schreibe(prod, "haengt", "1");
     const c = await warte(async () => { const x = await hole(); return x.pid !== b.pid ? x : null; }, 30000);
-    assert.ok(c.pid !== b.pid, "hängende App neu gestartet");
-    assert.ok(fs.existsSync(path.join(prod, "daten", "waechter.log")), "Log wird geschrieben");
+    assert.ok(c.pid !== b.pid, "hanging app restarted");
+    assert.ok(fs.existsSync(path.join(prod, "daten", "waechter.log")), "the log is written");
     assert.match(fs.readFileSync(path.join(prod, "daten", "waechter.log"), "utf8"), /App gestartet/);
   } catch (e) {
     try { process.stderr.write("\nLOG:\n" + fs.readFileSync(path.join(prod, "daten", "waechter.log"), "utf8").slice(-1500), fs.existsSync(path.join(prod, "daten", "app.log")) ? fs.readFileSync(path.join(prod, "daten", "app.log"), "utf8").slice(-800) : ""); } catch { /* kein Log */ }

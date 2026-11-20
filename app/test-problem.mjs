@@ -9,14 +9,14 @@ test("Concentration: 80 % of the sum comes from the fewest products needed for i
   const k = konzentration([80, 2, 2, 2, 2, 2, 2, 2, 0, 0]);
   assert.equal(k.summe, 94);
   assert.equal(k.null, 2);
-  assert.deepEqual(k.fuer80, { anzahl: 1, anteil: 0.1 }, "80 von 94 = 85 % schon mit einem Produkt");
-  assert.deepEqual(k.fuer90, { anzahl: 4, anteil: 0.4 }, "90 % von 94 = 84,6: drei Produkte bringen 84, erst vier (86) reichen");
+  assert.deepEqual(k.fuer80, { anzahl: 1, anteil: 0.1 }, "80 of 94 = 85 % already with one product");
+  assert.deepEqual(k.fuer90, { anzahl: 4, anteil: 0.4 }, "90 % of 94 = 84.6: three products bring 84, only four (86) are enough");
   assert.equal(k.top10, 80 / 94);
 });
 
 test("Concentration: edge cases (all equal, nothing, empty list)", () => {
   const gleich = konzentration([5, 5, 5, 5]);
-  assert.deepEqual(gleich.fuer80, { anzahl: 4, anteil: 1 }, "Gleichverteilung: 3 von 4 bringen nur 75 %, für 80 % braucht es alle");
+  assert.deepEqual(gleich.fuer80, { anzahl: 4, anteil: 1 }, "equal distribution: 3 of 4 bring only 75 %, for 80 % all are needed");
   assert.equal(gleich.top20 > 0, true);
   const nichts = konzentration([0, 0, 0]);
   assert.equal(nichts.fuer80, null); assert.equal(nichts.top10, null);
@@ -36,7 +36,7 @@ test("Evaluation: the fields seen × sold count only active eBay listings, sums 
   assert.equal(a.produkte, 6); assert.equal(a.ebayAktiv, 5);
   assert.deepEqual(a.felder, { gesehenVerkauft: 1, gesehenNichtVerkauft: 1, kaumGesehenVerkauft: 1, kaumGesehenNichtVerkauft: 2 });
   assert.equal(a.kaumGesehen, 3); assert.equal(a.ohneImpressionen, 1);
-  assert.equal(a.ohneVerkauf, 3, "nur aktive eBay-Angebote");
-  assert.equal(a.verkaeufe.summe, 11, "Scope nur eBay: das Produkt ohne eBay-Angebot (50 Verkäufe) zählt nicht mit");
+  assert.equal(a.ohneVerkauf, 3, "only active eBay listings");
+  assert.equal(a.verkaeufe.summe, 11, "scope eBay only: the product without an eBay listing (50 sales) does not count");
   assert.equal(a.verkaeufe.anzahl, 5);
 });

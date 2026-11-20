@@ -23,7 +23,7 @@ test("95 % range: known case with three listings, too few values, equal values",
   // Logarithmen 0,1 / 0,2 / 0,3: Mittel 0,2, Streuung 0,1, Standardfehler 0,0577, t(2) = 4,303 → Abstand 0,2484
   const s = schaetze([Math.exp(0.1) - 1, Math.exp(0.2) - 1, Math.exp(0.3) - 1]);
   nahe(s.effekt, Math.exp(0.2) - 1); nahe(s.von, Math.exp(0.2 - 0.2484) - 1, "von", 1e-3); nahe(s.bis, Math.exp(0.2 + 0.2484) - 1, "bis", 1e-3); assert.equal(s.n, 3);
-  assert.equal(schaetze([0.3]), null, "ein einzelnes Angebot sagt nichts über die Streuung");
+  assert.equal(schaetze([0.3]), null, "a single listing says nothing about the spread");
   assert.equal(schaetze([]), null);
   const gleich = schaetze([0.2, 0.2, 0.2, 0.2, 0.2]);
   nahe(gleich.von, 0.2); nahe(gleich.bis, 0.2);
@@ -45,9 +45,9 @@ test("Verdict: whole range above zero = clear increase, below = clear decrease, 
   const sch = (von, bis) => ({ effekt: (von + bis) / 2, von, bis, n: 10 });
   assert.equal(urteil(sch(0.05, 0.3), 10), "up");
   assert.equal(urteil(sch(-0.3, -0.05), 10), "down");
-  assert.equal(urteil(sch(-0.02, 0.3), 10), "unclear", "der Bereich reicht über null");
-  assert.equal(urteil(sch(0.0, 0.3), 10), "unclear", "genau null zählt noch nicht als klar");
-  assert.equal(urteil(sch(0.05, 0.3), MIN_AUSGEWERTET - 1), "too_few", "ein schöner Wert aus zu wenigen Angeboten wird nicht beurteilt");
+  assert.equal(urteil(sch(-0.02, 0.3), 10), "unclear", "the range reaches across zero");
+  assert.equal(urteil(sch(0.0, 0.3), 10), "unclear", "exactly zero does not count as clear yet");
+  assert.equal(urteil(sch(0.05, 0.3), MIN_AUSGEWERTET - 1), "too_few", "a nice value from too few listings is not judged");
   assert.equal(urteil(null, 50), "too_few");
 });
 
@@ -63,12 +63,12 @@ test("Runs: one run per start day, newest first, each evaluates only its own lis
   const alt = viele("A", "werbung", 6, 100, 150, "2026-10-01"), neu = viele("N", "werbung", 5, 100, 80, "2026-10-08");
   const e = baueErgebnisse(uebersicht([...alt, ...neu, kontrolleAngebot("K1"), kontrolleAngebot("K2")]));
   assert.deepEqual(e.laeufe.map((l) => l.schluessel), [ALLE, "2026-10-08", "2026-10-01"]);
-  assert.deepEqual(e.laeufe.map((l) => l.angebote), [11, 5, 6], "ohne Kontrollgruppe gezählt");
+  assert.deepEqual(e.laeufe.map((l) => l.angebote), [11, 5, 6], "counted without the control group");
   assert.equal(e.kontrollgruppe, 2);
   const w = (i) => e.laeufe[i].phasen.find((p) => p.schluessel === "werbung");
-  assert.equal(w(1).ausgewertet, 5); nahe(w(1).netto, -0.2); assert.equal(w(1).urteil, "down", "nur die schlechten Angebote");
-  assert.equal(w(2).ausgewertet, 6); nahe(w(2).netto, 0.5); assert.equal(w(2).urteil, "up", "nur die guten Angebote");
-  assert.equal(w(0).ausgewertet, 11, "alle zusammen");
+  assert.equal(w(1).ausgewertet, 5); nahe(w(1).netto, -0.2); assert.equal(w(1).urteil, "down", "only the bad listings");
+  assert.equal(w(2).ausgewertet, 6); nahe(w(2).netto, 0.5); assert.equal(w(2).urteil, "up", "only the good listings");
+  assert.equal(w(0).ausgewertet, 11, "all together");
 });
 
 test("Net effect and sums per phase: listings against control group; without a control group a listing counts as checked but not in the effect", () => {
@@ -77,7 +77,7 @@ test("Net effect and sums per phase: listings against control group; without a c
   assert.equal(p.ausgewertet, 6); assert.equal(p.mitKontrolle, 5);
   assert.equal(p.vorher90, 500); assert.equal(p.nachher90, 650);
   nahe(p.aenderung, 0.3); nahe(p.kontrolleAenderung, 0); nahe(p.netto, 0.3);
-  assert.equal(p.urteil, "up", "alle fünf +30 %, Streuung 0: Bereich fällt auf einen Punkt über null");
+  assert.equal(p.urteil, "up", "all five +30 %, spread 0: the range collapses to one point above zero");
 });
 
 test("The figures on Results and on the Funnel page (leiter.wirkung) never differ", () => {
@@ -98,7 +98,7 @@ test("The figures on Results and on the Funnel page (leiter.wirkung) never diffe
     assert.equal(p.vorher90, x.vorher90); assert.equal(p.nachher90, x.nachher90);
     if (x.netto == null) assert.equal(p.netto, null, p.schluessel); else nahe(p.netto, x.netto, p.schluessel);
   }
-  assert.equal(e.laeufe.length, 2, "alle Angebote kamen am selben Tag: ein Lauf plus 'alle'");
+  assert.equal(e.laeufe.length, 2, "all listings came on the same day: one run plus 'all'");
   db.close();
 });
 
@@ -115,8 +115,8 @@ test("Funnel overview: how many reached each phase and what became of them", () 
     a("werbung", "vorschlag", null, [ev("titel", "aufgenommen"), aus("titel", false), ev("werbung", "vorschlag")]),                             // Werbung wartet auf Freigabe
   ]);
   const [titel, werbung, preis] = f.stufen;
-  assert.deepEqual([titel.erreicht, titel.erholt, titel.weiter], [6, 1, 5], "alle sechs waren in Phase 1, eines wurde wieder gesehen");
-  assert.deepEqual([werbung.erreicht, werbung.weiter, werbung.laeuft, werbung.wartet, werbung.uebersprungen], [5, 2, 1, 1, 1], "Werbung: zwei weitergereicht, eines läuft, eines wartet, eines übersprungen");
+  assert.deepEqual([titel.erreicht, titel.erholt, titel.weiter], [6, 1, 5], "all six were in phase 1, one was seen again");
+  assert.deepEqual([werbung.erreicht, werbung.weiter, werbung.laeuft, werbung.wartet, werbung.uebersprungen], [5, 2, 1, 1, 1], "ads: two passed on, one running, one waiting, one skipped");
   assert.deepEqual([preis.erreicht, preis.weiter, preis.wartet], [3, 2, 1]);
   assert.deepEqual(f.pruefung, { erreicht: 2, offen: 1, behalten: 1, ueberarbeiten: 0, offline: 0 });
   for (const z of f.stufen) assert.equal(z.erholt + z.weiter + z.laeuft + z.wartet + z.uebersprungen + z.entfernt, z.erreicht, z.schluessel + ": jedes Angebot landet in genau einer Spalte");
@@ -124,9 +124,9 @@ test("Funnel overview: how many reached each phase and what became of them", () 
 
 test("Funnel overview per run: counts only its own listings, the control group does not count", () => {
   const e = baueErgebnisse(uebersicht([...viele("A", "titel", 3, 100, 110, "2026-10-01"), ...viele("B", "titel", 2, 100, 110, "2026-10-08"), kontrolleAngebot("K1")]));
-  assert.equal(e.laeufe[0].fluss.stufen[0].erreicht, 5, "alle Läufe");
-  assert.equal(e.laeufe[1].fluss.stufen[0].erreicht, 2, "neuer Lauf");
-  assert.equal(e.laeufe[2].fluss.stufen[0].erreicht, 3, "älterer Lauf");
+  assert.equal(e.laeufe[0].fluss.stufen[0].erreicht, 5, "all runs");
+  assert.equal(e.laeufe[1].fluss.stufen[0].erreicht, 2, "newer run");
+  assert.equal(e.laeufe[2].fluss.stufen[0].erreicht, 3, "older run");
 });
 
 test("Running listings: are counted, the first end date is named, they are no result yet", () => {
@@ -139,14 +139,14 @@ test("Running listings: are counted, the first end date is named, they are no re
 test("Example view: invented figures, always the same, two runs plus all, ads clearly better, title not distinguishable from chance, everything finite", () => {
   const a = baueDemoErgebnisse(EINSTELLUNGEN), b = baueDemoErgebnisse(EINSTELLUNGEN);
   assert.equal(a.beispiel, true);
-  assert.equal(JSON.stringify(a), JSON.stringify(b), "feste Startwerte: jeder Aufruf gleich");
+  assert.equal(JSON.stringify(a), JSON.stringify(b), "fixed start values: every call the same");
   assert.equal(a.laeufe.length, 3); assert.equal(a.laeufe[0].angebote, 24); assert.equal(a.leer, false);
   assert.deepEqual(a.laeufe[0].phasen.map((p) => p.urteil), ["unclear", "up", "unclear"]);
   for (const l of a.laeufe) {
-    assert.equal(l.phasen[1].urteil, "up", "Werbung ist in jedem Lauf ein klarer Anstieg");
+    assert.equal(l.phasen[1].urteil, "up", "ads are a clear increase in every run");
     for (const p of l.phasen) for (const v of [p.netto, p.aenderung, p.kontrolleAenderung]) assert.ok(Number.isFinite(v), p.schluessel);
   }
-  assert.ok(a.laeufe.some((l) => l.phasen.some((p) => p.urteil === "too_few")), "ein Lauf zeigt auch 'zu früh'");
+  assert.ok(a.laeufe.some((l) => l.phasen.some((p) => p.urteil === "too_few")), "one run also shows 'too early'");
   const w = a.laeufe[0].fluss.stufen[1];
-  assert.deepEqual([w.laeuft, w.wartet], [2, 1], "das Beispiel zeigt auch laufende und wartende Angebote");
+  assert.deepEqual([w.laeuft, w.wartet], [2, 1], "the example also shows running and waiting listings");
 });

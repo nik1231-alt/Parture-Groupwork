@@ -62,7 +62,7 @@ test("wrong login: 401, no cookie; invalid input: an error instead of a crash", 
   const kaputt = await fetch(basis + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{kein json" });
   assert.equal(kaputt.status, 400);
   const fremd = await post("/api/login", { name: "anna", passwort: "ein-langes-passwort" }, { Origin: "http://boese.example" });
-  assert.equal(fremd.status, 403, "Anmeldung von einer fremden Seite wird abgelehnt");
+  assert.equal(fremd.status, 403, "a login from a foreign site is rejected");
 });
 
 test("with login: cookie is HttpOnly and SameSite=Strict, pages and data are reachable", async () => {

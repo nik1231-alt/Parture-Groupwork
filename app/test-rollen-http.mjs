@@ -44,12 +44,12 @@ test("/api/ich reports the role", async () => {
 test("Builder: roles, approval, rejecting and starting directly are blocked (403)", async () => {
   const c = await anmelden("anna");
   assert.equal((await get("/api/rollen", c)).status, 403);
-  assert.equal((await post("/api/rolle", { name: "anna", rolle: "admin" }, c)).status, 403, "ein Builder macht sich nicht selbst zum Admin");
+  assert.equal((await post("/api/rolle", { name: "anna", rolle: "admin" }, c)).status, 403, "a builder does not make themself admin");
   assert.equal((await post("/api/freigabe/erteilen", { id: 1, art: "titel" }, c)).status, 403);
   assert.equal((await post("/api/freigabe/ablehnen", { id: 1, art: "titel" }, c)).status, 403);
   assert.equal((await post("/api/experiment/start", { id: 1 }, c)).status, 403);
   const ich = await (await get("/api/ich", c)).json();
-  assert.equal(ich.daten.rolle, "builder", "auch nach den Versuchen ist anna noch Builder");
+  assert.equal(ich.daten.rolle, "builder", "even after the attempts anna is still a builder");
 });
 
 test("Builder may read: approvals and log are visible, submitting is allowed (the test just does not exist)", async () => {
@@ -57,7 +57,7 @@ test("Builder may read: approvals and log are visible, submitting is allowed (th
   const f = await (await get("/api/freigaben", c)).json();
   assert.equal(f.ok, true); assert.equal(f.daten.schreibenAn, false);
   assert.equal((await get("/api/protokoll", c)).status, 200);
-  assert.equal((await post("/api/experiment/freigabe", { id: 999 }, c)).status, 404, "nicht 403: einreichen darf auch ein Builder");
+  assert.equal((await post("/api/experiment/freigabe", { id: 999 }, c)).status, 404, "not 403: a builder may also submit");
 });
 
 test("without login the new addresses are blocked", async () => {
@@ -69,9 +69,9 @@ test("Admin: sees the roles, assigns roles, and the change is in the log", async
   const c = await anmelden("niko");
   const t = await (await get("/api/rollen", c)).json();
   assert.deepEqual(t.daten.benutzer.map((b) => [b.name, b.rolle]), [["niko", "admin"], ["anna", "builder"]]);
-  assert.equal((await post("/api/rolle", { name: "niko", rolle: "builder" }, c)).status, 409, "der einzige Admin kann sich nicht abgeben");
+  assert.equal((await post("/api/rolle", { name: "niko", rolle: "builder" }, c)).status, 409, "the only admin cannot give up the role");
   assert.equal((await post("/api/rolle", { name: "anna", rolle: "admin" }, c)).status, 200);
-  assert.equal((await (await get("/api/ich", await anmelden("anna"))).json()).daten.rolle, "admin", "die Änderung gilt sofort");
+  assert.equal((await (await get("/api/ich", await anmelden("anna"))).json()).daten.rolle, "admin", "the change applies at once");
   const l = await (await get("/api/protokoll", c)).json();
   assert.ok(l.daten.some((z) => z.aktion === "role_changed" && z.objekt === "user anna" && z.benutzer === "niko"));
   assert.equal((await post("/api/rolle", { name: "anna", rolle: "builder" }, c)).status, 200);
@@ -91,7 +91,7 @@ test("Operating status: visible to logged-in users, blocked without login, no wr
   assert.equal(b.schreibenAn, false); assert.equal(b.zugangsdaten, false); assert.equal(b.benachrichtigung, false);
   assert.equal(typeof b.sicherung.automatisch, "boolean");
   assert.ok("trafficBis" in b.daten && "veraltet" in b.daten);
-  assert.ok(!JSON.stringify(b).includes(verz), "keine Serverpfade in der Antwort");
+  assert.ok(!JSON.stringify(b).includes(verz), "no server paths in the answer");
 });
 
 test("Backup by button: builder 403, admin backs up, the log records it, the backup is readable", async () => {
@@ -115,7 +115,7 @@ test("Changing the password through the server: only with login, old password ne
   const r = await post("/api/passwort", { altes: "ein-langes-passwort", neues: "ein-ganz-neues-passwort" }, c);
   assert.equal(r.status, 200);
   const neuesCookie = r.headers.get("set-cookie").split(";")[0];
-  assert.equal((await get("/api/ich", c)).status === 200 && (await (await get("/api/ich", c)).json()).daten.angemeldet, false, "alte Sitzung ist beendet");
+  assert.equal((await get("/api/ich", c)).status === 200 && (await (await get("/api/ich", c)).json()).daten.angemeldet, false, "the old session has ended");
   assert.equal((await (await get("/api/ich", neuesCookie)).json()).daten.angemeldet, true);
   const l = JSON.stringify((await (await get("/api/protokoll", await anmelden("niko"))).json()).daten);
   assert.match(l, /password_changed/);

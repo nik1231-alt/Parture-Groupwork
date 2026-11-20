@@ -23,7 +23,7 @@ test("Backup during operation (WAL, open connection) contains all data, missing 
   assert.equal(r.gesichert.length, 1);
   assert.equal(path.basename(r.gesichert[0].datei), "app-2026-11-17-0300.db");
   assert.deepEqual(lese(r.gesichert[0].datei), ["alex", "niko"]);
-  assert.deepEqual(fs.readdirSync(ziel).filter((f) => /-(wal|shm)$/.test(f)), [], "keine Nebendateien neben der Sicherung");
+  assert.deepEqual(fs.readdirSync(ziel).filter((f) => /-(wal|shm)$/.test(f)), [], "no side files next to the backup");
 });
 
 test("a second location gets the same backup", async () => {
@@ -46,7 +46,7 @@ test("Check: a broken file does not count as intact and is not restored", () => 
   assert.equal(istHeil(kaputt), false);
   assert.equal(istHeil(path.join(wurzel, "gibt-es-nicht.db")), false);
   assert.throws(() => stelleWiederHer(kaputt, appPfad), /failed the integrity check/);
-  assert.deepEqual(lese(appPfad), ["alex", "niko"], "die echte Datei blieb unberührt");
+  assert.deepEqual(lese(appPfad), ["alex", "niko"], "the real file stayed untouched");
 });
 
 test("Restore: the previous file is put aside, afterwards the old data is correct", async () => {
@@ -54,9 +54,9 @@ test("Restore: the previous file is put aside, afterwards the old data is correc
   app.exec("INSERT INTO benutzer VALUES ('zuviel'); DELETE FROM benutzer WHERE name = 'niko';");   // "Unfall" nach der Sicherung
   app.close();
   const e = stelleWiederHer(r.gesichert[0].datei, appPfad, new Date("2026-11-22T05:00:00Z"));
-  assert.deepEqual(lese(appPfad), ["alex", "niko"], "Stand der Sicherung");
-  assert.ok(e.alt && fs.existsSync(e.alt), "die alte Datei liegt noch daneben");
-  assert.deepEqual(lese(e.alt), ["alex", "zuviel"], "Stand vor der Wiederherstellung bleibt nachvollziehbar");
+  assert.deepEqual(lese(appPfad), ["alex", "niko"], "state of the backup");
+  assert.ok(e.alt && fs.existsSync(e.alt), "the old file is still next to it");
+  assert.deepEqual(lese(e.alt), ["alex", "zuviel"], "the state before the restore stays traceable");
 });
 
 test("Configuration: default paths and override by environment", () => {

@@ -58,7 +58,7 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
   assert.equal((await post("/api/einstellungen", anna, { werte: { testGroesse: 4 } })).status, 403);
   daten(await post("/api/einstellungen", await anmelden("niko"), { werte: { testGroesse: 4 } }));
   const uebersicht = daten(await get("/api/experimente", anna));
-  assert.equal(uebersicht.titelMaxZeichen, TITEL_MAX_ZEICHEN, "die Oberfläche bekommt die Titellänge vom Server");
+  assert.equal(uebersicht.titelMaxZeichen, TITEL_MAX_ZEICHEN, "the interface gets the title length from the server");
   assert.ok(uebersicht.moeglich >= 4, `genug Kandidaten in der Team-Kopie (${uebersicht.moeglich})`);
   const neu = daten(await post("/api/experiment", anna, { name: "End-to-end" }));
   assert.ok(Number.isInteger(neu.id) && Number.isInteger(neu.seed));
@@ -78,7 +78,7 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
     titel.set(a.number, { alt: a.alt, neu: t.replace(/\s+/g, " ").trim() });
   }
   const eingereicht = daten(await post("/api/experiment/freigabe", anna, { id: neu.id }));
-  assert.ok(eingereicht.aenderungen >= 2, "mindestens ein eBay-Angebot je Testangebot");
+  assert.ok(eingereicht.aenderungen >= 2, "at least one eBay listing per test listing");
   // After "Send for approval" the suggestion is locked, and a builder cannot approve
   assert.equal((await post("/api/experiment/titel", anna, { id: neu.id, number: testAngebote[0].number, neu: "Changed after submit" })).status, 409);
   assert.equal((await post("/api/freigabe/erteilen", anna, { id: neu.id, art: "titel" })).status, 403);
@@ -91,12 +91,12 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
   assert.equal(offen.offen, eingereicht.aenderungen);
   const ergebnis = daten(await post("/api/freigabe/erteilen", niko, { id: neu.id, art: "titel" }));
   assert.deepEqual({ probelauf: ergebnis.probelauf, angewendet: ergebnis.angewendet, fehlgeschlagen: ergebnis.fehlgeschlagen, gestartet: ergebnis.gestartet, schreibenAn: ergebnis.schreibenAn },
-    { probelauf: eingereicht.aenderungen, angewendet: 0, fehlgeschlagen: 0, gestartet: false, schreibenAn: false }, "Probelauf: nichts geändert, Test nicht gestartet");
+    { probelauf: eingereicht.aenderungen, angewendet: 0, fehlgeschlagen: 0, gestartet: false, schreibenAn: false }, "dry run: nothing changed, test not started");
 
   // ---- Log: every step with person, old and new, the dry run as dry_run ----
   const log = daten(await get("/api/protokoll", niko));
   const erstellt = log.find((z) => z.aktion === "test_created" && z.objekt === "test " + neu.id);
-  assert.equal(erstellt.benutzer, "anna"); assert.equal(erstellt.details.seed, neu.seed, "der seed des Loses steht im Protokoll");
+  assert.equal(erstellt.benutzer, "anna"); assert.equal(erstellt.details.seed, neu.seed, "the seed of the draw is in the log");
   const vorgeschlagen = log.filter((z) => z.aktion === "change_proposed" && z.details?.test === neu.id);
   assert.equal(vorgeschlagen.length, eingereicht.aenderungen);
   for (const z of vorgeschlagen) { assert.equal(z.benutzer, "anna"); assert.equal(z.rolle, "builder"); assert.deepEqual({ alt: z.details.alt, neu: z.details.neu }, titel.get(z.details.number)); }
@@ -107,13 +107,13 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
     assert.equal(z.ergebnis, "dry_run"); assert.equal(z.benutzer, "niko");
     assert.deepEqual({ alt: z.details.alt, neu: z.details.neu }, titel.get(z.details.number));
   }
-  assert.ok(!log.some((z) => z.aktion === "ebay_changed" || z.aktion === "ebay_failed"), "nichts bei eBay geändert, kein Fehler");
+  assert.ok(!log.some((z) => z.aktion === "ebay_changed" || z.aktion === "ebay_failed"), "nothing changed on eBay, no error");
 
   // ---- Approvals stay open (the dry run changes nothing), test view and evaluation answer ----
   const danach = daten(await get("/api/freigaben", niko));
   assert.ok(danach.aenderungen.filter((a) => a.experiment_id === neu.id).every((a) => a.status === "offen" && /Dry run/.test(a.ergebnis)));
   detail = daten(await get("/api/experiment?id=" + neu.id, niko));
   assert.equal(detail.status, "approval"); assert.equal(detail.anzahl.titel, 2);
-  assert.equal(detail.auswertung, null, "vor dem Start gibt es noch keine Auswertung");
+  assert.equal(detail.auswertung, null, "before the start there is no evaluation yet");
   assert.ok(daten(await get("/api/experimente", niko)).tests.some((t) => t.id === neu.id && t.status === "approval"));
 });

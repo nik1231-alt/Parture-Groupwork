@@ -7,7 +7,7 @@ const w = (imp, auf = 0, trans = 0) => ({ imp, auf, trans });
 const tag = (o) => new Map(Object.entries(o));
 
 test("Date: Los Angeles time, month boundaries, day lists", () => {
-  assert.equal(laDatum(new Date("2026-11-17T03:00:00Z")), "2026-11-16", "morgens in Deutschland ist es in LA noch der Vortag");
+  assert.equal(laDatum(new Date("2026-11-17T03:00:00Z")), "2026-11-16", "in the morning in Germany it is still the previous day in LA");
   assert.equal(laDatum(new Date("2026-11-17T20:00:00Z"), 3), "2026-11-14");
   assert.equal(addTage("2026-11-01", -1), "2026-10-31");
   assert.equal(addTage("2026-12-31", 1), "2027-01-01");
@@ -19,17 +19,17 @@ test("Planning: missing days and the last three days are fetched, the rest not",
   const alle = tageListe("2026-11-14", 10); // 05. bis 14.
   const vorhanden = alle.filter((d) => d !== "2026-11-08"); // der 08. fehlt
   assert.deepEqual(planeTage(vorhanden, alle, 3), ["2026-11-08", "2026-11-12", "2026-11-13", "2026-11-14"]);
-  assert.deepEqual(planeTage([], alle, 3), alle, "ganz ohne Daten wird alles geholt");
-  assert.deepEqual(planeTage(alle, alle, 3), ["2026-11-12", "2026-11-13", "2026-11-14"], "nur die Nachprüfung");
+  assert.deepEqual(planeTage([], alle, 3), alle, "without any data everything is fetched");
+  assert.deepEqual(planeTage(alle, alle, 3), ["2026-11-12", "2026-11-13", "2026-11-14"], "only the re-check");
 });
 
 test("Re-check: later changes by eBay are counted", () => {
   const alt = tag({ a: w(10, 2, 1), b: w(5) });
   assert.equal(zaehleAbweichungen(alt, tag({ a: w(10, 2, 1), b: w(5) })), 0);
-  assert.equal(zaehleAbweichungen(alt, tag({ a: w(12, 2, 1), b: w(5) })), 1, "geänderte Zahl");
-  assert.equal(zaehleAbweichungen(alt, tag({ a: w(10, 2, 1), b: w(5), c: w(1) })), 1, "neue Zeile");
-  assert.equal(zaehleAbweichungen(alt, tag({ a: w(10, 2, 1) })), 1, "weggefallene Zeile");
-  assert.equal(zaehleAbweichungen(undefined, tag({ a: w(1) })), 0, "ohne gespeicherten Tag gibt es nichts zu vergleichen");
+  assert.equal(zaehleAbweichungen(alt, tag({ a: w(12, 2, 1), b: w(5) })), 1, "changed figure");
+  assert.equal(zaehleAbweichungen(alt, tag({ a: w(10, 2, 1), b: w(5), c: w(1) })), 1, "new row");
+  assert.equal(zaehleAbweichungen(alt, tag({ a: w(10, 2, 1) })), 1, "dropped row");
+  assert.equal(zaehleAbweichungen(undefined, tag({ a: w(1) })), 0, "without a stored day there is nothing to compare");
 });
 
 test("Window: sums exactly over the last N days up to the cut-off day, known listings only", () => {
@@ -37,7 +37,7 @@ test("Window: sums exactly over the last N days up to the cut-off day, known lis
   const f = fensterSummen(tage, "2026-11-12", 2); // 11. und 12.
   assert.deepEqual(f.get("a"), { imp: 6, auf: 3, trans: 1 });
   assert.deepEqual(f.get("b"), { imp: 7, auf: 0, trans: 0 });
-  assert.equal(fensterSummen(tage, "2026-11-12", 3).get("a").imp, 7, "mit drei Tagen kommt der 10. dazu, der 13. nie (nach dem Stichtag)");
+  assert.equal(fensterSummen(tage, "2026-11-12", 3).get("a").imp, 7, "with three days the 10th is added, the 13th never (after the cut-off day)");
   assert.equal(fensterSummen(tage, "2026-11-12", 2, new Set(["a"])).has("b"), false);
 });
 
@@ -71,7 +71,7 @@ test("Fetch: a short error is retried, a lasting error aborts instead of deliver
   await assert.rejects(holeTag("t", "2026-11-12", ["1"], { fetchFn: async () => antwort({}, 500), pauseMs: 1 }), /HTTP 500/);
   let k = 0;
   await assert.rejects(holeTag("t", "2026-11-12", ["1"], { fetchFn: async () => { k++; return antwort({}, 403); }, pauseMs: 1 }), /HTTP 403/);
-  assert.equal(k, 1, "bei 4xx wird nicht wiederholt");
+  assert.equal(k, 1, "on 4xx there is no retry");
 });
 
 test("Control sum: eBay's date format (yyyymmdd) is read, on errors null comes back", async () => {
@@ -83,10 +83,10 @@ test("Control sum: eBay's date format (yyyymmdd) is read, on errors null comes b
 test("eBay limit (HTTP 429): a second attempt after the pause, then a LimitFehler instead of retrying forever", async () => {
   let n = 0;
   await assert.rejects(holeTag("t", "2026-11-12", ["1"], { fetchFn: async () => { n++; return antwort({}, 429); }, limitPauseMs: 1 }), (e) => e instanceof LimitFehler && e.limit === true);
-  assert.equal(n, 2, "genau zwei Anfragen, dann Schluss");
+  assert.equal(n, 2, "exactly two requests, then stop");
   let k = 0;
   const danach = async () => (++k === 1 ? antwort({}, 429) : antwort(bericht([["1", 5, 1, 0]])));
-  assert.equal((await holeTag("t", "2026-11-12", ["1"], { fetchFn: danach, limitPauseMs: 1 })).get("1").imp, 5, "ein kurzer Engpass wird überbrückt");
+  assert.equal((await holeTag("t", "2026-11-12", ["1"], { fetchFn: danach, limitPauseMs: 1 })).get("1").imp, 5, "a short bottleneck is bridged");
 });
 
 test("Period: a period of several days is in the filter (for the sums while daily values are missing)", async () => {

@@ -41,7 +41,7 @@ test("Running phase: interim figures only over days with finished data, status p
   const d = baueDashboard(grund({ trafficBis: plusTage(START, 2) }));
   const p = d.phasen[0];
   assert.equal(p.status, "laeuft");
-  assert.equal(p.gelaufen, 2, "Tag 2 von 4");
+  assert.equal(p.gelaufen, 2, "day 2 of 4");
   assert.equal(p.test.nachher.imp, 6);
   assert.ok(p.netto.imp > 0.2);
 });
@@ -54,9 +54,9 @@ test("Curve: 100 = average of the 7 days before, aligned per listing at its own 
   g.trafficBis = plusTage(START, 5);
   const p = baueDashboard(g).phasen[0];
   const tage = p.kurve.map((k) => k.tag);
-  assert.deepEqual(tage, [-7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4], "kein Tag 0, höchstens so viele Tage wie die Prüfzeit");
+  assert.deepEqual(tage, [-7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4], "no day 0, at most as many days as the waiting time");
   assert.equal(p.kurve.find((k) => k.tag === -3).test, 100);
-  assert.equal(p.kurve.find((k) => k.tag === 1).test, 200, "beide Angebote am eigenen Tag 1 verdoppelt");
+  assert.equal(p.kurve.find((k) => k.tag === 1).test, 200, "both listings doubled on their own day 1");
   assert.ok(Math.abs(p.kurve.find((k) => k.tag === 1).kontrolle - 110) < 1e-9);
 });
 
@@ -65,7 +65,7 @@ test("Single listings: better or worse from ±10 %, roughly equal in between", (
   g.starts.push({ number: "C", stufe: "titel", tag: START }, { number: "D", stufe: "titel", tag: START });
   g.tage.set("B", reihe(3, 2)); g.tage.set("C", reihe(3, 3.2)); g.tage.set("D", reihe(0, 1));
   const p = baueDashboard(g).phasen[0];
-  assert.deepEqual([p.besser, p.schlechter, p.gleich], [2, 1, 1], "A +100 %, D von 0 auf 1 besser; B −33 % schlechter; C +7 % gleich");
+  assert.deepEqual([p.besser, p.schlechter, p.gleich], [2, 1, 1], "A +100 %, D from 0 to 1 better; B −33 % worse; C +7 % equal");
 });
 
 test("Click rate and sales: per group, control converted to the same number of listings", () => {
@@ -74,9 +74,9 @@ test("Click rate and sales: per group, control converted to the same number of l
   g.tage.set("K1", reihe(3, 3.3, { trans: 1 })); // K2 ohne Verkäufe → Durchschnitt 0,5 je Tag und Angebot
   const p = baueDashboard(g).phasen[0];
   assert.ok(Math.abs(p.test.nachher.auf / p.test.nachher.imp - 0.04) < 1e-9, "A 5 %, B 3 % → 4 %");
-  assert.equal(p.verkaeufe.test, 4, "A: 1 Verkauf an jedem der 4 Tage");
-  assert.equal(p.verkaeufe.kontrolle, 4, "je Phasenangebot der Durchschnitt der Kontrolle (2 × 4 × 0,5)");
-  assert.ok(p.netto.auf > p.netto.imp, "Aufrufe stiegen stärker als Impressionen");
+  assert.equal(p.verkaeufe.test, 4, "A: 1 sale on each of the 4 days");
+  assert.equal(p.verkaeufe.kontrolle, 4, "per phase listing the average of the control (2 × 4 × 0.5)");
+  assert.ok(p.netto.auf > p.netto.imp, "views rose more strongly than impressions");
 });
 
 test("Without a control group over the same days: no net effect, but the phase's figures", () => {
@@ -103,7 +103,7 @@ test("Totals and restart: the latest start per listing counts, manual starts are
   const g = grund({ auswertungen: [{ number: "A", stufe: "titel", erholt: true }, { number: "B", stufe: "titel", erholt: false }] });
   g.starts.push({ number: "A", stufe: "titel", tag: plusTage(START, -60), vonHand: true }, { number: "B", stufe: "werbung", tag: plusTage(START, 4), vonHand: true });
   const d = baueDashboard(g);
-  assert.equal(d.phasen[0].angebote, 2, "A zählt einmal, mit dem jüngeren Start");
+  assert.equal(d.phasen[0].angebote, 2, "A counts once, with the younger start");
   assert.equal(d.phasen[0].start, START);
   assert.equal(d.phasen[0].erholt, 1);
   assert.deepEqual(d.summe, { aufLeiter: 2, kontrolle: 2, erholt: 1, aenderungenEbay: 2 });
@@ -115,7 +115,7 @@ test("Take off / Start over: a start no longer counts if the listing was cancell
   g.starts = g.starts.map((s) => ({ ...s, at: s.tag + "T09:00:00Z" }));
   g.abbrueche = [{ number: "B", at: plusTage(START, 2) + "T10:00:00Z" }, { number: "A", at: plusTage(START, -5) + "T10:00:00Z" }];
   const d = baueDashboard(g);
-  assert.equal(d.phasen[0].angebote, 1, "B wurde nach dem Start abgebrochen; A nur vor dem Start, zählt also");
+  assert.equal(d.phasen[0].angebote, 1, "B was cancelled after the start; A only before the start, so it counts");
   assert.equal(d.summe.aufLeiter, 1);
 });
 

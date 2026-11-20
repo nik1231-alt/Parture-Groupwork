@@ -29,7 +29,7 @@ function zeichenketten(quelle) {
 test("Splitter: finds strings and skips comments (also with umlauts and addresses)", () => {
   const z = zeichenketten('// Kommentar mit Ä\nconst a = "eins"; /* Größe */ const b = `zwei ${x}`; const u = "https://x.y/z"; // noch ein Ö');
   assert.deepEqual(z.map((x) => x.text), ["eins", "zwei ${x}", "https://x.y/z"]);
-  assert.ok(zeichenketten('const t = "Fehler: ungültig";').some((x) => DEUTSCH.test(x.text)), "ein deutscher Text würde gefunden");
+  assert.ok(zeichenketten('const t = "Fehler: ungültig";').some((x) => DEUTSCH.test(x.text)), "a German text would be found");
 });
 
 test("public/*.js: no umlauts or ß in strings (everything visible is English)", () => {

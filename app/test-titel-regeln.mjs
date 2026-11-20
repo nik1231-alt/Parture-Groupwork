@@ -25,14 +25,14 @@ test("Claims are rejected: original, superlative, test mark, environment, price,
 });
 
 test("Brands: no new ones, and only with a reference word", () => {
-  assert.ok(regeln("2x Halter passend für Bosch und Makita L-Boxx").includes("marke"), "Makita stand nicht im alten Titel");
-  assert.ok(regeln("Bosch L-Boxx Halter 2x Wandhalterung").includes("marke"), "Bosch ohne „passend für“ klingt nach Hersteller");
+  assert.ok(regeln("2x Halter passend für Bosch und Makita L-Boxx").includes("marke"), "Makita was not in the old title");
+  assert.ok(regeln("Bosch L-Boxx Halter 2x Wandhalterung").includes("marke"), "Bosch without passend für sounds like the maker");
   assert.deepEqual(markenIn("Adapter passend für IKEA Trofast &amp; Kallax"), ["ikea", "kallax", "trofast"]);
 });
 
 test("Invent nothing: new numbers and colours are rejected", () => {
-  assert.ok(regeln("4x Halter passend für Bosch L-Boxx Wandhalterung").includes("erfunden"), "4x statt 2x");
-  assert.ok(regeln("2x Halter 30 cm passend für Bosch L-Boxx").includes("erfunden"), "Maß erfunden");
+  assert.ok(regeln("4x Halter passend für Bosch L-Boxx Wandhalterung").includes("erfunden"), "4x instead of 2x");
+  assert.ok(regeln("2x Halter 30 cm passend für Bosch L-Boxx").includes("erfunden"), "size invented");
   assert.ok(regeln("2x Halter passend für Bosch L-Boxx weiß").includes("erfunden"), "Farbe erfunden");
 });
 
@@ -42,7 +42,7 @@ test("Form: length, keyword lists, emojis, special characters, capital letters",
   assert.ok(regeln("2x Halter Halter Halter passend für Bosch L-Boxx").includes("form"), "Halter dreimal");
   assert.ok(regeln("2x Halter passend für Bosch L-Boxx ✅").includes("form"), "Emoji");
   assert.ok(regeln("2x Halter passend für Bosch L-Boxx!!!").includes("form"), "Ausrufezeichen");
-  assert.ok(regeln("2x HALTER passend für Bosch L-Boxx").includes("form"), "Großbuchstaben");
+  assert.ok(regeln("2x HALTER passend für Bosch L-Boxx").includes("form"), "capital letters");
   // Filler words may occur twice, and what was already in the old title stays allowed
   assert.equal(pruefeTitel("Blende für Türgriff für BMW E30", "2x Blende passend für Türgriff für BMW E30").ok, true);
   assert.equal(pruefeTitel("Adapterplatte für Fritz!Box 7590", "Adapterplatte passend für Fritz!Box 7590 Wandhalterung").ok, true);
@@ -95,7 +95,7 @@ test("AI: if it refuses, the key is wrong or everything fails, the rule-based su
   const ohneKi = kiTitel.erzeuge({ env: {} });
   assert.equal(ohneKi.konfiguriert(), false);
   const o = await ohneKi.vorschlag({ alt: "Halter passend für Bosch L-Boxx", hinweisWoerter: ["passend"] });
-  assert.equal(o.ok, false, "ohne KI und nur mit Füllwörtern gibt es keinen Vorschlag");
+  assert.equal(o.ok, false, "without AI and with filler words only there is no suggestion");
   assert.match(o.fehler, /GOOGLE_API_KEY/);
 });
 
@@ -109,6 +109,6 @@ test("Brands: the brand must come after \"passend für …\", not before; if it 
   assert.equal(pruefeTitel("Aufbewahrungsbox Armlehne passend für BMW X3 F25", alt).ok, true);
   assert.equal(pruefeTitel("Wandhalter Kettensäge passend für Einhell STIHL Bosch Makita Halterung", "Wandhalter Kettensäge kompatibel mit Einhell STIHL Bosch Makita Halterung").ok, true, "mehrere Marken hinter einem Bezugswort");
   const wieVorher = pruefeTitel("Bosch Akku Halter für die Wand passend", "Bosch Akku Halter Wand passend");
-  assert.equal(wieVorher.ok, true, "stand schon so im alten Titel: kein Verstoß");
-  assert.ok(wieVorher.hinweise.some((x) => x.regel === "marke"), "aber ein Hinweis für den Admin");
+  assert.equal(wieVorher.ok, true, "it was already like this in the old title: no violation");
+  assert.ok(wieVorher.hinweise.some((x) => x.regel === "marke"), "but a note for the admin");
 });

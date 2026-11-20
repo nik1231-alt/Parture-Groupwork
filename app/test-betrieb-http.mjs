@@ -53,5 +53,5 @@ test("The environment is in the status, and /healthz shows the version from the 
   // Expecting a fixed "null" made the watcher reject every second version (server probe 17 Nov 2026: b86458b REJECTED).
   let erwartet = null;
   try { erwartet = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "..", "daten", "waechter-status.json"), "utf8")).commit?.slice(0, 7) || null; } catch { /* ohne Wächter keine Version */ }
-  assert.equal((await (await fetch(basis + "/healthz")).json()).version, erwartet, "Version aus daten/waechter-status.json, sonst null");
+  assert.equal((await (await fetch(basis + "/healthz")).json()).version, erwartet, "version from daten/waechter-status.json, otherwise null");
 });

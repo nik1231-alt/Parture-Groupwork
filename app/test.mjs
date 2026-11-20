@@ -415,7 +415,7 @@ test("Login: creating a user checks name and password", () => {
   assert.equal(lg.legeBenutzerAn(d, "anna", "kurz").ok, false);
   assert.equal(lg.legeBenutzerAn(d, "anna", "x".repeat(201)).ok, false);
   assert.equal(lg.legeBenutzerAn(d, "anna", 12345678901).ok, false);
-  assert.equal(lg.legeBenutzerAn(d, "Anna", PW).ok, true, "Großschreibung wird vereinheitlicht");
+  assert.equal(lg.legeBenutzerAn(d, "Anna", PW).ok, true, "capitalisation is unified");
   assert.equal(lg.legeBenutzerAn(d, "anna", PW).status, 409, "doppelter Name");
   assert.equal(lg.anzahlBenutzer(d), 1);
 });
@@ -497,10 +497,10 @@ test("Login: the cookie is read and is HttpOnly, SameSite=Strict, Secure over HT
 // ---------- Lock per address and change password ----------
 test("Login: lock per address across all names, other addresses and the right name stay untouched", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
-  for (let i = 0; i < lg.MAX_FEHLVERSUCHE_IP; i++) assert.equal(lg.anmelden(d, "name" + i, "falsch-falsch", JETZT, "1.2.3.4").status, 401, "jeder Name nur einmal falsch: keine Namenssperre");
-  assert.equal(lg.anmelden(d, "anna", PW, JETZT, "1.2.3.4").status, 429, "die Adresse ist gesperrt, auch mit richtigem Passwort");
-  assert.equal(lg.anmelden(d, "anna", PW, JETZT, "5.6.7.8").ok, true, "eine andere Adresse kann sich anmelden");
-  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + (lg.SPERRE_MINUTEN + 1) * 60000), "1.2.3.4").ok, true, "nach der Sperrzeit wieder frei");
+  for (let i = 0; i < lg.MAX_FEHLVERSUCHE_IP; i++) assert.equal(lg.anmelden(d, "name" + i, "falsch-falsch", JETZT, "1.2.3.4").status, 401, "every name wrong only once: no name lock");
+  assert.equal(lg.anmelden(d, "anna", PW, JETZT, "1.2.3.4").status, 429, "the address is locked, even with the right password");
+  assert.equal(lg.anmelden(d, "anna", PW, JETZT, "5.6.7.8").ok, true, "another address can log in");
+  assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + (lg.SPERRE_MINUTEN + 1) * 60000), "1.2.3.4").ok, true, "free again after the lock time");
 });
 
 test("Login: changing the password checks the old one, requires a new one, ends other sessions and issues a new one", () => {
@@ -508,16 +508,16 @@ test("Login: changing the password checks the old one, requires a new one, ends 
   const alt = lg.anmelden(d, "anna", PW, JETZT).wert.token;
   assert.equal(lg.aendernPasswort(d, "anna", "falsch-falsch", "ein-neues-passwort", JETZT).status, 403);
   assert.equal(lg.aendernPasswort(d, "anna", PW, "kurz", JETZT).status, 400);
-  assert.equal(lg.aendernPasswort(d, "anna", PW, PW, JETZT).status, 400, "dasselbe Passwort ist keine Änderung");
+  assert.equal(lg.aendernPasswort(d, "anna", PW, PW, JETZT).status, 400, "the same password is no change");
   assert.equal(lg.aendernPasswort(d, "anna", 5, "ein-neues-passwort", JETZT).status, 400);
-  assert.ok(lg.sitzungFuer(d, alt, JETZT), "nach Fehlern ist die Sitzung noch da");
+  assert.ok(lg.sitzungFuer(d, alt, JETZT), "after errors the session is still there");
   const r = lg.aendernPasswort(d, "anna", PW, "ein-neues-passwort", JETZT);
   assert.equal(r.ok, true);
   assert.equal(lg.sitzungFuer(d, alt, JETZT), null, "alte Sitzung beendet");
-  assert.ok(lg.sitzungFuer(d, r.wert.token, JETZT), "neue Sitzung gilt");
-  assert.equal(lg.anmelden(d, "anna", PW, JETZT).status, 401, "altes Passwort gilt nicht mehr");
+  assert.ok(lg.sitzungFuer(d, r.wert.token, JETZT), "the new session is valid");
+  assert.equal(lg.anmelden(d, "anna", PW, JETZT).status, 401, "the old password no longer works");
   assert.equal(lg.anmelden(d, "anna", "ein-neues-passwort", JETZT).ok, true);
-  assert.equal(d.prepare("SELECT COUNT(*) n FROM sitzung").get().n, 2, "keine liegengebliebenen Prüf-Sitzungen (neue + eine vom Test-Login)");
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM sitzung").get().n, 2, "no leftover check sessions (the new one + one from the test login)");
 });
 
 test("Login: wrong old passwords when changing count as failed attempts and eventually lock", () => {
@@ -535,19 +535,19 @@ test("Login: the hash is scrypt (N=16384, r=8, p=1, 64 bytes) with its own 16-by
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   const b = d.prepare("SELECT salz, hash FROM benutzer WHERE name = 'anna'").get();
   assert.match(b.salz, /^[0-9a-f]{32}$/, "16 Byte Zufallssalz, hex");
-  assert.equal(b.hash, crypto.scryptSync(PW, b.salz, 64, { N: 16384, r: 8, p: 1 }).toString("hex"), "Hash lässt sich nur mit Salz und scrypt nachrechnen");
+  assert.equal(b.hash, crypto.scryptSync(PW, b.salz, 64, { N: 16384, r: 8, p: 1 }).toString("hex"), "the hash can be recalculated only with the salt and scrypt");
   assert.notEqual(b.hash, crypto.createHash("sha256").update(PW).digest("hex"));
 });
 
 test("Login: minimum length exactly 10 characters, lock after exactly 5 failed attempts per name and 20 per address, 15 minutes", () => {
   assert.deepEqual([lg.PASSWORT_MIN, lg.MAX_FEHLVERSUCHE, lg.MAX_FEHLVERSUCHE_IP, lg.SPERRE_MINUTEN, lg.SITZUNG_STUNDEN], [10, 5, 20, 15, 12]);
   const d = ldb();
-  assert.equal(lg.legeBenutzerAn(d, "anna", "x".repeat(9)).status, 400, "9 Zeichen sind zu kurz");
+  assert.equal(lg.legeBenutzerAn(d, "anna", "x".repeat(9)).status, 400, "9 characters are too short");
   assert.equal(lg.legeBenutzerAn(d, "anna", "x".repeat(10)).ok, true, "10 Zeichen reichen");
   assert.equal(lg.setzePasswort(d, "anna", "y".repeat(9)).status, 400);
   assert.equal(lg.aendernPasswort(d, "anna", "x".repeat(10), "y".repeat(9), JETZT).status, 400);
   for (let i = 0; i < 4; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
-  assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401, "der 5. Fehlversuch zählt noch normal");
+  assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401, "the 5th failed attempt still counts normally");
   assert.equal(lg.anmelden(d, "anna", "x".repeat(10), JETZT).status, 429, "ab jetzt gesperrt");
 });
 
@@ -559,14 +559,14 @@ test("No customer data: pm.db has no columns for buyers, and the export reads on
   pm.close();
   assert.ok(spalten.length > 10);
   const verdaechtig = /buyer|kaeufer|käufer|kunde|customer|e?mail|adress|address|strasse|street|phone|telefon|plz|zip|order|bestell|user|name/i;
-  assert.deepEqual(spalten.filter((s) => verdaechtig.test(s.split(".")[1])), [], "keine Spalte mit Personen- oder Bestellbezug");
+  assert.deepEqual(spalten.filter((s) => verdaechtig.test(s.split(".")[1])), [], "no column with a reference to persons or orders");
   // export-ebay.mjs: in verkaeufe() only these fields are read from an order (o) and its items (li)
   const q = fs.readFileSync(path.join(wurzel, "app", "export-ebay.mjs"), "utf8");
   const fn = q.slice(q.indexOf("async function verkaeufe("), q.indexOf("\n}", q.indexOf("async function verkaeufe(")));
   const felder = [...new Set([...fn.matchAll(/\b(o|li)\.(\w+)/g)].map((m) => `${m[1]}.${m[2]}`))].sort();
   assert.deepEqual(felder, ["li.legacyItemId", "li.lineItemCost", "li.quantity", "o.creationDate", "o.lineItems"]);
   const code = q.split(/\r?\n/).filter((z) => !/^\s*\/\//.test(z)).join("\n");
-  assert.doesNotMatch(code, /buyer|shippingAddress|fulfillmentStartInstructions|contactAddress|email/i, "keine Käuferfelder im Export-Code");
+  assert.doesNotMatch(code, /buyer|shippingAddress|fulfillmentStartInstructions|contactAddress|email/i, "no buyer fields in the export code");
 });
 
 // Whoever follows the README copies .env.beispiel to .env. If a value is in there it applies: on 20 Nov PM_DB=daten/pm.db pointed to a
@@ -575,8 +575,8 @@ test(".env.beispiel: after copying, the app starts with the team copy, without c
   const fs = await import("node:fs");
   const werte = Object.fromEntries(fs.readFileSync(new URL("../.env.beispiel", import.meta.url), "utf8").split(/\r?\n/)
     .map((z) => z.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
-  assert.equal(werte.PM_DB, "", "PM_DB leer, sonst greift die Team-Kopie nicht");
+  assert.equal(werte.PM_DB, "", "PM_DB empty, otherwise the team copy is not used");
   for (const k of Object.keys(werte).filter((k) => /KEY|TOKEN|SECRET|CERT|APP_ID|DEV_ID|AUD/.test(k))) assert.equal(werte[k], "", k + " muss leer sein");
   for (const k of ["EBAY_SCHREIBEN", "EBAY_WERBUNG", "EBAY_PREIS"]) assert.notEqual(werte[k], "an", k + " darf in der Vorlage nicht an sein");
-  assert.ok(fs.existsSync(new URL("../daten-team/pm.db", import.meta.url)), "die Team-Kopie liegt im Repo");
+  assert.ok(fs.existsSync(new URL("../daten-team/pm.db", import.meta.url)), "the team copy is in the repo");
 });

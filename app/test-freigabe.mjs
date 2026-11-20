@@ -62,13 +62,13 @@ test("Roles: new users are builders, when retrofitting the oldest user becomes a
 test("Roles: only an admin assigns roles, there is always one admin, every change is logged", () => {
   const d = baseDb(); login.legeBenutzerAn(d, "niko", "ein-langes-passwort"); login.legeBenutzerAn(d, "anna", "ein-langes-passwort");
   rollen.legeFest(d, "niko", "admin");
-  assert.equal(rollen.setzeRolle(d, BUILDER, "anna", "admin").status, 403, "ein Builder darf keine Rollen vergeben");
+  assert.equal(rollen.setzeRolle(d, BUILDER, "anna", "admin").status, 403, "a builder may not assign roles");
   assert.equal(rollen.rolleVon(d, "anna"), "builder");
   assert.equal(rollen.setzeRolle(d, ADMIN, "anna", "chef").status, 400);
   assert.equal(rollen.setzeRolle(d, ADMIN, "gibtesnicht", "admin").status, 404);
-  assert.equal(rollen.setzeRolle(d, ADMIN, "niko", "builder").status, 409, "der letzte Admin kann sich nicht selbst abgeben");
+  assert.equal(rollen.setzeRolle(d, ADMIN, "niko", "builder").status, 409, "the last admin cannot give up the role");
   assert.equal(rollen.setzeRolle(d, ADMIN, "anna", "admin").ok, true);
-  assert.equal(rollen.setzeRolle(d, ADMIN, "niko", "builder").ok, true, "mit einem zweiten Admin ist es erlaubt");
+  assert.equal(rollen.setzeRolle(d, ADMIN, "niko", "builder").ok, true, "with a second admin it is allowed");
   const l = protokoll.liste(d);
   assert.deepEqual(l.map((z) => z.aktion), ["role_changed", "role_changed"]);
   assert.deepEqual(l[1].details, { von: "builder", zu: "admin" });
@@ -92,9 +92,9 @@ test("Submit: not possible without all titles, with all titles the test is marke
   assert.equal(r.ok, true); assert.equal(r.wert.aenderungen, 2);
   assert.equal(status(v.db, v.id), "freigabe");
   assert.equal(ex.detail(v.db, v.id, v.p, JETZT, EINST).wert.status, "approval");
-  assert.equal(fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele).status, 409, "nicht zweimal einreichen");
+  assert.equal(fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele).status, 409, "do not submit twice");
   assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM protokoll WHERE aktion = 'change_proposed'"), 2);
-  assert.equal(ex.setzeTitel(v.db, { id: v.id, number: "100", neu: "Anderer Titel" }, EINST).status, 409, "Titel sind während der Freigabe gesperrt");
+  assert.equal(ex.setzeTitel(v.db, { id: v.id, number: "100", neu: "Anderer Titel" }, EINST).status, 409, "titles are locked during the approval");
 });
 
 test("Submit: a listing that cannot be assigned to one eBay item stops everything", () => {
@@ -128,7 +128,7 @@ test("Approval: the admin approves, eBay is changed, every change is in the log 
   assert.equal(log.length, 2);
   for (const z of log) { assert.equal(z.benutzer, "niko"); assert.equal(z.ergebnis, "ok"); assert.match(z.details.neu, / NEW$/); assert.ok(z.details.alt && !z.details.alt.endsWith("NEW")); assert.equal(z.details.ack, "Success"); }
   assert.ok(protokoll.liste(v.db, 100).some((z) => z.aktion === "change_approved"));
-  assert.equal((await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)).status, 409, "ein zweites Mal gibt es nichts mehr freizugeben");
+  assert.equal((await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)).status, 409, "the second time there is nothing left to approve");
 });
 
 test("Approval: without EBAY_SCHREIBEN=an it is only a dry run, nothing is written and the test does not start", async () => {
@@ -150,13 +150,13 @@ test("Approval: if the title was changed by hand on eBay in the meantime, nothin
   const r = await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
   assert.deepEqual([r.wert.angewendet, r.wert.fehlgeschlagen, r.wert.gestartet], [1, 1, false]);
   assert.equal(v.ebay.get(erster), "Von Hand geänderter Titel");
-  assert.equal(status(v.db, v.id), "freigabe", "der Test startet erst, wenn alle Titel geändert sind");
+  assert.equal(status(v.db, v.id), "freigabe", "the test starts only when all titles are changed");
   assert.equal(protokoll.liste(v.db, 100).filter((z) => z.aktion === "ebay_refused")[0].ergebnis, "refused");
   // The admin restores the expected title and tries again: only the failed change runs once more.
   v.ebay.set(erster, v.db.prepare("SELECT alt FROM aenderung WHERE item_id = ?").get(erster).alt);
   const r2 = await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
   assert.deepEqual([r2.wert.angewendet, r2.wert.gestartet], [1, true]);
-  assert.equal(s.aufrufe.schreibe.length, 2, "die erste Änderung wurde nicht noch einmal geschrieben");
+  assert.equal(s.aufrufe.schreibe.length, 2, "the first change was not written again");
 });
 
 test("Approval: if eBay rejects the change, the message is kept and the test stays in approval", async () => {
@@ -173,7 +173,7 @@ test("Approval: the same approval never runs twice at the same time", async () =
   const s = ersatzSchreiber(v.ebay, { langsam: true });
   const [a, b] = await Promise.all([fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT), fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)]);
   assert.deepEqual([a.ok, b.ok].sort(), [false, true]);
-  assert.equal(s.aufrufe.schreibe.length, 2, "jeder Titel wurde genau einmal geschrieben");
+  assert.equal(s.aufrufe.schreibe.length, 2, "every title was written exactly once");
 });
 
 // ---------- Ablehnen ----------
@@ -196,10 +196,10 @@ test("Revert: a closed test creates reverting changes that an admin must approve
   ex.schliesse(v.db, { id: v.id, abschluss: "zurueck" }, JETZT);
   fg.beimAbschluss(v.db, BUILDER, v.id, "zurueck", JETZT);
   assert.equal(zaehle(v.db, "SELECT COUNT(*) n FROM aenderung WHERE art = 'zurueck' AND status = 'offen'"), 2);
-  for (const id of vorher.keys()) assert.match(v.ebay.get(id), / NEW$/, "ohne Freigabe bleibt der neue Titel bei eBay stehen");
+  for (const id of vorher.keys()) assert.match(v.ebay.get(id), / NEW$/, "without an approval the new title stays on eBay");
   const r = await fg.erteile(v.db, ADMIN, { id: v.id, art: "zurueck" }, s, v.p, JETZT);
   assert.equal(r.wert.angewendet, 2);
-  for (const [id, alt] of vorher) assert.equal(v.ebay.get(id), alt, "der alte Titel steht wieder bei eBay");
+  for (const [id, alt] of vorher) assert.equal(v.ebay.get(id), alt, "the old title is back on eBay");
   assert.equal(protokoll.liste(v.db, 100).filter((z) => z.aktion === "ebay_changed" && z.details.art === "zurueck").length, 2);
 });
 
@@ -262,9 +262,9 @@ test("State machine: rejected is final, rejecting or approving again returns 409
   const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
   assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT).ok, true);
   assert.deepEqual(zustaende(v.db), ["abgelehnt", "abgelehnt"]);
-  assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT).status, 409, "nicht zweimal ablehnen");
+  assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT).status, 409, "do not reject twice");
   const s = ersatzSchreiber(v.ebay);
-  assert.equal((await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)).status, 409, "Abgelehntes kann nicht nachträglich freigegeben werden");
+  assert.equal((await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)).status, 409, "something rejected cannot be approved afterwards");
   assert.deepEqual(s.aufrufe, { lies: 0, schreibe: [] });
   assert.deepEqual(zustaende(v.db), ["abgelehnt", "abgelehnt"]);
 });
@@ -277,14 +277,14 @@ test("State machine: applied is final, approving 409, rejecting 409, even if onl
   await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
   assert.deepEqual(zustaende(v.db), ["fehlgeschlagen", "angewendet"]);
   const r = fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT);
-  assert.equal(r.status, 409, "teilweise live: Ablehnen würde eBay und App auseinanderlaufen lassen"); assert.match(r.fehler, /already live/);
-  assert.deepEqual(zustaende(v.db), ["fehlgeschlagen", "angewendet"], "nichts verändert");
+  assert.equal(r.status, 409, "partly live: rejecting would let eBay and the app drift apart"); assert.match(r.fehler, /already live/);
+  assert.deepEqual(zustaende(v.db), ["fehlgeschlagen", "angewendet"], "nothing changed");
   v.ebay.set(erster, v.db.prepare("SELECT alt FROM aenderung WHERE item_id = ?").get(erster).alt);
   await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
   assert.deepEqual(zustaende(v.db), ["angewendet", "angewendet"]);
   assert.equal((await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT)).status, 409);
-  assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT).status, 409, "Angewendetes kann nicht mehr abgelehnt werden");
-  assert.equal(s.aufrufe.schreibe.length, 2, "jeder Titel genau einmal geschrieben");
+  assert.equal(fg.lehneAb(v.db, ADMIN, { id: v.id, art: "titel" }, JETZT).status, 409, "something applied can no longer be rejected");
+  assert.equal(s.aufrufe.schreibe.length, 2, "every title written exactly once");
 });
 
 test("State machine: discarded (test closed before approval) is final, approving and rejecting return 409", async () => {
@@ -367,6 +367,6 @@ test("eBay latch 4: every outcome is in the log — approved, refused, read erro
     ["change_approved", `test ${v.id} (titel)`, "ok"], ["ebay_dry_run", "item " + a.item_id, "dry_run"], ["ebay_dry_run", "item " + b.item_id, "dry_run"],
     ["change_approved", `test ${v.id} (titel)`, "ok"], ["ebay_changed", "item " + a.item_id, "ok"], ["ebay_changed", "item " + b.item_id, "ok"],
   ]);
-  assert.ok(log.every((z) => z.benutzer === "niko" && z.rolle === "admin"), "wer es ausgelöst hat, steht dabei");
+  assert.ok(log.every((z) => z.benutzer === "niko" && z.rolle === "admin"), "who triggered it is recorded");
   assert.equal(log.find((z) => z.aktion === "ebay_refused").details.aktuell_bei_ebay, "Von Hand geändert");
 });
