@@ -1,4 +1,4 @@
-// Anmeldeseite. Das Passwort geht nur per POST an /api/login und wird nirgends gespeichert.
+// Login page. The password goes only by POST to /api/login and is stored nowhere.
 const $ = (s) => document.querySelector(s);
 
 function zeigeFehler(text) {
@@ -6,8 +6,8 @@ function zeigeFehler(text) {
   box.textContent = text; box.hidden = false;
 }
 
-// Zur App: Wurde die Anmeldeseite unter "/" gezeigt, weil die Sitzung abgelaufen war, steht die alte Adresse (z. B. #tests/5) noch
-// in der Leiste. Ein Neuladen öffnet dann genau diese Stelle der App (dort warten auch ungespeicherte Titel, siehe app.js "entwurf").
+// To the app: if the login page was shown at "/" because the session had expired, the old address (e.g. #tests/5) is still
+// in the address bar. A reload then opens exactly this place of the app (unsaved titles wait there too, see app.js "entwurf").
 const zurApp = () => (location.pathname === "/" ? location.reload() : location.replace("/"));
 
 async function start() {
