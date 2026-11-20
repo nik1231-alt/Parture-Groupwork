@@ -1,16 +1,16 @@
-// Tests (die Schleife aus dem Briefing): Gruppenvergleich mit Kontrollgruppe per Los.
-//   1. Los ziehen:  Die App zieht N Angebote aus dem Bereich "Low impressions" und teilt sie zufällig in Testgruppe und
-//                   Kontrollgruppe (je zur Hälfte). Nur die Testgruppe bekommt die Änderung.
-//   2. Ein Hebel:   Titel und Suchbegriffe. Der Mensch trägt je Testangebot den neuen Titel ein (die App erfindet keinen).
-//   3. Starten:     Alter Titel, neuer Titel, Datum und die Ausgangszahlen beider Gruppen werden festgehalten (Protokoll).
-//   4. Warten:      Standard 30 Tage und eine Mindestmenge an Impressionen.
-//   5. Urteil:      Testgruppe gegen Kontrollgruppe, als Gruppe. Besser / kein Unterschied belegt / schlechter,
-//                   mit den Verkäufen als Schutzkennzahl (mehr Impressionen dürfen keine Verkäufe kosten).
-//   6. Abschluss:   Behalten (neue Base) oder zurück auf die alten Titel.
-// Regeln aus dem Briefing: ein Angebot steckt immer nur in einem Test; gleich lange Fenster vorher und nachher;
-// "kein Unterschied belegt" zählt wie "nicht besser" (zurück zur Base).
-// Titel bei eBay ändert die App nur nach Freigabe durch einen Admin (siehe freigabe.mjs). Status "freigabe": Vorschlag wartet auf den Admin.
-// Die App protokolliert und rechnet.
+// Tests (the loop from the briefing): group comparison with a control group by lot.
+//   1. Draw by lot:  The app draws N listings from the area "Low impressions" and splits them randomly into a test group and
+//                    a control group (half each). Only the test group gets the change.
+//   2. One lever:    Title and search terms. A human enters the new title for each test listing (the app invents none).
+//   3. Start:        Old title, new title, date and the starting figures of both groups are recorded (log).
+//   4. Wait:         Default 30 days and a minimum amount of impressions.
+//   5. Verdict:      Test group against control group, as a group. Better / no difference proven / worse,
+//                    with sales as a safety figure (more impressions must not cost sales).
+//   6. Closing:      Keep (new base) or back to the old titles.
+// Rules from the briefing: a listing is only ever in one test; equally long windows before and after;
+// "no difference proven" counts like "not better" (back to the base).
+// The app changes titles on eBay only after approval by an admin (see freigabe.mjs). Status "freigabe": the suggestion waits for the admin.
+// The app logs and calculates.
 import crypto from "node:crypto";
 import { bewerte, leiteSchwellenAb, EINSTELLUNGEN, TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 import { baueAuswertung } from "./auswertung.mjs";
@@ -26,14 +26,14 @@ export function bereiteVor(db) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL, hebel TEXT NOT NULL, hypothese TEXT NOT NULL,
       status TEXT NOT NULL,                    -- vorbereitet | freigabe | laeuft | abgeschlossen
-      seed INTEGER NOT NULL,                   -- Zufallszahl des Loses (damit die Ziehung nachvollziehbar bleibt)
+      seed INTEGER NOT NULL,                   -- Random number of the draw (so that the drawing stays traceable)
       erstellt_at TEXT NOT NULL, gestartet_at TEXT, abschluss TEXT, abschluss_at TEXT
     );
     CREATE TABLE IF NOT EXISTS experiment_angebot (
       experiment_id INTEGER NOT NULL, number TEXT NOT NULL,
       gruppe TEXT NOT NULL,                    -- test | kontrolle
-      alt TEXT NOT NULL, neu TEXT,             -- Titel beim Los / neuer Titel (nur Testgruppe)
-      imp30 INTEGER, auf30 INTEGER, trans30 INTEGER,  -- Ausgangszahlen beim Start
+      alt TEXT NOT NULL, neu TEXT,             -- Title at the draw / new title (test group only)
+      imp30 INTEGER, auf30 INTEGER, trans30 INTEGER,  -- Starting figures at the start
       PRIMARY KEY (experiment_id, number)
     );
   `);
@@ -46,15 +46,15 @@ const addiere = (a, b) => ({ imp: a.imp + b.imp, auf: a.auf + b.auf, trans: a.tr
 const verhaeltnis = (vorher, nachher) => (vorher > 0 ? nachher / vorher : nachher > 0 ? Infinity : 1);
 const endlich = (x) => (Number.isFinite(x) ? x : null);
 
-// ---------- Los ----------
+// ---------- Draw ----------
 function mulberry32(start) {
   let a = start >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-// Zieht n Angebote und teilt sie zufällig je zur Hälfte in test und kontrolle. Gleicher seed = gleiche Ziehung.
-// Doppelte Nummern in den Kandidaten zählen nur einmal (sonst könnte ein Angebot in beiden Gruppen landen).
-// Bei ungerader Anzahl hat die Kontrollgruppe eines mehr: die Gruppen unterscheiden sich nie um mehr als 1.
+// Draws n listings and splits them randomly, half each, into test and kontrolle. Same seed = same draw.
+// Duplicate numbers among the candidates count only once (otherwise a listing could end up in both groups).
+// With an odd number the control group has one more: the groups never differ by more than 1.
 export function ziehe(kandidaten, n, seed) {
   const eindeutig = [...new Map(kandidaten.map((p) => [String(p.number), p])).values()];
   const liste = eindeutig.sort((a, b) => (String(a.number) < String(b.number) ? -1 : String(a.number) > String(b.number) ? 1 : 0)); // feste Ausgangsreihenfolge
@@ -65,34 +65,34 @@ export function ziehe(kandidaten, n, seed) {
   return { test: gezogen.slice(0, haelfte), kontrolle: gezogen.slice(haelfte) };
 }
 
-// Sperrliste (Tabelle "sperre" in pm.db, kommt vom Hub): Angebote eines laufenden Preisversuchs im Shop dürfen in keinen Titeltest,
-// sonst wüsste niemand, ob der Titel oder der Preis gewirkt hat. zeilen: [{ number, bis }] (siehe bewertung.ladeSperre, dort sind
-// eBay-Artikelnummern schon auf Produktnummern abgebildet). bis = letzter gesperrter Tag (ISO-Datum); leer = unbefristet.
-// Ein unlesbares Datum sperrt weiter (lieber ein Angebot zu wenig im Los als eines im falschen Versuch).
+// Block list (table "sperre" in pm.db, comes from the hub): listings of a running price experiment in the shop must not go into any title test,
+// otherwise nobody would know whether the title or the price worked. zeilen: [{ number, bis }] (see bewertung.ladeSperre, where
+// eBay item numbers are already mapped to product numbers). bis = last blocked day (ISO date); empty = unlimited.
+// An unreadable date keeps blocking (better one listing too few in the draw than one in the wrong experiment).
 export function gesperrteNummern(zeilen, jetzt = new Date()) {
   const heute = jetzt.toISOString().slice(0, 10);
   const aktiv = (bis) => { const b = String(bis ?? "").trim(); return !b || !/^\d{4}-\d{2}-\d{2}/.test(b) || b.slice(0, 10) >= heute; };
   return new Set((zeilen || []).filter((z) => z?.number != null && String(z.number) !== "" && aktiv(z.bis)).map((z) => String(z.number)));
 }
 
-// Angebote, die gerade in einem nicht abgeschlossenen Test stecken: Map(number -> { id, gruppe, status })
+// Listings that are currently in an unfinished test: Map(number -> { id, gruppe, status })
 export function imTest(db) {
   const zeilen = db.prepare("SELECT ea.number, ea.gruppe, e.id, e.status FROM experiment_angebot ea JOIN experiment e ON e.id = ea.experiment_id WHERE e.status != 'abgeschlossen'").all();
   return new Map(zeilen.map((r) => [r.number, { id: r.id, gruppe: r.gruppe, status: r.status }]));
 }
 
-// Angebote, die heute für einen neuen Test infrage kommen (Low impressions, in keinem Test, nicht gesperrt).
-// gesperrt: Set der Produktnummern aus gesperrteNummern (fehlt die Sperrliste, ist es leer).
+// Listings that qualify for a new test today (Low impressions, in no test, not blocked).
+// gesperrt: Set of the product numbers from gesperrteNummern (empty if the block list is missing).
 export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), gesperrt = new Set()) {
   const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt);
   const belegt = imTest(db);
-  // ebay_aktiv === 0: kein laufendes eBay-Angebot (beendet), der Titel ließe sich nicht ändern. null = unbekannt (Daten ohne Tabelle kanal).
+  // ebay_aktiv === 0: no running eBay listing (ended), the title could not be changed. null = unknown (data without the table kanal).
   return produkte.filter((p) => !belegt.has(p.number) && !gesperrt.has(String(p.number)) && p.ebay_aktiv !== 0 && bewerte(p, abgeleitet, jetzt).gruppe === "sichtbarkeit");
 }
 
 // ---------- Anlegen ----------
-// Der seed wird in experiment.seed gespeichert und zurückgegeben (der Server schreibt ihn ins Protokoll): mit denselben Kandidaten
-// ergibt derselbe seed dieselbe Ziehung, das Los ist also nachprüfbar.
+// The seed is stored in experiment.seed and returned (the server writes it to the log): with the same candidates
+// the same seed gives the same draw, so the draw can be checked.
 export function legeAn(db, eingabe, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), seed = crypto.randomInt(1, 2147483646), gesperrt = new Set()) {
   if (eingabe != null && (typeof eingabe !== "object" || Array.isArray(eingabe))) return fehler(400, "Invalid request.");
   if (eingabe?.name !== undefined && typeof eingabe.name !== "string") return fehler(400, "The name must be text.");
@@ -117,10 +117,10 @@ export function legeAn(db, eingabe, produkte, einst = EINSTELLUNGEN, jetzt = new
 const lade = (db, id) => db.prepare("SELECT * FROM experiment WHERE id = ?").get(id);
 const pruefeId = (id) => Number.isInteger(id) && id >= 1;
 
-// ---------- Neuen Titel eintragen ----------
-// Nur im Status "vorbereitet": nach "Send for approval" (Status "freigabe") ist der Vorschlag gesperrt (409), damit der Admin
-// genau das freigibt, was er gesehen hat. Lehnt er ab, geht der Test zurück zu "vorbereitet" und die Titel sind wieder offen.
-// Der dritte Parameter (Einstellungen) wird nicht mehr gebraucht: die Titellänge ist fest (TITEL_MAX_ZEICHEN).
+// ---------- Enter a new title ----------
+// Only in the status "vorbereitet" (prepared): after "Send for approval" (status "freigabe") the suggestion is locked (409), so that the admin
+// approves exactly what he saw. If he rejects it, the test goes back to "vorbereitet" and the titles are open again.
+// The third parameter (settings) is no longer needed: the title length is fixed (TITEL_MAX_ZEICHEN).
 export function setzeTitel(db, eingabe) {
   if (!eingabe || typeof eingabe !== "object" || Array.isArray(eingabe)) return fehler(400, "Invalid request.");
   const { id, number, neu } = eingabe;
@@ -165,7 +165,7 @@ export function starte(db, eingabe, produkte, jetzt = new Date(), erlaubterStatu
   return { ok: true, wert: { id: e.id } };
 }
 
-// ---------- Abschließen ----------
+// ---------- Closing ----------
 export function schliesse(db, eingabe, jetzt = new Date()) {
   if (!eingabe || typeof eingabe !== "object" || Array.isArray(eingabe)) return fehler(400, "Invalid request.");
   const { id, abschluss } = eingabe;
@@ -179,17 +179,17 @@ export function schliesse(db, eingabe, jetzt = new Date()) {
 }
 
 // ---------- Urteil (reine Funktion) ----------
-// test / kontrolle: { vorher, nachher }, jeweils { imp, auf, trans } als Summe der Gruppe.
+// test / kontrolle: { vorher, nachher }, each { imp, auf, trans } as the sum of the group.
 export function urteile(test, kontrolle, einst = EINSTELLUNGEN) {
   const netto = (feld) => {
     const eigen = verhaeltnis(test.vorher[feld], test.nachher[feld]);
     let ctrl = verhaeltnis(kontrolle.vorher[feld], kontrolle.nachher[feld]);
-    if (!Number.isFinite(ctrl) || ctrl === 0) ctrl = 1; // ohne brauchbare Kontrolle zählt die Rohveränderung
+    if (!Number.isFinite(ctrl) || ctrl === 0) ctrl = 1; // without a usable control the raw change counts
     return eigen / ctrl - 1;
   };
   const p = netto("imp");
   const s = netto("trans");
-  // Kleine Toleranz, weil z. B. 1200/1000 - 1 im Computer 0,19999999999999996 ergibt und die Grenze sonst knapp verfehlt würde
+  // A small tolerance, because e.g. 1200/1000 - 1 gives 0.19999999999999996 in the computer and the limit would otherwise be narrowly missed
   const schutzOk = test.vorher.trans === 0 ? true : s >= -einst.schutzGrenze - EPS;
   const aus = (urteil, empfehlung) => ({
     urteil, empfehlung,
@@ -216,7 +216,7 @@ function baueDetail(e, angebote, aktuell, jetzt, einst) {
   });
   let urteil = null;
   if (status === "ready" || status === "closed") {
-    // Nur Angebote, die noch in den Daten sind und deren Ausgangszahlen vorliegen
+    // Only listings that are still in the data and whose starting figures exist
     const summe = (g) => zeilen.filter((z) => z.gruppe === g && z.vorher && z.nachher).reduce((s, z) => ({ vorher: addiere(s.vorher, z.vorher), nachher: addiere(s.nachher, z.nachher) }), { vorher: leer(), nachher: leer() });
     if (e.gestartet_at) urteil = urteile(summe("test"), summe("kontrolle"), einst);
   }
@@ -225,7 +225,7 @@ function baueDetail(e, angebote, aktuell, jetzt, einst) {
     erstellt_at: e.erstellt_at, gestartet_at: e.gestartet_at, tage, bereit_am: bereitAm, pruefungNachTagen: einst.pruefungNachTagen,
     anzahl: { test: zeilen.filter((z) => z.gruppe === "test").length, kontrolle: zeilen.filter((z) => z.gruppe === "kontrolle").length, titel: zeilen.filter((z) => z.gruppe === "test" && z.neu).length },
     angebote: zeilen, urteil,
-    // Zahlen für die Diagramme (erst nach dem Start; vor Ablauf der Prüfzeit nur ein Zwischenstand)
+    // Figures for the charts (only after the start; before the waiting time is over only an interim state)
     auswertung: e.gestartet_at ? baueAuswertung(zeilen, einst) : null,
   };
 }
@@ -234,7 +234,7 @@ export function liste(db, produkte, jetzt = new Date(), einst = EINSTELLUNGEN) {
   const aktuell = new Map(produkte.map((p) => [p.number, p]));
   return db.prepare("SELECT * FROM experiment ORDER BY id DESC").all().map((e) => {
     const d = baueDetail(e, db.prepare("SELECT * FROM experiment_angebot WHERE experiment_id = ?").all(e.id), aktuell, jetzt, einst);
-    const { angebote, auswertung, ...kopf } = d; // die Liste braucht weder die einzelnen Angebote noch die Diagrammdaten
+    const { angebote, auswertung, ...kopf } = d; // the list needs neither the single listings nor the chart data
     return kopf;
   });
 }

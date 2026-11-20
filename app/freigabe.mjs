@@ -1,11 +1,11 @@
-// Freigabe: Vorschläge für Titeländerungen bei eBay. Builder schlagen vor, ein Admin gibt frei, erst dann wird bei eBay geändert.
-// Ablauf eines Tests:
-//   Builder trägt die neuen Titel ein  ->  "Send for approval"  (Test-Status "freigabe", je Angebot eine Änderung "offen")
-//   Admin gibt frei                    ->  die App ändert die Titel bei eBay und protokolliert jede Änderung
-//                                          sind alle Titel geändert, startet der Test (Ausgangszahlen werden jetzt festgehalten)
-//   Admin lehnt ab                     ->  nichts wird geändert, der Test geht zurück zu "vorbereitet"
-// Schließt man einen Test mit "revert", entstehen Rückänderungen (neuer Titel zurück auf den alten), die wieder ein Admin freigeben muss.
-// Jede Funktion liefert { ok, wert } oder { ok: false, status, fehler }, genau wie die anderen Module.
+// Approval: suggestions for title changes on eBay. Builders suggest, an admin approves, and only then is anything changed on eBay.
+// Flow of a test:
+//   A builder enters the new titles  ->  "Send for approval"  (test status "freigabe", one change per listing "offen" = open)
+//   The admin approves               ->  the app changes the titles on eBay and logs every change
+//                                        when all titles are changed, the test starts (the starting figures are recorded now)
+//   The admin rejects                ->  nothing is changed, the test goes back to "vorbereitet" (prepared)
+// If a test is closed with "revert", reverting changes arise (new title back to the old one) that an admin must approve again.
+// Every function returns { ok, wert } or { ok: false, status, fehler }, exactly like the other modules.
 import * as experimente from "./experimente.mjs";
 import * as protokoll from "./protokoll.mjs";
 
@@ -15,9 +15,9 @@ const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 const OFFEN = ["offen", "fehlgeschlagen"];
 const ARTEN = ["titel", "zurueck"];
 const pruefeId = (id) => Number.isInteger(id) && id >= 1;
-// Sicherung gegen Fehlgriffe: so viele Angebote darf eine einzelne Freigabe höchstens ändern (Tests sind ohnehin klein)
+// Safeguard against mistakes: so many listings at most may a single approval change (tests are small anyway)
 export const MAX_AENDERUNGEN = 50;
-const laufend = new Set(); // verhindert, dass dieselbe Freigabe zweimal gleichzeitig läuft
+const laufend = new Set(); // prevents the same approval from running twice at the same time
 
 export function bereiteVor(db) {
   db.exec(`
@@ -25,7 +25,7 @@ export function bereiteVor(db) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       experiment_id INTEGER NOT NULL, number TEXT NOT NULL, item_id TEXT NOT NULL,
       art TEXT NOT NULL,                       -- titel | zurueck
-      alt TEXT NOT NULL, neu TEXT NOT NULL,    -- erwarteter Titel bei eBay / gewünschter Titel
+      alt TEXT NOT NULL, neu TEXT NOT NULL,    -- expected title on eBay / wanted title
       status TEXT NOT NULL,                    -- offen | angewendet | abgelehnt | fehlgeschlagen | verworfen
       vorgeschlagen_von TEXT NOT NULL, vorgeschlagen_at TEXT NOT NULL,
       entschieden_von TEXT, entschieden_at TEXT, ergebnis TEXT
@@ -36,14 +36,14 @@ export function bereiteVor(db) {
 const wer = (n) => ({ benutzer: n.name, rolle: n.rolle });
 const ladeExperiment = (db, id) => db.prepare("SELECT * FROM experiment WHERE id = ?").get(id);
 
-// Welche eBay-Angebote gehören zu einer Produktnummer? Gleicher Titel wie der alte, sonst das einzige eBay-Angebot der Nummer.
+// Which eBay listings belong to a product number? The same title as the old one, otherwise the only eBay listing of the number.
 function waehleItems(kanaele, alt) {
   const treffer = kanaele.filter((k) => norm(k.title) === norm(alt));
   if (treffer.length) return treffer;
   return kanaele.length === 1 ? kanaele : [];
 }
 
-// ---------- Vorschlagen (Builder oder Admin) ----------
+// ---------- Suggest (builder or admin) ----------
 export function reicheEin(db, nutzer, eingabe, kanaeleFuer, jetzt = new Date()) {
   if (!eingabe || typeof eingabe !== "object" || Array.isArray(eingabe)) return fehler(400, "Invalid request.");
   if (!pruefeId(eingabe.id)) return fehler(400, "Invalid test id.");
@@ -86,8 +86,8 @@ const pruefeGruppe = (eingabe) => {
   return null;
 };
 
-// ---------- Freigeben (nur Admin): bei eBay ändern ----------
-// schreiber: siehe ebay-schreiben.mjs. produkte: aktuelle Produktdaten (für die Ausgangszahlen des Tests).
+// ---------- Approve (admin only): change on eBay ----------
+// schreiber: see ebay-schreiben.mjs. produkte: current product data (for the starting figures of the test).
 export async function erteile(db, nutzer, eingabe, schreiber, produkte, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can approve changes.");
   const problem = pruefeGruppe(eingabe); if (problem) return fehler(400, problem);
@@ -118,7 +118,7 @@ export async function erteile(db, nutzer, eingabe, schreiber, produkte, jetzt = 
   } finally { laufend.delete(schluessel); }
 }
 
-// Eine einzelne Änderung. Gibt "angewendet", "fehlgeschlagen" oder "probelauf" zurück.
+// A single change. Returns "angewendet" (applied), "fehlgeschlagen" (failed) or "probelauf" (dry run).
 async function bearbeite(db, c, nutzer, schreiber, jetzt) {
   const objekt = "item " + c.item_id;
   const setze = (status, text, protokollErgebnis, aktion, details) => {
@@ -127,9 +127,9 @@ async function bearbeite(db, c, nutzer, schreiber, jetzt) {
     protokoll.schreibe(db, { ...wer(nutzer), aktion, objekt, details: { aenderung: c.id, art: c.art, number: c.number, alt: c.alt, neu: c.neu, ...details }, ergebnis: protokollErgebnis }, jetzt);
   };
   try {
-    // Probelauf ohne Zugangsdaten (VORSCHAU, lokal, Ende-zu-Ende-Test): eBay kann nicht gelesen werden, geschrieben würde ohnehin nicht.
-    // Das ist kein Fehler, sondern ein Probelauf: festgehalten wird, was geändert würde. Die Änderung bleibt offen, eBay unberührt.
-    // (Ist der Schalter an, fehlen aber die Zugangsdaten, läuft es weiter unten als Fehler: das ist eine Fehlkonfiguration.)
+    // Dry run without credentials (PREVIEW, local, end-to-end test): eBay cannot be read, and nothing would be written anyway.
+    // That is not an error but a dry run: what would be changed is recorded. The change stays open, eBay untouched.
+    // (If the switch is on but the credentials are missing, it continues below as an error: that is a misconfiguration.)
     if (!schreiber.schreibenAn() && schreiber.konfiguriert && !schreiber.konfiguriert()) {
       setze(null, "Dry run: this computer has no eBay credentials, so the listing was not read. With credentials and EBAY_SCHREIBEN=an the title would be changed. Nothing was changed on eBay.", "dry_run", "ebay_dry_run", { ohneZugangsdaten: true });
       return "probelauf";
@@ -150,7 +150,7 @@ async function bearbeite(db, c, nutzer, schreiber, jetzt) {
   }
 }
 
-// ---------- Ablehnen (nur Admin) ----------
+// ---------- Reject (admin only) ----------
 export function lehneAb(db, nutzer, eingabe, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can reject changes.");
   const problem = pruefeGruppe(eingabe); if (problem) return fehler(400, problem);
@@ -169,9 +169,9 @@ export function lehneAb(db, nutzer, eingabe, jetzt = new Date()) {
   return ok({ id, abgelehnt: offen.length });
 }
 
-// ---------- Beim Schließen eines Tests ----------
-// "zurueck": bereits geänderte Titel bekommen eine Rückänderung zur Freigabe, noch nicht geänderte werden verworfen.
-// "behalten": offene Vorschläge werden verworfen.
+// ---------- When closing a test ----------
+// "zurueck" (back): titles already changed get a reverting change for approval, those not yet changed are discarded.
+// "behalten" (keep): open suggestions are discarded.
 export function beimAbschluss(db, nutzer, id, abschluss, jetzt = new Date()) {
   db.transaction(() => {
     db.prepare("UPDATE aenderung SET status = 'verworfen', ergebnis = 'The test was closed before this change was approved.' WHERE experiment_id = ? AND status IN ('offen', 'fehlgeschlagen')").run(id);
@@ -179,7 +179,7 @@ export function beimAbschluss(db, nutzer, id, abschluss, jetzt = new Date()) {
     const live = db.prepare("SELECT * FROM aenderung WHERE experiment_id = ? AND art = 'titel' AND status = 'angewendet' ORDER BY id").all(id);
     const ins = db.prepare("INSERT INTO aenderung (experiment_id, number, item_id, art, alt, neu, status, vorgeschlagen_von, vorgeschlagen_at) VALUES (?, ?, ?, 'zurueck', ?, ?, 'offen', ?, ?)");
     for (const c of live) {
-      // Nur eine Rückänderung je Angebot, auch wenn der Test später erneut geschlossen würde
+      // Only one reverting change per listing, even if the test were closed again later
       if (db.prepare("SELECT 1 FROM aenderung WHERE experiment_id = ? AND item_id = ? AND art = 'zurueck' LIMIT 1").get(id, c.item_id)) continue;
       ins.run(id, c.number, c.item_id, c.neu, c.alt, nutzer.name, jetzt.toISOString());
       protokoll.schreibe(db, { ...wer(nutzer), aktion: "revert_proposed", objekt: "item " + c.item_id, details: { test: id, number: c.number, von: c.neu, zu: c.alt } }, jetzt);

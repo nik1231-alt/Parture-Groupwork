@@ -1,18 +1,18 @@
-// Wächter: hält die App am Leben und rollt neue Stände von GitHub aus, aber nur geprüfte.
+// Watcher: keeps the app alive and rolls out new versions from GitHub, but only checked ones.
 //
-//   node app/waechter.mjs --branch main                    PROD: nur Fast-Forward, nach bestandenen Tests, alle 10 Minuten
-//   node app/waechter.mjs --branch vorschau --hart --intervall 60   VORSCHAU: folgt dem Branch auch bei Force-Push, jede Minute
-//   node app/waechter.mjs                                  nur überwachen (kein Auto-Deploy)
+//   node app/waechter.mjs --branch main                    PROD: fast-forward only, after passing tests, every 10 minutes
+//   node app/waechter.mjs --branch vorschau --hart --intervall 60   PREVIEW: follows the branch even after a force push, every minute
+//   node app/waechter.mjs                                  monitor only (no auto-deploy)
 //
-// Ablauf je Prüfung: git fetch → liegt der Branch vor dem lokalen Stand → vorwärts ziehen → (bei geänderter package.json/-lock:
-// App stoppen, dann npm ci) → npm test (ohne eBay-Keys, ohne Netz) → bestanden: App neu starten. Durchgefallen: sofort zurück auf
-// den alten Stand, die App läuft unverändert weiter (bzw. startet wieder), der abgelehnte Stand wird gemerkt und nicht erneut
-// getestet, bis ein neuer Stand kommt.
-// WARUM die App vor npm ci stoppt (Parture-Server, 18.11.2026): npm ci löscht node_modules und legt es neu an. Unter Windows hält
-// die laufende App better_sqlite3.node offen, die Datei lässt sich dann nicht löschen (EPERM), npm ci scheitert, und der Stand wurde
-// abgelehnt, obwohl weder Code noch Tests ein Problem hatten (defd8b5 auf VORSCHAU, Grund: nur die Version in package.json).
-// Fehlt die Antwort auf /healthz dreimal hintereinander, wird die App beendet und neu gestartet. Stürzt sie ab, startet sie mit Pause wieder.
-// Der Wächter selbst läuft als Dienst bzw. geplante Aufgabe (siehe docs/server-einrichtung.md).
+// Steps per check: git fetch → is the branch ahead of the local version → pull forward → (if package.json/-lock changed:
+// stop the app, then npm ci) → npm test (without eBay keys, without network) → passed: restart the app. Failed: straight back to
+// the old version, the app keeps running unchanged (or starts again), the rejected version is remembered and not tested again
+// until a new version comes.
+// WHY the app stops before npm ci (Parture server, 18 Nov 2026): npm ci deletes node_modules and creates it again. On Windows
+// the running app keeps better_sqlite3.node open, the file then cannot be deleted (EPERM), npm ci fails, and the version was
+// rejected although neither code nor tests had a problem (defd8b5 on PREVIEW, reason: only the version in package.json).
+// If the answer to /healthz is missing three times in a row, the app is ended and restarted. If it crashes, it starts again with a pause.
+// The watcher itself runs as a service or scheduled task (see docs/server-einrichtung.md).
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -42,11 +42,11 @@ function schreibeStatus(ordner, teil) {
   return neu;
 }
 
-// Eine Prüfung. Liefert { status, von, nach, grund }:
-//   unveraendert | ausgerollt | abgelehnt (Tests durchgefallen, alter Stand bleibt) | blockiert (lokale Änderungen / kein Fast-Forward) | fehler (z. B. kein Netz)
-// `vorInstallation` wird genau dann (und höchstens einmal) aufgerufen, wenn npm ci nötig ist — der Wächter stoppt darin die App,
-// damit keine geöffnete native Datei den Austausch von node_modules blockiert. Das Ergebnis trägt `appGestoppt: true`, wenn das
-// geschah; der Aufrufer startet die App dann wieder, falls nicht ohnehin ausgerollt wird.
+// One check. Returns { status, von, nach, grund }:
+//   unveraendert (unchanged) | ausgerollt (rolled out) | abgelehnt (tests failed, old version stays) | blockiert (local changes / no fast-forward) | fehler (e.g. no network)
+// `vorInstallation` is called exactly when (and at most once) npm ci is needed — in it the watcher stops the app,
+// so that no open native file blocks the replacement of node_modules. The result carries `appGestoppt: true` (app stopped) if that
+// happened; the caller then starts the app again, unless a rollout follows anyway.
 export async function aktualisiere({ ordner = WURZEL, branch, hart = false, testBefehl = [npm, ["test"]],
   installBefehl = [npm, ["ci", "--no-audit", "--no-fund"]], vorInstallation = null, jetzt = () => new Date() } = {}) {
   const f = (grund) => ({ status: "fehler", grund });
@@ -75,7 +75,7 @@ export async function aktualisiere({ ordner = WURZEL, branch, hart = false, test
   };
   const zurueck = async (grund, ausgabe) => {
     await git(ordner, "reset", "--hard", "--quiet", lokal);
-    if (lockGeaendert) await installiere();   // node_modules wieder zum alten Stand, die App startet danach damit
+    if (lockGeaendert) await installiere();   // node_modules back to the old version, the app starts with it afterwards
     schreibeStatus(ordner, { abgelehnt: fern, abgelehntGrund: grund, abgelehntAm: jetzt().toISOString() });
     return { status: "abgelehnt", von: lokal, nach: fern, grund, appGestoppt, ausgabe: String(ausgabe || "").split("\n").slice(-25).join("\n") };
   };
@@ -85,14 +85,14 @@ export async function aktualisiere({ ordner = WURZEL, branch, hart = false, test
     r = await installiere();
     if (!r.ok) return zurueck("npm ci fehlgeschlagen", r.ausgabe);
   }
-  // Tests ohne Geheimnisse und ohne die .env des Ordners (PM_OHNE_ENV wird von den Tests selbst gesetzt)
+  // Tests without secrets and without the folder's .env (PM_OHNE_ENV is set by the tests themselves)
   r = await lauf(testBefehl[0], testBefehl[1], { cwd: ordner, env: bereinigt(process.env) });
   if (!r.ok) return zurueck("Tests fehlgeschlagen", r.ausgabe);
   schreibeStatus(ordner, { commit: fern, branch, ausgerolltAm: jetzt().toISOString(), abgelehnt: null, abgelehntGrund: null, abgelehntAm: null });
   return { status: "ausgerollt", von: lokal, nach: fern, appGestoppt };
 }
 
-// Port der App aus der .env des Ordners (die App liest sie selbst; der Wächter braucht sie nur für /healthz)
+// Port of the app from the folder's .env (the app reads it itself; the watcher needs it only for /healthz)
 function portAusEnv(ordner) {
   try {
     const m = fs.readFileSync(path.join(ordner, ".env"), "utf8").match(/^\s*PM_PORT\s*=\s*(\d+)/m);
@@ -107,7 +107,7 @@ async function haupt() {
   const branch = arg("branch") || process.env.WAECHTER_BRANCH || "";
   const hart = process.argv.includes("--hart");
   const intervallS = Math.max(1, Number(arg("intervall") || process.env.WAECHTER_INTERVALL_S) || (hart ? 60 : 600));
-  const gesundheitS = Math.max(1, Number(process.env.WAECHTER_GESUNDHEIT_S) || 30);   // nur die Tests verkürzen diese Zeiten
+  const gesundheitS = Math.max(1, Number(process.env.WAECHTER_GESUNDHEIT_S) || 30);   // only the tests shorten these times
   const anlaufS = Number(process.env.WAECHTER_ANLAUF_S ?? 20);
   const ordner = WURZEL;
   const port = portAusEnv(ordner);
@@ -158,8 +158,8 @@ async function haupt() {
     if (!branch || pruefLaeuft || beendet) return;
     pruefLaeuft = true;
     try {
-      // App vor npm ci stoppen (siehe Kopf); der Neustart-Timer des exit-Handlers wird dabei entschärft, sonst liefe die App
-      // mitten in npm ci wieder an und hielte die Dateien erneut offen.
+      // Stop the app before npm ci (see the head); the restart timer of the exit handler is defused in the process, otherwise the app would
+      // start again in the middle of npm ci and hold the files open again.
       const vorInstallation = async () => { log("Dependencies changed: stopping the app for npm ci."); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } };
       const e = await aktualisiere({ ordner, branch, hart, vorInstallation });
       if (e.status === "ausgerollt") { log(`Rolled out: ${e.von.slice(0, 7)} → ${e.nach.slice(0, 7)} (tests passed). Restarting.`); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } starte(); }
@@ -173,13 +173,13 @@ async function haupt() {
   const ende = async (sig) => { beendet = true; log(`${sig}: watcher is shutting down.`); if (geplant) clearTimeout(geplant); await stoppe(); process.exit(0); };
   process.on("SIGINT", () => ende("SIGINT")); process.on("SIGTERM", () => ende("SIGTERM"));
 
-  setInterval(() => {}, 2 ** 30); // hält den Prozess auch dann am Leben, wenn gerade keine App läuft
+  setInterval(() => {}, 2 ** 30); // keeps the process alive even when no app is running right now
   log(`Watcher started: ${branch ? `follows origin/${branch}${hart ? " (hard)" : " (fast-forward only)"}, check every ${intervallS} s` : "monitoring only"}`);
-  if (branch) await pruefe();   // vor dem ersten Start: gleich den aktuellen Stand holen
+  if (branch) await pruefe();   // before the first start: fetch the current version at once
   starte();
   if (branch) setInterval(pruefe, intervallS * 1000);
 }
 
-// realpath: über Symlinks (macOS /tmp, Windows-Junctions) gestartet, ist der Pfad sonst nicht gleich
+// realpath: if started through symlinks (macOS /tmp, Windows junctions) the path is otherwise not equal
 const istHauptprogramm = () => { try { return !!process.argv[1] && import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href; } catch { return false; } };
 if (istHauptprogramm()) haupt();
