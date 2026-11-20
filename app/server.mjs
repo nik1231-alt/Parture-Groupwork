@@ -249,7 +249,7 @@ function betriebStatus() {
 // Der Lauf ändert nichts bei eBay: er wertet aus, nimmt auf und schlägt Titel vor. Geändert wird erst nach einer Freigabe.
 const LEITER_AUTO = String(process.env.LEITER_AUTO || "an").trim().toLowerCase() !== "aus";
 const LEITER_UHR = Math.min(23, Math.max(0, Number(process.env.LEITER_UHRZEIT ?? 6) || 0));
-const letzterLeiterLauf = () => appDb().prepare("SELECT zeit, ergebnis FROM protokoll WHERE aktion = 'ladder_run' ORDER BY id DESC LIMIT 1").get() || null;
+const letzterLeiterLauf = () => appDb().prepare("SELECT zeit, ergebnis, details FROM protokoll WHERE aktion = 'ladder_run' ORDER BY id DESC LIMIT 1").get() || null;
 function leiterStatus() {
   const l = letzterLeiterLauf();
   return { automatisch: LEITER_AUTO, uhrzeit: LEITER_UHR, laeuft: leiterLaeuft, letzterLauf: l?.zeit ?? null, letzterFehler: l?.ergebnis === "error", ki: ki.konfiguriert(), kiModell: ki.konfiguriert() ? ki.modell() : null, werbungAn: schreiber.schreibenAn() && schreiber.werbungAn(), preisAn: schreiber.schreibenAn() && schreiber.preisAn() };
@@ -257,7 +257,10 @@ function leiterStatus() {
 function pruefeLeiter() {
   if (!LEITER_AUTO || leiterLaeuft || new Date().getHours() < LEITER_UHR) return;
   const l = letzterLeiterLauf();
-  if (l && Date.now() - Date.parse(l.zeit) < (l.ergebnis === "error" ? 2 : 20) * STUNDE) return;
+  // Nachholen: lief der letzte Lauf ohne KI-Schlüssel und ist er jetzt da, sofort noch einmal laufen, statt einen Tag zu warten
+  // (20.11.: Schlüssel mittags eingetragen, alle 20 Karten zeigten bis zum nächsten Morgen "no AI key").
+  const ohneKiGelaufen = (() => { try { return JSON.parse(l?.details || "{}").ki === false; } catch { return false; } })();
+  if (l && Date.now() - Date.parse(l.zeit) < (l.ergebnis === "error" ? 2 : 20) * STUNDE && !(ohneKiGelaufen && ki.konfiguriert())) return;
   leiterLauf("system").catch((e) => { console.log("Leiter-Lauf fehlgeschlagen: " + e.message); melder.fehler("Leiter-Lauf", e.message); });
 }
 
@@ -495,7 +498,9 @@ const server = http.createServer(async (req, res) => {
     const rel = url.pathname === "/" ? "/index.html" : url.pathname;
     const datei = path.join(WURZEL, "public", path.normalize(rel).replace(/^(\.\.[/\\])+/, ""));
     if (datei.startsWith(path.join(WURZEL, "public")) && fs.existsSync(datei) && fs.statSync(datei).isFile()) {
-      res.writeHead(200, { "Content-Type": MIME[path.extname(datei)] || "application/octet-stream" });
+      // no-cache: der Browser (und Cloudflare) fragt bei jedem Laden nach, ob es eine neue Version gibt. Ohne die Angabe lieferte
+      // Cloudflare nach einem Ausrollen bis zu 2 Stunden das alte app.js aus (20.11.: alte Karte "no AI key" trotz neuem Stand).
+      res.writeHead(200, { "Content-Type": MIME[path.extname(datei)] || "application/octet-stream", "Cache-Control": "no-cache" });
       return fs.createReadStream(datei).pipe(res);
     }
     json(404, { ok: false, error: "Not found." });
