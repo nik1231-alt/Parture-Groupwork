@@ -76,6 +76,51 @@ const leiterKontext = (nummer) => mitDb((db) => {
   let varianten = []; try { varianten = JSON.parse(db.prepare("SELECT variant_meta FROM produkt WHERE number = ?").get(nummer)?.variant_meta || "null")?.values || []; } catch { /* ohne Varianten */ }
   return { kanaele, varianten };
 });
+// ---- Werbung schon vorhanden? (Niko 20.11.: schon beworbene Angebote sind für Phase 2 nicht berechtigt → Preisstufe) ----
+// werbungStand: alle beworbenen eBay-Angebote aus den laufenden Kampagnen, je Produktnummer der Kampagnenname. Für die Anzeige;
+// vor jedem Schritt in Phase 2 fragt istBeworben das einzelne Angebot noch einmal live.
+let werbungStand = { at: 0, nummern: {}, fehler: null, laeuft: false };
+async function aktualisiereWerbung() {
+  if (werbungStand.laeuft) return;
+  werbungStand.laeuft = true;
+  try {
+    const r = await schreiber.beworbeneAngebote();
+    if (!r.ok) { werbungStand = { ...werbungStand, at: Date.now(), fehler: r.meldung }; return; }
+    const nummern = {};
+    for (const k of mitDb((db) => db.prepare("SELECT number, external_id FROM kanal WHERE channel = 'ebay' AND external_id IS NOT NULL").all())) if (r.angebote[k.external_id]) nummern[k.number] = r.angebote[k.external_id];
+    werbungStand = { at: Date.now(), nummern, fehler: null };
+    await werbungSpruenge();
+  } catch (e) { werbungStand = { ...werbungStand, at: Date.now(), fehler: e.message }; } finally { werbungStand.laeuft = false; }
+}
+// Jedes Angebot, das in Phase 2 auf einen Vorschlag wartet und laut eBay schon beworben wird, springt in die Preisstufe.
+async function werbungSpruenge(nummern = null) {
+  const db = appDb(), ergebnis = [];
+  const offen = nummern || db.prepare("SELECT number FROM leiter WHERE stufe = 'werbung' AND phase = 'vorschlag'").all().map((z) => z.number);
+  for (const nr of offen) {
+    const items = leiterKontext(nr).kanaele;
+    for (const it of items) {
+      const b = await schreiber.istBeworben(it.external_id);
+      if (b.ok && b.beworben) { const r = leiter.springeUeberWerbung(db, nr, b, einst(), { fuer: leiterKontext }); if (r.ok) ergebnis.push({ number: nr, kampagnen: b.kampagnen }); break; }
+    }
+  }
+  return ergebnis;
+}
+// Freigabe einer Leiterstufe. Phase 2 nur, wenn eBay bestätigt, dass das Angebot noch nicht beworben wird; sonst springt es in
+// die Preisstufe. Lässt sich das nicht prüfen (kein Zugang, eBay-Fehler), wird nichts freigegeben.
+async function freigeben(ctx, nr) {
+  const z = appDb().prepare("SELECT stufe, phase FROM leiter WHERE number = ?").get(nr);
+  if (z?.stufe === "werbung" && z.phase === "vorschlag") {
+    for (const it of leiterKontext(nr).kanaele) {
+      const b = await schreiber.istBeworben(it.external_id);
+      if (!b.ok) throw Object.assign(new Error(b.meldung + " Nothing was changed."), { status: 409 });
+      if (b.beworben) {
+        leiter.springeUeberWerbung(appDb(), nr, b, einst(), { fuer: leiterKontext });
+        return { number: nr, ausgang: "uebersprungen", text: `Already advertised (${b.kampagnen.join(", ")}): the listing skipped the ads phase and is now at the price step.` };
+      }
+    }
+  }
+  return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag }));
+}
 const leiterDaten = (produkte = produkteLaden()) => ({ impTag, trafficBis: trafficBis(), grenze90: leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d, einst: einst(), fuer: leiterKontext });
 // KI-Titelvorschlag für ein Produkt auf Stufe 1 (geht durch den Regelprüfer, siehe ki-titel.mjs)
 async function titelVorschlag(nummer, produkte, wer) {
@@ -90,7 +135,8 @@ let leiterLaeuft = false;
 // Ein Lauf: Prüfzeiten auswerten, neue Angebote aufnehmen, für Stufe 1 Titel vorschlagen. Ändert nichts bei eBay.
 // Bewegung "hand" (Standard seit 20.11.): der Tageslauf holt nur KI-Titel; aufnehmen nur per Knopf "Draw listings by lot"
 // (art "ziehen"), weiterschieben nur per Knopf an der Karte (leiter.schiebeVonHand).
-async function leiterLauf(wer, art = "tag") {
+// ziehen: { anzahl, kontrolle } vom Knopf (Anzahl ohne Obergrenze, Kontrollgruppe ja/nein je Ziehung).
+async function leiterLauf(wer, art = "tag", ziehen = {}) {
   if (leiterLaeuft) return null;
   leiterLaeuft = true;
   try {
@@ -99,7 +145,8 @@ async function leiterLauf(wer, art = "tag") {
     const bewerten = automatisch && art !== "ziehen", aufnehmen = automatisch || art === "ziehen";
     const ausgewertet = bewerten || aufnehmen ? leiter.werteAus(appDb(), { ...daten, nurKontrolle: !bewerten }) : [];
     const kontrolleVorher = leiter.anzahlKontrolle(appDb());
-    const neu = aufnehmen ? leiter.nimmAuf(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() }) : [];
+    const neu = aufnehmen ? leiter.nimmAuf(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub(), ...(art === "ziehen" ? ziehen : {}) }) : [];
+    if (bewerten) await werbungSpruenge(); // automatisch weiter in Phase 2: schon beworbene springen gleich in die Preisstufe
     let vorschlaege = 0, ohne = 0;
     for (const n of leiter.ohneTitelVorschlag(appDb())) { const r = await titelVorschlag(n, produkte, "system"); if (r.ok) vorschlaege++; else ohne++; }
     const details = { ausgewertet: ausgewertet.length, erholt: ausgewertet.filter((a) => a.erholt).length, aufgenommen: neu.length, kontrolle: leiter.anzahlKontrolle(appDb()) - kontrolleVorher, bewegung: automatisch ? "automatisch" : "hand", art, titelVorschlaege: vorschlaege, ohneVorschlag: ohne, ki: ki.konfiguriert() };
@@ -323,9 +370,18 @@ const ROUTEN = {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
     const optionen = { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() };
     const k = leiter.kandidaten(appDb(), produkte, daten.einst, new Date(), optionen);
-    return { ...leiter.uebersicht(appDb(), produkte, daten), kandidaten: k.length, status: leiterStatus(),
-      kandidatenListe: k.map((p) => ({ number: p.number, title: p.title ?? null, impressionen_90d: p.impressionen_90d ?? null, units_90d: p.units_90d ?? null })),
-      trichter: leiter.trichter(appDb(), produkte, daten.einst, new Date(), optionen) };
+    if (Date.now() - werbungStand.at > 6 * 3600e3) aktualisiereWerbung().catch(() => {}); // höchstens alle 6 h, im Hintergrund
+    const beworben = (nr) => werbungStand.nummern[nr] || null;
+    const ue = leiter.uebersicht(appDb(), produkte, daten), tr = leiter.trichter(appDb(), produkte, daten.einst, new Date(), optionen);
+    for (const a of ue.angebote) a.beworben = beworben(a.number);
+    for (const x of tr.liste) x.beworben = beworben(x.number);
+    // eBay-Angebotsnummer je Produkt für den Link "Open on eBay"
+    const ebayNr = Object.fromEntries(mitDb((db) => db.prepare("SELECT number, external_id FROM kanal WHERE channel = 'ebay' AND listed = 1 AND external_id IS NOT NULL").all()).map((r) => [r.number, r.external_id]));
+    for (const a of ue.angebote) a.ebay_id = ebayNr[a.number] || null;
+    return { ...ue, kandidaten: k.length, status: leiterStatus(),
+      kandidatenListe: k.map((p) => ({ number: p.number, title: p.title ?? null, impressionen_90d: p.impressionen_90d ?? null, units_90d: p.units_90d ?? null, beworben: beworben(p.number) })),
+      trichter: tr, werbung: { stand: werbungStand.at ? new Date(werbungStand.at).toISOString() : null, anzahl: Object.keys(werbungStand.nummern).length, fehler: werbungStand.fehler },
+      schreiben: { titel: schreiber.konfiguriert() && schreiber.schreibenAn(), werbung: schreiber.konfiguriert() && schreiber.schreibenAn() && schreiber.werbungAn(), preis: schreiber.konfiguriert() && schreiber.schreibenAn() && schreiber.preisAn() } };
   },
   // Alles, was mit einem Produkt geschehen ist: Stand auf der Leiter, Lebenslauf und die Protokolleinträge (für die Seite Products)
   "/api/produkt/verlauf": (q) => {
@@ -422,8 +478,20 @@ const POST_ROUTEN = {
   "/api/leiter/freigabe": async (req, ctx) => {
     adminNoetig(ctx);
     const nr = String((await leseJson(req))?.number ?? "").slice(0, 40);
-    return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag }));
+    return freigeben(ctx, nr);
   },
+  // Mehrere Titel auf einmal freigeben (Häkchen in der Arbeitsliste): jedes Angebot einzeln, mit denselben Prüfungen
+  "/api/leiter/freigabe-mehrere": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req);
+    const nummern = Array.isArray(b?.numbers) ? [...new Set(b.numbers.map((n) => String(n).slice(0, 40)))].slice(0, 100) : [];
+    if (!nummern.length) throw Object.assign(new Error("Please tick at least one listing."), { status: 400 });
+    const ergebnisse = [];
+    for (const nr of nummern) { try { ergebnisse.push({ number: nr, ok: true, ...(await freigeben(ctx, nr)) }); } catch (e) { ergebnisse.push({ number: nr, ok: false, text: e.message }); } }
+    return { ergebnisse, angewendet: ergebnisse.filter((e) => e.ausgang === "angewendet").length, probelauf: ergebnisse.filter((e) => e.ausgang === "probelauf").length, fehler: ergebnisse.filter((e) => !e.ok || e.ausgang === "fehlgeschlagen").length };
+  },
+  // "Start over": alles ohne eBay-Änderung zurück zu Eligible
+  "/api/leiter/neustart": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.setzeZurueck(appDb(), ctx, b?.grund)); },
   // Admin setzt ein Angebot aus der Auswahlliste auf die Leiter; der KI-Titelvorschlag wird gleich mitgeholt (ändert nichts bei eBay)
   "/api/leiter/aufnehmen": async (req, ctx) => {
     adminNoetig(ctx);
@@ -434,10 +502,31 @@ const POST_ROUTEN = {
     return { number: nr, vorschlag: v.ok, hinweis: v.ok ? null : v.fehler };
   },
   // Bewegung per Knopf: neue Angebote per Los aufnehmen (mit Kontrollgruppe) und ein Angebot weiterschieben oder als wieder gesehen beenden
-  "/api/leiter/ziehen": async (req, ctx) => { adminNoetig(ctx); await leseJson(req); const r = await leiterLauf(ctx.name, "ziehen"); if (!r) throw Object.assign(new Error("The ladder is already running."), { status: 409 }); return r; },
-  "/api/leiter/schieben": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); const produkte = produkteLaden(); return antwort(leiter.schiebeVonHand(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.ziel, leiterDaten(produkte))); },
+  "/api/leiter/ziehen": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req);
+    const anzahl = Number(b?.anzahl);
+    if (!Number.isInteger(anzahl) || anzahl < 1 || anzahl > 1000) throw Object.assign(new Error("Please choose how many listings to draw (a whole number from 1)."), { status: 400 });
+    if (typeof b?.kontrolle !== "boolean") throw Object.assign(new Error("Please choose whether to draw a control group."), { status: 400 });
+    const r = await leiterLauf(ctx.name, "ziehen", { anzahl, kontrolle: b.kontrolle });
+    if (!r) throw Object.assign(new Error("The ladder is already running."), { status: 409 });
+    return r;
+  },
+  "/api/leiter/schieben": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
+    const r = antwort(leiter.schiebeVonHand(appDb(), ctx, nr, b?.ziel, leiterDaten(produkteLaden())));
+    const sprung = r.stufe === "werbung" ? await werbungSpruenge([nr]) : [];
+    return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null };
+  },
   "/api/leiter/vonhand": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.starteVonHand(appDb(), ctx, String(b?.number ?? "").slice(0, 40), { impTag })); },
-  "/api/leiter/ueberspringen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.ueberspringe(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund, einst(), { fuer: leiterKontext })); },
+  "/api/leiter/ueberspringen": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
+    const r = antwort(leiter.ueberspringe(appDb(), ctx, nr, b?.grund, einst(), { fuer: leiterKontext }));
+    const sprung = r.stufe === "werbung" ? await werbungSpruenge([nr]) : [];
+    return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null };
+  },
   "/api/leiter/entscheidung": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.entscheide(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.entscheidung, b?.notiz)); },
   "/api/leiter/abbrechen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.brichAb(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund)); },
   // Builder und Admin: einen Titel von Hand eintragen (muss den Regelprüfer bestehen) oder die KI erneut fragen
@@ -528,5 +617,7 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`Parture Groupwork läuft: http://127.0.0.1:${PORT}  (DB: ${dbPfad()})`);
   if (SICH_AUTO) { setTimeout(pruefeSicherung, 45e3).unref(); setInterval(pruefeSicherung, 15 * 60e3).unref(); }
   if (LEITER_AUTO) { setTimeout(pruefeLeiter, 60e3).unref(); setInterval(pruefeLeiter, 15 * 60e3).unref(); }
+  // Liste der beworbenen eBay-Angebote (Phase 2 nur für nicht beworbene): beim Start und alle 6 Stunden
+  if (schreiber.konfiguriert()) { setTimeout(() => aktualisiereWerbung().catch(() => {}), 30e3).unref(); setInterval(() => aktualisiereWerbung().catch(() => {}), 6 * 3600e3).unref(); }
   if (TRAFFIC_AUTO) { console.log(`Automatischer Traffic-Import: täglich ab ${TRAFFIC_UHR}:00 Uhr (Verzögerung ${verzoegerungTage()} Tage).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
 });

@@ -113,6 +113,36 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: false, meldung: restFehler(r) };
   }
 
+  // Wird das Angebot schon beworben? Fragt eBay nach allen Kampagnen, in denen es steckt (auch fremde, z. B. die des Shops).
+  // Laufend oder geplant zählt als beworben; dann ist es für Phase 2 nicht berechtigt (Niko 20.11.). Nur lesen.
+  // Rückgabe { ok, beworben, kampagnen: [Name] } oder { ok: false, meldung } (dann darf Phase 2 nicht freigegeben werden).
+  async function istBeworben(itemId) {
+    if (!konfiguriert()) return { ok: false, meldung: "This computer has no eBay credentials, so the ad status cannot be checked." };
+    const r = await rest("GET", "/sell/marketing/v1/ad_campaign/find_campaign_by_ad_reference?listing_id=" + encodeURIComponent(String(itemId)));
+    if (r.status === 404 || r.status === 204) return { ok: true, beworben: false, kampagnen: [] };
+    if (r.status !== 200) return { ok: false, meldung: "Could not check the ad status on eBay: " + restFehler(r) };
+    const laufend = (r.daten?.campaigns || []).filter((c) => ["RUNNING", "SCHEDULED"].includes(String(c.campaignStatus || "").toUpperCase()));
+    return { ok: true, beworben: laufend.length > 0, kampagnen: laufend.map((c) => c.campaignName || c.campaignId) };
+  }
+
+  // Alle Angebote, die gerade in einer laufenden oder geplanten Kampagne stecken: { ok, angebote: { listingId: Kampagne } }.
+  // Für die Anzeige im Funnel ("springt über Phase 2"); vor jedem Schritt prüft istBeworben das einzelne Angebot noch einmal.
+  async function beworbeneAngebote() {
+    if (!konfiguriert()) return { ok: false, meldung: "This computer has no eBay credentials, so the ad status cannot be checked." };
+    const k = await rest("GET", "/sell/marketing/v1/ad_campaign?campaign_status=RUNNING,SCHEDULED&limit=100");
+    if (k.status !== 200 && k.status !== 404) return { ok: false, meldung: "Could not read the ad campaigns: " + restFehler(k) };
+    const angebote = {};
+    for (const c of k.daten?.campaigns || []) {
+      for (let offset = 0; offset < 20000; offset += 500) {
+        const a = await rest("GET", `/sell/marketing/v1/ad_campaign/${encodeURIComponent(c.campaignId)}/ad?limit=500&offset=${offset}`);
+        if (a.status !== 200) break;
+        for (const ad of a.daten?.ads || []) if (ad.listingId) angebote[String(ad.listingId)] = c.campaignName || c.campaignId;
+        if ((a.daten?.ads || []).length < 500) break;
+      }
+    }
+    return { ok: true, angebote };
+  }
+
   // Ändert den Titel. Gibt nie etwas anderes als { ok, ack, meldung } zurück.
   async function setzeTitel(itemId, titel) {
     if (!schreibenAn()) return { ok: false, ack: null, meldung: "Writing to eBay is switched off (EBAY_SCHREIBEN is not set to 'an')." };
@@ -122,5 +152,5 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: false, ack: r.ack, meldung: meldung || "eBay answered with HTTP " + r.http };
   }
 
-  return { schreibenAn, werbungAn, preisAn, konfiguriert, lies, setzeTitel, setzePreis, setzeWerbung };
+  return { schreibenAn, werbungAn, preisAn, konfiguriert, lies, setzeTitel, setzePreis, setzeWerbung, istBeworben, beworbeneAngebote };
 }

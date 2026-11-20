@@ -141,7 +141,7 @@ function route() {
   if (ansicht === "problem") ladeProblem();
   if (ansicht === "ergebnisse") ladeErgebnisse();
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
-  if (ansicht === "ladder") { if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; } ladeLeiter(); }
+  if (ansicht === "ladder") { if (arg && FUNNEL_TABS.includes(arg)) zustand.funnelTab = arg; else if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; zustand.funnelTab = "all"; } ladeLeiter(); }
   if (ansicht === "settings") ladeEinstellungen();
   if (ansicht === "approvals") ladeFreigaben();
   if (ansicht === "team") ladeTeam();
@@ -729,55 +729,239 @@ const STATUS_REIHE = ["nicht_geeignet", "geeignet", "kontrolle", "titel", "werbu
 const GRUND_TEXT = { genug: "Enough impressions already", neu: "Too new or no data yet", kein_ebay: "No active eBay listing", gesperrt: "Blocked by a price test", im_test: "In a title test" };
 const statusChip = (s) => el("span", { class: "status " + (STATUS_KLASSE[s] || ""), text: STATUS_TEXT[s] || s });
 
+// Funnel-Seite (Niko 20.11.: "sehr intuitiv durchbewegen, leicht verständlich, übersichtlich, anwendungsbezogen"):
+//   Kopf mit einem Satz und "How it works" zum Aufklappen, Band zum Datenstand, Schrittleiste 1–5 mit Zahlen,
+//   drei Reiter: Overview (Kennzahlen, Bild, Wirkung) · Work (losen, freigeben, warten, entscheiden) · All products (Tabelle).
+const FUNNEL_TABS = ["work", "overview", "all"];
 function zeichneLeiter(l) {
-  const root = $("#ansicht-ladder");
-  const st = l.status, f = l.trichter;
-  zustand.leiterStatus = st;
-  const warten = l.angebote.filter((a) => a.phase === "vorschlag" || a.phase === "offen");
-  const laufen = l.angebote.filter((a) => a.phase === "laeuft");
-  const fertig = l.angebote.filter((a) => a.stufe === "raus" && a.ergebnis !== "kontrolle");
-  // Bewegung von Hand (Standard): Aufnehmen per Los und KI-Titel holen sind zwei Knöpfe; automatisch: ein Knopf für den ganzen Lauf
-  const vonHand = l.bewegung !== "automatisch";
-  const knopf = (text, pfad, meldungText, akzent = true) => el("button", { class: "knopf" + (akzent ? " knopf-akzent" : ""), type: "button", disabled: st.laeuft, text: st.laeuft ? "Running …" : text,
-    onclick: (ev) => { ev.target.disabled = true; ev.target.textContent = "Working …"; leiterAktion(pfad, {}, meldungText); } });
-  const laufKnopf = !istAdmin() ? null : vonHand
-    ? el("div", { class: "aktionen", style: "margin-top:0" },
-      knopf("Draw listings by lot", "/api/leiter/ziehen", (r) => `Drawn: ${r.aufgenommen} on the ladder, ${r.kontrolle ?? 0} in the control group, ${r.titelVorschlaege} AI titles.`),
-      knopf("Get AI titles", "/api/leiter/lauf", (r) => `${r.titelVorschlaege} new AI titles${r.ohneVorschlag ? `, ${r.ohneVorschlag} without a suggestion` : ""}.`, false))
-    : knopf("Run the ladder now", "/api/leiter/lauf", (r) => `Done: ${r.aufgenommen} on the ladder, ${r.kontrolle ?? 0} in the control group, ${r.ausgewertet} checked (${r.erholt} seen again), ${r.titelVorschlaege} title suggestions.`);
-  const schalter = (name, an, text) => el("li", {}, name + ":", el("span", { class: an ? "an" : "aus", text }));
-  const abschnitt = (titel, n) => el("div", { class: "abschnitt-kopf" }, el("h2", {}, titel, el("span", { class: "zahl-pille", text: String(n) })));
-  fuelle(root,
+  zustand.leiterDaten = l;
+  zustand.leiterStatus = l.status;
+  if (!FUNNEL_TABS.includes(zustand.funnelTab)) zustand.funnelTab = istAdmin() ? "work" : "overview";
+  const tab = zustand.funnelTab, f = l.trichter;
+  const reiter = (id, name, zahlText) => el("button", { class: "reiter", type: "button", role: "tab", "aria-selected": String(tab === id), onclick: () => { zustand.funnelTab = id; history.replaceState(null, "", "#ladder/" + id); zeichneLeiter(l); } },
+    name, zahlText != null ? el("span", { class: "zahl-pille", text: String(zahlText) }) : null);
+  const offen = l.angebote.filter((a) => a.phase === "vorschlag" || a.phase === "offen" || (a.phase === "laeuft" && a.stand && a.stand.gelaufen >= a.stand.tage)).length;
+  fuelle($("#ansicht-ladder"),
     el("div", { class: "einstieg" }, el("h1", { text: "Funnel" }),
-      el("p", { class: "leise", text: `Only eBay performance enters these checks. Products that buyers rarely see (under ${zahl(f.kpi.grenze90)} impressions in 90 days) and that can be changed on eBay are eligible. ${l.bewegung === "automatisch" ? "The daily run draws them by lot" : "An admin draws them by lot"}: half climb the ladder (new title, then ads, then a lower price), half stay unchanged as the control group. After each phase the app compares the listing with the control group over the same days, so a busy season does not count as success.${l.bewegung === "automatisch" ? "" : " Products only move when an admin clicks."} Nothing changes on eBay without an admin's approval.` })),
-    kpiLeiste(l),
-    trichterBild(l),
-    wirkungTabelle(l),
-    istAdmin() ? el("div", { class: "panel kopf-zeile" },
-      el("ul", { class: "leiter-status", "aria-label": "Ladder status" },
-        schalter("Movement", true, vonHand ? "by hand (buttons)" : "automatic (daily run)"),
-        schalter("Titles", st.ki, st.ki ? `AI (${st.kiModell}) + rule check` : "title help, no AI key"),
-        schalter("Control group", l.kontrolleAn, l.kontrolleAn ? `on · ${l.tage.kontrolle} days` : "off"),
-        schalter("Ads on eBay", st.werbungAn, st.werbungAn ? "on" : "dry run"),
-        schalter("Prices on eBay", st.preisAn, st.preisAn ? "on" : "dry run"),
-        schalter("Daily run", st.automatisch, st.automatisch ? `from ${st.uhrzeit}:00` : "off"),
-        el("li", { text: `Last run: ${st.letzterLauf ? zeitpunkt(st.letzterLauf) : "never"}${st.letzterFehler ? " (failed, see Log)" : ""}` })),
-      laufKnopf) : null,
-    istAdmin() ? auswahlAufnehmen(l.kandidatenListe || []) : null,
-    abschnitt("Waiting for a decision", warten.length),
-    warten.length ? ersteFuenf(warten, leiterKarte, "decisions") : el("p", { class: "leere-hinweis leise", text: "Nothing is waiting. New listings come with the daily run or through “Add a listing”." }),
-    abschnitt("Waiting time running", laufen.length),
-    laufen.length ? ersteFuenf(laufen, leiterKarte, "running steps") : el("p", { class: "leere-hinweis leise", text: "No step is running. A step starts when an admin approves it." }),
-    fertig.length ? el("details", { class: "panel", style: "margin-top:22px" }, el("summary", { style: "cursor:pointer", text: `Left the ladder (${fertig.length})` }), fertig.map(leiterKarte)) : null,
-    statusTabelle(f));
+      el("p", { class: "leise", text: "Find the eBay listings buyers rarely see, change one thing at a time, and measure each change against a control group. Only eBay performance counts here." }),
+      el("details", { class: "wie" }, el("summary", { text: "How it works" }),
+        el("ol", { class: "wie-liste" },
+          el("li", { text: `Eligible: under ${zahl(f.kpi.grenze90)} impressions in 90 days, active on eBay, not blocked.` }),
+          el("li", { text: "Draw by lot: you choose how many. With a control group, the same number stays unchanged, so a busy or quiet season does not count as an effect." }),
+          el("li", { text: "Phase 1 new title (AI + rule check) → Phase 2 ads (only if the listing is not advertised yet; otherwise it skips to the price) → Phase 3 lower price → Phase 4 manual check." }),
+          el("li", { text: `After each waiting time you decide: “Seen again” (at least ${zahl(f.kpi.grenze90)} impressions per 90 days) or the next phase. The app shows the numbers and a recommendation.` }),
+          el("li", { text: "Nothing changes on eBay until an admin approves it. Every step is in the history and the Log." })))),
+    datenBand(l),
+    schrittLeiste(l),
+    el("div", { class: "reiterleiste", role: "tablist", "aria-label": "Funnel views" },
+      reiter("work", "Work", offen), reiter("overview", "Overview"), reiter("all", "All products", f.kpi.produkte)),
+    tab === "overview" ? [kpiLeiste(l), trichterBild(l), wirkungTabelle(l)]
+      : tab === "all" ? statusTabelle(f)
+      : arbeitsBereich(l));
 }
 
-// Lange Kartenlisten: erst fünf zeigen, der Rest auf Klick (sonst rutscht die Produkttabelle weit nach unten)
-function ersteFuenf(liste, karte, name) {
-  if (liste.length <= 5) return liste.map(karte);
-  const rest = el("div", { hidden: true }, liste.slice(5).map(karte));
-  const knopf = el("button", { class: "knopf", type: "button", text: `Show all ${liste.length} ${name}`, onclick: () => { rest.hidden = false; knopf.remove(); } });
-  return [...liste.slice(0, 5).map(karte), rest, el("div", { class: "mehr" }, knopf)];
+// Band oben, solange die eBay-Daten alt sind: dann bewegen sich Prüfzeiten und Messungen nicht
+function datenBand(l) {
+  const bis = l.trafficBis;
+  if (!bis) return null;
+  const alter = Math.round((Date.now() - Date.parse(bis + "T12:00:00Z")) / 864e5);
+  if (alter <= 3) return null;
+  return el("div", { class: "hinweis hinweis-warnung band" }, el("strong", { text: `eBay data up to ${datum(bis + "T12:00:00Z")}. ` }),
+    `Waiting times count finished data days, so they only move on when new days arrive (normally with a lag of 1–3 days; now ${alter} days).`);
+}
+
+// Schrittleiste: der Weg in fünf Schritten mit der Zahl, die gerade dort steht; Klick springt in die Arbeitsliste
+function schrittLeiste(l) {
+  const f = l.trichter, A = l.angebote;
+  const vorschlag = A.filter((a) => a.phase === "vorschlag").length, laeuft = A.filter((a) => a.phase === "laeuft");
+  const fertigWarten = laeuft.filter((a) => a.stand && a.stand.gelaufen >= a.stand.tage).length + A.filter((a) => a.phase === "offen").length;
+  const schritt = (nr, titel, n, unter, ziel) => el("button", { class: "schritt-knopf" + (n ? " aktiv" : ""), type: "button", onclick: () => { zustand.funnelTab = ziel === "all" ? "all" : "work"; if (ziel === "all") zustand.funnelFilter = "geeignet"; zeichneLeiter(l); const z = document.getElementById(ziel); if (z) z.scrollIntoView({ behavior: "smooth", block: "start" }); } },
+    el("span", { class: "schritt-nr", text: String(nr) }), el("span", { class: "schritt-text" }, el("strong", { text: titel }), el("small", { text: unter })), el("span", { class: "schritt-zahl", text: zahl(n) }));
+  return el("div", { class: "schrittleiste" },
+    schritt(1, "Choose", f.zahl.geeignet, "eligible listings", "ziehen"),
+    schritt(2, "Approve", vorschlag, "suggestions waiting", "freigeben"),
+    schritt(3, "Wait", laeuft.length - laeuft.filter((a) => a.stand && a.stand.gelaufen >= a.stand.tage).length, "waiting time running", "warten"),
+    schritt(4, "Decide", fertigWarten, "waiting over or manual check", "entscheiden"),
+    schritt(5, "Results", f.zahl.erholt + f.zahl.raus, "seen again or left", "ergebnis"));
+}
+
+function arbeitsBereich(l) {
+  const A = l.angebote;
+  const gruppe = (id, titel, hinweis, liste, extra = null) => el("section", { id, class: "arbeitsgruppe" },
+    el("div", { class: "abschnitt-kopf" }, el("h2", {}, titel, el("span", { class: "zahl-pille", text: String(liste.length) })), extra),
+    hinweis ? el("p", { class: "leise klein", text: hinweis }) : null,
+    liste.length ? el("div", { class: "tabelle" }, liste.map((a) => leiterZeile(a, l))) : el("p", { class: "leere-hinweis leise", text: "Nothing here right now." }));
+  const titelOffen = A.filter((a) => a.phase === "vorschlag" && a.stufe === "titel");
+  const sonstOffen = A.filter((a) => a.phase === "vorschlag" && a.stufe !== "titel");
+  const laeuft = A.filter((a) => a.phase === "laeuft");
+  const warten = laeuft.filter((a) => !(a.stand && a.stand.gelaufen >= a.stand.tage)), entscheiden = [...laeuft.filter((a) => a.stand && a.stand.gelaufen >= a.stand.tage), ...A.filter((a) => a.phase === "offen")];
+  const fertig = A.filter((a) => a.stufe === "raus" && a.ergebnis !== "kontrolle");
+  return [
+    istAdmin() ? ziehenPanel(l) : null,
+    gruppe("freigeben", "Approve new titles", "Old title on the left, new one on the right; added words are highlighted. Tick several to approve them at once.", titelOffen, istAdmin() && titelOffen.length ? sammelFreigabe(titelOffen, l) : null),
+    sonstOffen.length ? gruppe("freigeben-2", "Approve ads or price", "Ads only for listings that are not advertised yet; the app checks eBay right before and otherwise moves the listing to the price step.", sonstOffen) : null,
+    gruppe("warten", "Waiting time running", "The change is live. The bars compare this listing with the control group over the same days.", warten),
+    gruppe("entscheiden", "Decide", "The waiting time is over (or title, ads and price did not help). The app recommends a step; you decide.", entscheiden),
+    el("details", { id: "ergebnis", class: "panel", style: "margin-top:18px" }, el("summary", { text: `Left the ladder (${fertig.length})` }), fertig.length ? el("div", { class: "tabelle" }, fertig.map((a) => leiterZeile(a, l))) : el("p", { class: "leise klein", text: "Nothing yet." })),
+    istAdmin() ? el("details", { class: "panel" }, el("summary", { text: "Add one specific listing" }), auswahlAufnehmen(l.kandidatenListe || [])) : null,
+    istAdmin() ? steuerZeile(l) : null];
+}
+
+// Losen: Anzahl frei wählbar, Kontrollgruppe ja/nein, Vorschau genau der Angebote, die gezogen würden (in Losreihenfolge)
+function ziehenPanel(l) {
+  const liste = l.kandidatenListe || [];
+  const anzahl = el("input", { id: "zieh-anzahl", class: "feld", type: "number", min: 1, max: Math.max(1, liste.length), step: 1, value: String(Math.min(zustand.ziehAnzahl || 10, Math.max(1, liste.length))), "aria-label": "How many listings to put on the ladder" });
+  const kontrolle = el("input", { id: "zieh-kontrolle", type: "checkbox", checked: zustand.ziehKontrolle !== false });
+  const vorschau = el("div", { class: "zieh-vorschau" }), knopf = el("button", { class: "knopf knopf-akzent", type: "button" });
+  const neu = () => {
+    const n = Math.max(1, Math.min(liste.length, Math.floor(Number(anzahl.value) || 1))), mit = kontrolle.checked, gezogen = liste.slice(0, mit ? 2 * n : n);
+    zustand.ziehAnzahl = n; zustand.ziehKontrolle = mit;
+    const beworben = gezogen.filter((p) => p.beworben).length;
+    knopf.textContent = mit ? `Draw ${zahl(Math.min(n, Math.floor(gezogen.length / 2)))} + ${zahl(Math.ceil(gezogen.length / 2))} control` : `Put ${zahl(gezogen.length)} on the ladder`;
+    knopf.disabled = !liste.length;
+    fuelle(vorschau,
+      el("p", { class: "leise klein", text: mit ? `These ${zahl(gezogen.length)} listings go into the lot (best eBay sellers first). Half go on the ladder, half stay unchanged as the control group, decided by chance.` : `These ${zahl(gezogen.length)} listings go on the ladder (best eBay sellers first), without a control group: their effect cannot be told apart from the season.` }),
+      beworben ? el("p", { class: "leise klein", text: `${zahl(beworben)} of them are already advertised on eBay and will skip Phase 2 (ads).` }) : null,
+      el("ol", { class: "zieh-liste" }, gezogen.slice(0, 40).map((p) => el("li", {}, el("span", { class: "titel-kurz", text: p.title || "(untitled)" }),
+        el("span", { class: "leise klein", text: `No. ${p.number} · ${zahl(p.impressionen_90d)} imp. · ${zahl(p.units_90d)} sales` }), p.beworben ? el("span", { class: "status grau", text: "advertised" }) : null))),
+      gezogen.length > 40 ? el("p", { class: "leise klein", text: `… and ${zahl(gezogen.length - 40)} more.` }) : null);
+  };
+  anzahl.addEventListener("input", neu); kontrolle.addEventListener("change", neu);
+  knopf.addEventListener("click", () => { knopf.disabled = true; knopf.textContent = "Drawing and asking the AI …";
+    leiterAktion("/api/leiter/ziehen", { anzahl: zustand.ziehAnzahl, kontrolle: zustand.ziehKontrolle }, (r) => `${r.aufgenommen} on the ladder${r.kontrolle ? `, ${r.kontrolle} in the control group` : ""}, ${r.titelVorschlaege} AI titles.`); });
+  neu();
+  return el("section", { id: "ziehen", class: "panel zieh-panel" },
+    el("div", { class: "kopf-zeile" }, el("div", {}, el("h2", { text: "1 · Choose listings" }), el("p", { class: "leise klein", text: `${zahl(liste.length)} listings are eligible right now. There is no upper limit.` }))),
+    el("div", { class: "zieh-felder" },
+      el("label", { class: "zieh-feld", for: "zieh-anzahl" }, el("span", { text: "How many on the ladder" }), anzahl),
+      el("label", { class: "zieh-feld schalter-feld" }, kontrolle, el("span", { text: "Draw a control group of the same size" })),
+      knopf),
+    vorschau);
+}
+
+// Mehrere Titel auf einmal freigeben: die Häkchen in den Zeilen, ein Knopf
+function sammelFreigabe(liste, l) {
+  const zaehler = el("span", { class: "leise klein" }), knopf = el("button", { class: "knopf knopf-akzent knopf-klein", type: "button", disabled: true });
+  const alle = el("input", { type: "checkbox", "aria-label": "Tick all", onchange: () => { for (const c of document.querySelectorAll(".zeile-haken")) c.checked = alle.checked; aktualisiere(); } });
+  const gewaehlt = () => [...document.querySelectorAll(".zeile-haken:checked")].map((c) => c.value);
+  const aktualisiere = () => { const n = gewaehlt().length; knopf.disabled = !n; knopf.textContent = n ? `Approve ${n} title${n === 1 ? "" : "s"}${l.schreiben?.titel ? " · LIVE" : " · dry run"}` : "Approve ticked"; };
+  document.addEventListener("change", (ev) => { if (ev.target.classList?.contains("zeile-haken")) aktualisiere(); });
+  zweiStufig(knopf, "Really change these on eBay?", async () => {
+    try { const r = await post("/api/leiter/freigabe-mehrere", { numbers: gewaehlt() }); meldung(`${r.angewendet} changed on eBay, ${r.probelauf} dry runs, ${r.fehler} failed.${r.fehler ? " See the history of the failed ones." : ""}`); } catch (e) { meldung(e.message); }
+    await ladeLeiter(); ladeZaehler();
+  });
+  queueMicrotask(aktualisiere);
+  return el("span", { class: "sammel" }, el("label", { class: "sammel-alle" }, alle, " all"), knopf, zaehler);
+}
+
+// Eine Zeile der Arbeitsliste: Bild, Titel (alt → neu), Kennzahlen, Status, ein Hauptknopf; Aufklappen für alles Weitere
+function leiterZeile(a, l) {
+  const b = bildUrl(a.image_url), v = a.vorschlag;
+  const live = a.stufe === "titel" ? l.schreiben?.titel : a.stufe === "werbung" ? l.schreiben?.werbung : l.schreiben?.preis;
+  const ebayLink = a.ebay_id ? el("a", { class: "ebay-link", href: `https://www.ebay.de/itm/${encodeURIComponent(a.ebay_id)}`, target: "_blank", rel: "noopener noreferrer", text: "eBay ↗" }) : null;
+  const marken = [
+    el("span", { class: "status " + (a.stufe === "raus" ? (a.ergebnis === "erholt" ? "gut" : "grau") : a.phase === "laeuft" ? "phase" : a.phase === "offen" ? "warn" : "offen"), text: a.stufe === "raus" ? ERGEBNIS_LEITER[a.ergebnis] || a.ergebnis : STUFE_TEXT[a.stufe] }),
+    a.beworben && a.stufe !== "raus" ? el("span", { class: "status grau", title: `Already advertised in “${a.beworben}”: skips Phase 2`, text: "advertised → skips ads" }) : null,
+    a.verlauf?.some((e) => e.ereignis === "aufgenommen" && e.details?.vonHand) ? el("span", { class: "status grau", title: "Added by hand, no control partner", text: "added by hand" }) : null];
+  // Inhalt je Stufe
+  let mitte = null, haupt = null, haken = null;
+  if (a.phase === "vorschlag" && a.stufe === "titel") {
+    mitte = v ? titelDiff(v.alt, v.titel) : el("p", { class: "leise klein", text: (zustand.leiterStatus?.ki ? "No suggestion yet." : "No AI key: enter a title below.") + " Open the row to enter one or ask the AI." });
+    if (istAdmin() && v && !v.nichtMoeglich) { haken = el("input", { type: "checkbox", class: "zeile-haken", value: a.number, "aria-label": "Tick for approval" }); haupt = freigabeKnopf(a, live); }
+    else if (istAdmin() && !v) haupt = el("button", { class: "knopf knopf-klein", type: "button", text: "Ask the AI", onclick: (ev) => { ev.target.disabled = true; ev.target.textContent = "Asking …"; leiterAktion("/api/leiter/neuvorschlag", { number: a.number }, "New suggestion ready."); } });
+  } else if (a.phase === "vorschlag" && a.stufe === "werbung") {
+    mitte = el("p", { class: "klein", text: a.beworben ? `Already advertised in “${a.beworben}”. Approving moves it straight to the price step; no second ad is created.` : `Switch on Promoted Listings at ${Math.round((v?.satz ?? 0) * 100)} % of the sale price (paid only when it sells after an ad click).` });
+    if (istAdmin()) haupt = a.beworben ? zweiStufig(el("button", { class: "knopf knopf-akzent knopf-klein", type: "button", text: "Move to price step" }), "Really?", () => leiterAktion("/api/leiter/freigabe", { number: a.number }, (r) => r.text)) : freigabeKnopf(a, live);
+  } else if (a.phase === "vorschlag" && a.stufe === "preis") {
+    mitte = v?.nichtMoeglich ? el("p", { class: "hinweis hinweis-warnung klein", text: v.nichtMoeglich }) : el("p", { class: "klein" }, "Price ", el("del", { text: eur(v?.alt) }), " → ", el("strong", { text: eur(v?.neu) }), ` (−${Math.round((v?.schritt ?? 0) * 100)} %). The app does not know the costs: check that it still pays off.`);
+    if (istAdmin() && v && !v.nichtMoeglich) haupt = freigabeKnopf(a, live);
+  } else if (a.phase === "laeuft") {
+    const s = a.stand, e = empfehlung(a, l);
+    mitte = el("div", {}, el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(Math.min(1, s.gelaufen / s.tage) * 100)}%` })),
+      el("p", { class: "leise klein", text: `Started ${datum(a.stufe_start + "T12:00:00Z")} · data day ${s.gelaufen} of ${s.tage} · due ${datum(s.ende + "T12:00:00Z")}` }),
+      e ? el("p", { class: "empfehlung " + e.klasse, text: e.text }) : null);
+    if (istAdmin()) haupt = el("span", { class: "knopf-paar" },
+      zweiStufig(el("button", { class: "knopf knopf-klein" + (e?.ziel === "weiter" ? " knopf-akzent" : ""), type: "button", text: `Next phase →` }), "Really move on?", () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "weiter" }, (r) => r.werbungUebersprungen ? `Already advertised (${r.werbungUebersprungen.join(", ")}): moved straight to the price step.` : `Moved to ${STUFE_TEXT[r.stufe] || r.stufe}.`)),
+      zweiStufig(el("button", { class: "knopf knopf-klein" + (e?.ziel === "erholt" ? " knopf-akzent" : ""), type: "button", text: "Seen again ✓" }), "Really mark as seen again?", () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "erholt" }, "Marked as seen again; the listing left the ladder.")));
+  } else if (a.phase === "offen") {
+    mitte = el("p", { class: "klein", text: "Title, ads and price did not bring the impressions back. Open the row to decide: rework, take offline or keep." });
+  }
+  const details = el("details", { class: "zeile-mehr" }, el("summary", { text: "More" }), ...zeileMehr(a, l));
+  return el("div", { class: "lzeile " + (a.phase || "") },
+    el("div", { class: "lzeile-haken" }, haken),
+    b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
+    el("div", { class: "lzeile-mitte" },
+      el("div", { class: "lzeile-kopf" }, el("span", { class: "titel-kurz", text: a.title || "(untitled)" }), ...marken),
+      el("div", { class: "leise klein lzeile-zahlen" }, `No. ${a.number} · ${zahl(a.impressionen_90d)} impressions · ${zahl(a.units_90d)} eBay sales in 90 days `, ebayLink),
+      mitte, details),
+    el("div", { class: "lzeile-aktion" }, haupt));
+}
+
+// Freigabeknopf: sagt, ob gerade wirklich bei eBay geschrieben wird oder nur zur Probe
+function freigabeKnopf(a, live) {
+  return zweiStufig(el("button", { class: "knopf knopf-klein " + (live ? "knopf-live" : "knopf-akzent"), type: "button", title: live ? "Writes to the live eBay listing" : "Dry run: everything is checked, nothing changes on eBay", text: live ? "Approve · LIVE on eBay" : "Approve · dry run" }),
+    live ? "Really change on eBay?" : "Run the dry run?", () => leiterAktion("/api/leiter/freigabe", { number: a.number }, (r) => r.text));
+}
+
+// Alt → neu als Wörter: gestrichene durchgestrichen, neue hervorgehoben; Zeichen gezählt
+function titelDiff(alt, neu) {
+  const w = (s) => String(s || "").split(/\s+/).filter(Boolean), norm = (x) => x.toLowerCase().replace(/[.,;:!?()]/g, "");
+  const altSet = new Set(w(alt).map(norm)), neuSet = new Set(w(neu).map(norm));
+  const wort = (x, set, tag) => (set.has(norm(x)) ? document.createTextNode(x + " ") : el(tag, { text: x + " " }));
+  return el("div", { class: "diff" },
+    el("div", { class: "diff-alt" }, el("span", { class: "diff-tag", text: "old" }), ...w(alt).map((x) => wort(x, neuSet, "del"))),
+    el("div", { class: "diff-neu" }, el("span", { class: "diff-tag", text: "new" }), ...w(neu).map((x) => wort(x, altSet, "mark")), el("span", { class: "leise klein", text: `${String(neu || "").length}/80` })));
+}
+
+// Empfehlung für eine laufende Prüfzeit aus den Zahlen (der Admin entscheidet)
+function empfehlung(a, l) {
+  const s = a.stand, grenze = l.grenze90;
+  if (!s || s.jetzt90 == null) return { ziel: null, klasse: "grau", text: "No new traffic data since the start yet." };
+  const fertig = s.gelaufen >= s.tage, ueber = s.jetzt90 >= grenze, netto = s.netto != null ? ` · net effect vs control ${aenderung(s.netto)}` : "";
+  if (ueber) return { ziel: "erholt", klasse: "gut", text: `${zahl(s.jetzt90)} impressions per 90 days, above the limit of ${zahl(grenze)}${netto}. Recommended: Seen again.` };
+  if (fertig) return { ziel: "weiter", klasse: "warn", text: `Still ${zahl(s.jetzt90)} per 90 days, under the limit of ${zahl(grenze)}${netto}. Recommended: next phase.` };
+  return { ziel: null, klasse: "grau", text: `So far ${zahl(s.jetzt90)} per 90 days (before ${zahl(s.vorher90)})${netto}. Waiting time still running.` };
+}
+
+// Aufgeklappt: Zwischenstand, eigener Titel, Überspringen, von Hand gemacht, von der Leiter nehmen, Verlauf
+function zeileMehr(a, l) {
+  const teile = [];
+  if (a.phase === "laeuft" && a.stand) teile.push(zwischenstand(a.stand));
+  if (a.phase === "vorschlag" && a.stufe === "titel") {
+    const v = a.vorschlag;
+    if (v?.begruendung) teile.push(el("p", { class: "leise klein", text: "Why: " + v.begruendung }));
+    for (const h of v?.pruefung?.hinweise || []) teile.push(el("p", { class: "hinweis hinweis-warnung klein", text: h.text }));
+    teile.push(titelEingabe(a, v));
+  }
+  if (a.phase === "offen") teile.push(...leiterPruefung(a));
+  if (istAdmin() && a.stufe !== "raus") {
+    const grund = el("input", { class: "feld", type: "text", maxlength: 200, placeholder: "Reason (optional)", "aria-label": "Reason" });
+    teile.push(el("div", { class: "aktionen" },
+      a.phase === "vorschlag" ? el("button", { class: "knopf knopf-klein", type: "button", text: "Done by hand", title: "The change was made on eBay by hand: start the waiting time", onclick: () => leiterAktion("/api/leiter/vonhand", { number: a.number }, "Waiting time started.") }) : null,
+      a.phase === "vorschlag" ? zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Skip this step" }), "Really skip?", () => leiterAktion("/api/leiter/ueberspringen", { number: a.number, grund: grund.value }, (r) => r.werbungUebersprungen ? "Skipped; already advertised, so it moved straight to the price step." : "Skipped. The next step is waiting.")) : null,
+      zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Take off the ladder" }), "Really take it off?", () => leiterAktion("/api/leiter/abbrechen", { number: a.number, grund: grund.value }, (r) => r.pause ? "Taken off. It was changed on eBay, so it pauses 90 days." : "Taken off. Nothing was changed on eBay, so it is eligible again right away.")),
+      el("span", { class: "grund-feld" }, grund)));
+  }
+  teile.push(lebenslauf(a));
+  return teile;
+}
+
+// Steuerzeile ganz unten: Schalter, Lauf, Neustart
+function steuerZeile(l) {
+  const st = l.status;
+  const schalter = (name, an, text) => el("li", {}, name + ":", el("span", { class: an ? "an" : "aus", text }));
+  const behalten = l.angebote.filter((a) => a.stufe !== "raus").length;
+  return el("div", { class: "panel kopf-zeile steuerung" },
+    el("ul", { class: "leiter-status", "aria-label": "Ladder status" },
+      schalter("Titles on eBay", l.schreiben?.titel, l.schreiben?.titel ? "LIVE" : "dry run"),
+      schalter("Ads on eBay", l.schreiben?.werbung, l.schreiben?.werbung ? "LIVE" : "dry run"),
+      schalter("Prices on eBay", l.schreiben?.preis, l.schreiben?.preis ? "LIVE" : "dry run"),
+      schalter("AI titles", st.ki, st.ki ? st.kiModell : "no key"),
+      schalter("Movement", true, l.bewegung === "automatisch" ? "automatic" : "by hand"),
+      el("li", { text: `Advertised on eBay: ${l.werbung?.anzahl ?? "?"} listings${l.werbung?.stand ? ` (checked ${zeitpunkt(l.werbung.stand)})` : ""}${l.werbung?.fehler ? " · check failed: " + l.werbung.fehler : ""}` })),
+    el("div", { class: "aktionen", style: "margin-top:0" },
+      el("button", { class: "knopf knopf-klein", type: "button", text: "Get AI titles", onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/lauf", {}, (r) => `${r.titelVorschlaege} new AI titles.`); } }),
+      behalten ? zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Start over" }), "Really reset everything not changed on eBay?", () => leiterAktion("/api/leiter/neustart", { grund: "Start over" }, (r) => `${r.zurueckgesetzt} listings are eligible again${r.behalten ? `, ${r.behalten} stay (already changed on eBay)` : ""}.`)) : null));
 }
 
 // Kennzahlen oben: wie groß der Shop ist, wie viele Impressionen er hat und wo die Produkte gerade stehen
@@ -798,7 +982,7 @@ function kpiLeiste(l) {
 // Ein Klick auf jeden Teil filtert die Tabelle aller Produkte unten.
 function trichterBild(l) {
   const f = l.trichter, N = Math.max(1, f.kpi.produkte);
-  const filtern = (status) => { zustand.funnelFilter = status; zustand.funnelSichtbar = 50; zeichneStatusTabelle(f); $("#funnel-tabelle").scrollIntoView({ behavior: "smooth", block: "start" }); };
+  const filtern = (status) => { zustand.funnelFilter = status; zustand.funnelSichtbar = 50; zustand.funnelTab = "all"; zeichneLeiter(l); $("#funnel-tabelle")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
   const anteil = (n) => pz(n / N, n && n / N < 0.01 ? 1 : 0);
   const seg = STATUS_REIHE.filter((s) => f.zahl[s] > 0).map((s) => el("button", { class: "fb-seg " + (STATUS_KLASSE[s] || ""), type: "button", style: `flex-grow:${f.zahl[s]}`,
     title: `${STATUS_TEXT[s]}: ${zahl(f.zahl[s])} of ${zahl(N)} (${anteil(f.zahl[s])})`, "aria-label": `${STATUS_TEXT[s]}: ${zahl(f.zahl[s])}`, onclick: () => filtern(s) },
@@ -903,28 +1087,6 @@ function auswahlAufnehmen(liste) {
     el("div", { class: "auswahl-zeile" }, suche, wahl, knopf));
 }
 
-function leiterKarte(a) {
-  const b = bildUrl(a.image_url);
-  const kopf = el("div", { class: "leiter-kopf" },
-    b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
-    el("div", {}, el("div", { class: "titel", text: a.title || "(untitled)" }), el("div", { class: "leise klein", text: `No. ${a.number} · ${zahl(a.impressionen_90d)} impressions in 90 days · ${zahl(a.units_90d)} eBay sales · on the ladder since ${datum(a.eingestiegen_at)}` })),
-    el("span", { class: "badge " + (a.stufe === "raus" ? (a.ergebnis === "erholt" ? "gut" : "") : a.phase === "laeuft" ? "laeuft" : "vorbereitet"), text: a.stufe === "raus" ? ERGEBNIS_LEITER[a.ergebnis] || a.ergebnis : STUFE_TEXT[a.stufe] }));
-  const inhalt = a.phase === "laeuft" ? leiterLaeuft(a) : a.phase === "offen" ? leiterPruefung(a) : a.phase === "vorschlag" ? leiterVorschlag(a) : [];
-  const zustandKlasse = a.stufe === "raus" ? "raus" : a.phase === "laeuft" ? "laeuft" : a.phase === "offen" ? "offen" : "wartet";
-  return el("div", { class: "panel leiter-karte " + zustandKlasse }, kopf, ...inhalt, lebenslauf(a));
-}
-
-function leiterLaeuft(a) {
-  const s = a.stand;
-  const anteil = Math.min(1, s.gelaufen / s.tage);
-  return [el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(anteil * 100)}%` })),
-    el("p", { class: "leise klein", text: `Day ${s.gelaufen} of ${s.tage} (with finished traffic data; checked on ${datum(s.ende + "T12:00:00Z")} or later). Before: ${zahl(s.vorher90)} impressions per 90 days${s.jetzt90 != null ? ` · so far: ${zahl(s.jetzt90)} per 90 days` : ""}.` }),
-    zwischenstand(s),
-    // Bewegung von Hand: der Admin entscheidet mit dem Zwischenstand, ob das Angebot weiter muss oder wieder gesehen wird
-    istAdmin() ? el("div", { class: "aktionen" },
-      zweiStufig(el("button", { class: "knopf knopf-akzent", type: "button", text: `Next phase → ${STUFE_TEXT[naechsteStufe(a.stufe)] || ""}` }), "Really move on?", () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "weiter" }, (r) => `Moved to ${STUFE_TEXT[r.stufe] || r.stufe}.`)),
-      zweiStufig(el("button", { class: "knopf", type: "button", text: "Seen again ✓ leave the ladder" }), "Really mark as seen again?", () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "erholt" }, "Marked as seen again; the listing left the ladder."))) : null];
-}
 const naechsteStufe = (s) => ({ titel: "werbung", werbung: "preis", preis: "pruefung" })[s];
 
 // Zwischenstand der laufenden Prüfzeit als kleine Balken: Angebot vorher/jetzt und Kontrollgruppe vorher/jetzt, dazu der Nettoeffekt
@@ -940,53 +1102,13 @@ function zwischenstand(s) {
     s.netto != null ? el("div", { class: "zs-netto" }, el("span", { class: "leise klein", text: "Net effect so far" }), el("span", { class: "status " + (s.netto >= 0.2 ? "gut" : s.netto <= -0.2 ? "schlecht" : "grau"), text: aenderung(s.netto) })) : null);
 }
 
-function leiterVorschlag(a) {
-  const v = a.vorschlag;
-  const aus = [];
-  if (a.stufe === "titel") {
-    const letzter = [...a.verlauf].reverse().find((e) => e.stufe === "titel");
-    if (v) {
-      aus.push(el("div", { class: "angebotszeile titelpaar", style: "grid-template-columns: minmax(0,1fr) minmax(0,1fr)" }, kasten("Old title", v.alt, false), kasten("New title (" + (QUELLE_TEXT[v.quelle] || v.quelle) + ")", v.titel, false)),
-        el("p", { class: "leise klein", text: v.begruendung }));
-      if (v.hinweis) aus.push(el("p", { class: "leise klein", text: "Note: " + v.hinweis }));
-      for (const h of v.pruefung?.hinweise || []) aus.push(el("p", { class: "hinweis hinweis-warnung klein", text: h.text }));
-      if (v.verworfen?.length) aus.push(el("details", { class: "klein" }, el("summary", { style: "cursor:pointer", text: `${v.verworfen.length} AI suggestion${v.verworfen.length === 1 ? " was" : "s were"} thrown away by the rule check` }),
-        el("ul", {}, v.verworfen.map((x) => el("li", { text: `“${x.titel}”: ${x.verstoesse.map((y) => y.text).join(" ")}` })))));
-    } else {
-      // Die alte Meldung "no AI key" bleibt im Lebenslauf stehen, auch wenn der Schlüssel inzwischen eingetragen ist (20.11.):
-      // dann sagen, dass die KI jetzt bereitsteht, statt den alten Grund zu wiederholen
-      const kiJetztDa = zustand.leiterStatus?.ki && /no AI key/i.test(letzter?.details?.text || "");
-      aus.push(kiJetztDa
-        ? el("div", { class: "hinweiszeile" }, el("span", { text: "The AI is ready now; it was not set up when this listing entered the ladder." }),
-          el("button", { class: "knopf knopf-akzent knopf-klein", type: "button", text: "Ask the AI now", onclick: (ev) => { ev.target.disabled = true; ev.target.textContent = "Asking the AI …"; leiterAktion("/api/leiter/neuvorschlag", { number: a.number }, "New suggestion ready."); } }))
-        : el("p", { class: "leise", text: letzter?.ereignis === "kein_vorschlag" ? "No suggestion yet: " + letzter.details?.text : "No title suggestion yet. It comes with the next ladder run, or enter one below." }));
-    }
-    aus.push(titelEingabe(a, v));
-  } else if (a.stufe === "werbung") {
-    aus.push(el("p", { text: `Switch on eBay Promoted Listings (standard) at ${Math.round((v?.satz ?? 0) * 100)} % of the sale price. The fee is only due when the item sells after a click on the ad.` }));
-  } else if (a.stufe === "preis") {
-    aus.push(v?.nichtMoeglich ? el("p", { class: "hinweis hinweis-warnung", text: v.nichtMoeglich + " Skip this step to go to the manual check." })
-      : el("p", { text: `Lower the price from ${eur(v?.alt)} to ${eur(v?.neu)} (−${Math.round((v?.schritt ?? 0) * 100)} %). The app does not know the costs: check that the new price still pays off before approving.` }));
-  }
-  if (istAdmin()) {
-    const kannFrei = !!v && !v.nichtMoeglich;
-    const grund = el("input", { class: "feld", type: "text", maxlength: 200, placeholder: "Why skip? (optional)", "aria-label": "Reason for skipping" });
-    aus.push(el("div", { class: "aktionen" },
-      kannFrei ? zweiStufig(el("button", { class: "knopf knopf-akzent", type: "button", text: "Approve and change on eBay" }), "Really change on eBay?", () => leiterAktion("/api/leiter/freigabe", { number: a.number }, (r) => r.text)) : null,
-      kannFrei || a.stufe !== "titel" ? el("button", { class: "knopf", type: "button", text: "Done by hand", title: "The change was made on eBay by hand (or should count as started without a change)", onclick: () => leiterAktion("/api/leiter/vonhand", { number: a.number }, "Waiting time started.") }) : null,
-      el("span", { class: "ueberspringen" }, grund,
-        zweiStufig(el("button", { class: "knopf", type: "button", text: "Skip this step" }), "Really skip?", () => leiterAktion("/api/leiter/ueberspringen", { number: a.number, grund: grund.value }, "Skipped. The next step is waiting.")))));
-  } else aus.push(el("p", { class: "leise klein", text: "An admin approves this step. Until then nothing changes on eBay." }));
-  return aus;
-}
-
 // Titel von Hand eintragen oder die KI noch einmal fragen (Builder und Admin). Der Server prüft jeden Titel mit dem Regelprüfer.
 function titelEingabe(a, v) {
   const feld = el("input", { class: "feld", type: "text", maxlength: String(zustand.betrieb?.regeln?.titelMaxZeichen || 80), value: v?.titel || "", "aria-label": "Your own title for product " + a.number, placeholder: "Your own title" });
   const zaehler = el("span", { class: "leise klein", text: `${feld.value.length} / ${feld.maxLength}` });
   feld.addEventListener("input", () => { zaehler.textContent = `${feld.value.length} / ${feld.maxLength}`; });
-  return el("details", { class: "klein", style: "margin-top:8px" }, el("summary", { style: "cursor:pointer", text: "Enter a title yourself or ask the AI again" }),
-    el("div", { class: "eingabezeile", style: "margin-top:8px" }, feld, zaehler),
+  return el("div", { class: "eigener-titel" }, el("div", { class: "leise klein", text: "Your own title (checked by the same rules) or a new AI suggestion:" }),
+    el("div", { class: "eingabezeile", style: "margin-top:6px" }, feld, zaehler),
     el("div", { class: "aktionen" },
       el("button", { class: "knopf", type: "button", text: "Use my title", onclick: () => leiterAktion("/api/leiter/titel", { number: a.number, titel: feld.value }, "Title saved, it passed the rule check.") }),
       el("button", { class: "knopf", type: "button", text: "Ask the AI again", onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/neuvorschlag", { number: a.number }, "New suggestion ready."); } })));
