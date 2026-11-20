@@ -200,16 +200,16 @@ function zeile(p) {
       bild ? el("img", { class: "bild", src: bild, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
       el("div", { class: "name" }, el("div", { class: "titel", text: p.title || "(untitled)" }), el("div", { class: "nummer", text: "No. " + p.number })),
       el("span", { class: "zahl", text: eur(p.avg_price) }),
-      el("span", { class: "zahl", text: zahl(p.units_90d ?? 0) }),
+      el("span", { class: "zahl", text: zahl(p.units_90d) }),
       el("span", { class: "zahl", text: zahl(p.impressionen_90d) }),
       el("span", { class: "chip" }, el("span", { class: "punkt", style: `--punkt: var(--g-${p.gruppe})` }), p.empfehlung),
       el("span", { class: "pfeil", "aria-hidden": "true", text: "›" }),
-      el("div", { class: "kennzahlen-kurz" }, el("span", { text: eur(p.avg_price) }), el("span", { text: `${zahl(p.units_90d ?? 0)} sales` }), el("span", { text: `${zahl(p.impressionen_90d)} impressions` }))),
+      el("div", { class: "kennzahlen-kurz" }, el("span", { text: eur(p.avg_price) }), el("span", { text: `${zahl(p.units_90d)} sales` }), el("span", { text: `${zahl(p.impressionen_90d)} impressions` }))),
     el("div", { class: "zeilendetails" },
       el("p", { text: p.begruendung }),
       el("dl", { class: "kennzahlen" },
-        kennzahl("Views 90 d", zahl(p.aufrufe_90d)), kennzahl("Click rate", prozent(p.klickrate, 2)), kennzahl("Conversion", prozent(p.conversion)),
-        kennzahl("eBay sales total", zahl(p.units_total ?? 0)), kennzahl("Last sold", datum(p.last_sold_at)), kennzahl("Listed since", datum(p.created_at))),
+        kennzahl("Views 90 d", zahl(p.aufrufe_90d)), kennzahl("Click rate", prozent(p.klickrate, 2)), kennzahl("eBay conversion", prozent(p.conversion)),
+        kennzahl("eBay sales total", zahl(p.units_total)), kennzahl("Last sold", datum(p.last_sold_at)), kennzahl("In catalogue since", datum(p.created_at))),
       hinweis, mehrInfo));
 }
 
@@ -229,7 +229,7 @@ async function ladeProduktMehr(nr, ziel) {
         el("div", {}, el("h3", { text: werte.length ? `Variants · ${varianten.option || "option"}` : "Variants" }),
           werte.length ? el("ul", { class: "varianten" }, werte.map((w) => el("li", {}, el("span", { text: w.value }), el("span", { class: "leise", text: `${w.sku} · ${eur(w.price)}` }))))
             : el("p", { class: "leise klein", text: "One version only, no variants." })),
-        el("div", {}, el("h3", { text: "eBay listing" }),
+        el("div", {}, el("h3", { text: "Channels · reference only" }),
           p.kanaele.length ? el("ul", { class: "varianten" }, p.kanaele.map((k) => el("li", {}, el("span", { text: KANAL[k.channel] || k.channel }),
             el("span", { class: "leise", text: `${k.listed ? "listed" : "not listed"}${k.preis_aktuell ? " · " + eur(k.preis_aktuell) : ""} · ${zahl(k.units_90d ?? 0)} sales in 90 days` }))))
             : el("p", { class: "leise klein", text: "No eBay listing." }))),
@@ -681,7 +681,7 @@ function zeichneLeiter(l) {
   const abschnitt = (titel, n) => el("div", { class: "abschnitt-kopf" }, el("h2", {}, titel, el("span", { class: "zahl-pille", text: String(n) })));
   fuelle(root,
     el("div", { class: "einstieg" }, el("h1", { text: "Funnel" }),
-      el("p", { class: "leise", text: `Every product passes the same checks. Products that buyers rarely see (under ${zahl(f.kpi.grenze90)} impressions in 90 days) and that can be changed on eBay are eligible. ${l.bewegung === "automatisch" ? "The daily run draws them by lot" : "An admin draws them by lot"}: half climb the ladder (new title, then ads, then a lower price), half stay unchanged as the control group. After each phase the app compares the listing with the control group over the same days, so a busy season does not count as success.${l.bewegung === "automatisch" ? "" : " Products only move when an admin clicks."} Nothing changes on eBay without an admin's approval.` })),
+      el("p", { class: "leise", text: `Only eBay performance enters these checks. Products that buyers rarely see (under ${zahl(f.kpi.grenze90)} impressions in 90 days) and that can be changed on eBay are eligible. ${l.bewegung === "automatisch" ? "The daily run draws them by lot" : "An admin draws them by lot"}: half climb the ladder (new title, then ads, then a lower price), half stay unchanged as the control group. After each phase the app compares the listing with the control group over the same days, so a busy season does not count as success.${l.bewegung === "automatisch" ? "" : " Products only move when an admin clicks."} Nothing changes on eBay without an admin's approval.` })),
     kpiLeiste(l),
     trichterBild(l),
     wirkungTabelle(l),
