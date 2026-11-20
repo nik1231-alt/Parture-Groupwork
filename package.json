@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node app/server.mjs",
     "dev": "node --watch app/server.mjs",
-    "test": "node app/test.mjs && node app/test-http.mjs && node app/test-freigabe.mjs && node app/test-rollen-http.mjs && node app/test-traffic.mjs && node app/test-sicherung.mjs && node app/test-benachrichtigung.mjs && node app/test-waechter.mjs && node app/test-titelhilfe.mjs && node app/test-demo.mjs && node app/test-auswertung.mjs && node app/test-betrieb-http.mjs && node app/test-routen-schutz.mjs && node app/test-xss.mjs && node app/test-los.mjs && node app/test-durchlauf.mjs && node app/test-fehlerbilder-http.mjs && node app/test-oberflaeche.mjs && node app/test-titel-regeln.mjs && node app/test-leiter.mjs && node app/test-problem.mjs && node app/test-ergebnisse.mjs",
+    "test": "node app/test-ebay-scope.mjs && node app/test.mjs && node app/test-http.mjs && node app/test-freigabe.mjs && node app/test-rollen-http.mjs && node app/test-traffic.mjs && node app/test-sicherung.mjs && node app/test-benachrichtigung.mjs && node app/test-waechter.mjs && node app/test-titelhilfe.mjs && node app/test-demo.mjs && node app/test-auswertung.mjs && node app/test-betrieb-http.mjs && node app/test-routen-schutz.mjs && node app/test-xss.mjs && node app/test-los.mjs && node app/test-durchlauf.mjs && node app/test-fehlerbilder-http.mjs && node app/test-oberflaeche.mjs && node app/test-titel-regeln.mjs && node app/test-leiter.mjs && node app/test-problem.mjs && node app/test-ergebnisse.mjs",
     "benutzer": "node app/benutzer.mjs",
     "export": "node app/export-ebay.mjs",
     "export:team": "node app/export-ebay.mjs --team",

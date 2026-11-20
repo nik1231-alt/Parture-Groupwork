@@ -112,11 +112,14 @@ function phase(stufe, { starts, auswertungen, kontrolle, tage, trafficBis, einst
   };
 }
 
-// starts: [{ number, stufe, tag: "JJJJ-MM-TT", vonHand }]   (leiter_verlauf, ereignis "gestartet")
+// starts: [{ number, stufe, tag: "JJJJ-MM-TT", at, vonHand }] (leiter_verlauf, ereignis "gestartet")
+// abbrueche: [{ number, at }]                                (leiter_verlauf, "abgebrochen" / "zurueckgesetzt": Take off, Start over)
 // auswertungen: [{ number, stufe, erholt }]                  (leiter_verlauf, ereignis "ausgewertet")
 // kontrolle: [{ number, start: "JJJJ-MM-TT" }]               (leiter: Kontrollgruppe, auch wenn ihre Zeit schon vorbei ist)
 // tage: Map(nummer → Map(datum → { imp, auf, trans }))       (traffic_tag aus pm.db)
-export function baueDashboard({ starts = [], auswertungen = [], kontrolle = [], tage = new Map(), trafficBis = null, einst = EINSTELLUNGEN } = {}) {
+export function baueDashboard({ starts: alleStarts = [], abbrueche = [], auswertungen = [], kontrolle = [], tage = new Map(), trafficBis = null, einst = EINSTELLUNGEN } = {}) {
+  // Ein Start zählt nicht mehr, wenn das Angebot danach von der Leiter genommen oder zurückgesetzt wurde
+  const starts = alleStarts.filter((s) => !abbrueche.some((a) => a.number === s.number && (a.at ?? "") >= (s.at ?? s.tag)));
   const daten = { starts, auswertungen, kontrolle, tage, trafficBis, einst };
   const phasen = PHASEN.map((s) => phase(s, daten));
   return {

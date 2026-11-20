@@ -47,7 +47,7 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 
 | Page | Who | What |
 |---|---|---|
-| **Products** | everyone | every product with eBay price, eBay sales, impressions and diagnosis; open a row for its variants, its eBay listing, funnel status and full history |
+| **Products** | everyone | every product with eBay price, eBay sales, impressions and diagnosis; open a row for its variants, channel reference details, funnel status and full history |
 | **Problem** | everyone | live analysis of why the app exists (eBay only): 80 % of eBay sales come from 17.8 % of the eBay listings, 80 % of eBay impressions from 35 % of the listings (20.11.2026); seen × sold for every listing; how impressions are spread |
 | **Funnel** | everyone (actions: admin) | KPIs, all products as one bar by status, why products are not eligible, the ladder as a flow, the effect of each phase against the control group, the work queue with the interim result, and a table of all products with their status and the reason for it |
 | **Team** | admin | assign roles |
@@ -64,7 +64,7 @@ All products
       │  "Draw listings by lot": 2 × free places, split in half
       ├─ Control group ── stays unchanged for 49 days (all three waiting times together)
       └─ Phase 1  new title (AI + rule check) ── 14 days ──► seen again? yes ─► leaves ("Seen again")
-         Phase 2  eBay ads 10 %             ── 14 days ──► seen again? yes ─► leaves
+         Phase 2  eBay ads 10 %             ── 14 days ──► seen again? yes ─► leaves   (skipped if already advertised)
          Phase 3  price −10 %               ── 21 days ──► seen again? yes ─► leaves
          Phase 4  manual check: an admin decides to rework, take offline or keep (with a reason)
 ```
@@ -79,8 +79,17 @@ All products
 - **Automatic movement** (optional): the daily run also evaluates finished waiting times, releases controls and draws new
   listings. Neither mode ever changes eBay without an approval.
 - **Data:** the company hub exports the catalogue and eBay traffic to the app every hour (whitelist only, see *Data*).
-- **Add a listing** (admin): pick any eligible product from a list and put it on step 1 right away, e.g. for a demo.
-- After leaving, a product pauses 90 days before it can enter again.
+- **Funnel page:** a step bar (Choose → Approve → Wait → Decide → Results) and three tabs: *Work* (draw, approve, decide),
+  *Overview* (KPIs, the funnel as a picture, effect per phase) and *All products* (every product with its status and reason).
+- **Draw by lot** (admin): you choose how many listings and whether a control group of the same size is drawn. There is no
+  upper limit; the preview lists exactly the listings that go into the lot.
+- **Already advertised listings skip Phase 2.** The app reads every running Promoted Listings campaign on eBay (every 6 hours
+  for the display) and checks the single listing again right before Phase 2; an advertised listing moves straight to the price
+  step, so no second ad is created. If eBay cannot be asked, Phase 2 is not approved.
+- **Approve** shows whether it writes LIVE to eBay or runs as a dry run; several titles can be ticked and approved at once.
+  After a change the app reads the listing back and shows what is on eBay now.
+- **Take off the ladder / Start over:** a listing that was never changed on eBay is eligible again right away; one that was
+  changed pauses 90 days. *Add one specific listing* puts any eligible product on step 1 (without a control partner).
 
 ## Changes on eBay
 
@@ -108,6 +117,19 @@ suggestion comes from the title help, and a hand-typed title must pass the same 
 
 ## Data
 
+Analysis is scoped to the main `ebay` channel. Products without that channel do not enter the product analysis,
+diagnosis, prioritisation or new experiments. Sales, current prices and last-sale dates come from its channel rows,
+never from the catalogue's totals across platforms. Conversion is eBay units sold divided by eBay views over 90 days.
+Traffic sums and daily before/after comparisons accept a row only when both its product number and item ID match
+an `ebay` channel row. Unknown IDs and the separate `ebay-ali` account are excluded. Missing channel metrics stay
+unknown; they are not replaced by catalogue totals. Catalogue creation date remains product metadata used for the
+existing grace period; it is not an eBay listing start date.
+
+Other channels in product details and `/api/kanaele` are reference data only. `/api/live` is a raw catalogue reference
+endpoint, not an input to analysis. Older hub catalogues can contain multiple platforms; the bundled eBay exporter
+only fetches eBay. Existing saved experiment baselines and historical verdicts are not rewritten by this change;
+use newly started measurements for comparisons under the strict channel filter.
+
 ```
 Parture hub (company data) ──hourly, whitelist only──► pm.db ──read only──► app ──after approval──► eBay
                                                                              └──► app.db (users, ladder, settings, log)
@@ -125,7 +147,7 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
 - One waiting time takes 14 to 21 days, so the first measured net effect comes two to three weeks after the first approval.
 - With only a few listings per phase the net effect is noisy; it gets reliable as more listings pass through.
 - Only eBay. Sales and traffic from other marketplaces (shop, Amazon, Etsy) are out of scope on purpose: the hub does not export
-  them, and the app neither shows nor evaluates them. Every sales figure in the app is an eBay figure.
+  them in new exports. Older catalogues may still show other channels as labelled reference details; these never enter analysis. All performance metrics use eBay only.
 
 ## More
 

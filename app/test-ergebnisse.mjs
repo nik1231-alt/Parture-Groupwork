@@ -110,6 +110,15 @@ test("Summen und Neustart: der jüngste Start je Angebot zählt, Starts von Hand
   assert.equal(d.phasen.find((x) => x.stufe === "werbung").status, "laeuft");
 });
 
+test("Take off / Start over: ein Start zählt nicht mehr, wenn das Angebot danach abgebrochen oder zurückgesetzt wurde", () => {
+  const g = grund();
+  g.starts = g.starts.map((s) => ({ ...s, at: s.tag + "T09:00:00Z" }));
+  g.abbrueche = [{ number: "B", at: plusTage(START, 2) + "T10:00:00Z" }, { number: "A", at: plusTage(START, -5) + "T10:00:00Z" }];
+  const d = baueDashboard(g);
+  assert.equal(d.phasen[0].angebote, 1, "B wurde nach dem Start abgebrochen; A nur vor dem Start, zählt also");
+  assert.equal(d.summe.aufLeiter, 1);
+});
+
 test("Benötigte Daten: alle Angebote der Phasen und der Kontrolle, ab 31 Tage vor dem frühesten Start", () => {
   const b = benoetigt(grund());
   assert.deepEqual(b.nummern.sort(), ["A", "B", "K1", "K2"]);

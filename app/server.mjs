@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { ladeProdukte, ladeSperre, baueBewertung } from "./bewertung.mjs";
+import { ladeProdukte, ladeSperre, baueBewertung, ebayTrafficFilter, ladeImpressionenProTag } from "./bewertung.mjs";
 import { leiteSchwellenAb, TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 import * as einstellungen from "./einstellungen.mjs";
 import * as experimente from "./experimente.mjs";
@@ -67,11 +67,7 @@ const adminNoetig = (ctx) => { if (ctx?.rolle !== "admin") throw Object.assign(n
 const ki = kiTitel.erzeuge();
 const tabelleDa = (db, t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
 // Impressionen je Tag eines Produkts für die Tage nach "von" bis einschließlich "bis" (JJJJ-MM-TT), aus den Tageswerten in pm.db
-const impTag = (nummer, von, bis) => mitDb((db) => {
-  const tage = Math.round((Date.parse(bis) - Date.parse(von)) / 864e5);
-  if (tage <= 0 || !tabelleDa(db, "traffic_tag")) return 0;
-  return (db.prepare("SELECT SUM(impressionen) s FROM traffic_tag WHERE number = ? AND datum > ? AND datum <= ?").get(nummer, von, bis).s || 0) / tage;
-});
+const impTag = (nummer, von, bis) => mitDb((db) => ladeImpressionenProTag(db, nummer, von, bis));
 const trafficBis = () => { try { return mitDb((db) => db.prepare("SELECT traffic_bis FROM stand").get()?.traffic_bis ?? null); } catch { return null; } };
 // Preis und Varianten eines Produkts für den Preisvorschlag der Stufe 3
 const leiterKontext = (nummer) => mitDb((db) => {
@@ -79,6 +75,51 @@ const leiterKontext = (nummer) => mitDb((db) => {
   let varianten = []; try { varianten = JSON.parse(db.prepare("SELECT variant_meta FROM produkt WHERE number = ?").get(nummer)?.variant_meta || "null")?.values || []; } catch { /* ohne Varianten */ }
   return { kanaele, varianten };
 });
+// ---- Werbung schon vorhanden? (Niko 20.11.: schon beworbene Angebote sind für Phase 2 nicht berechtigt → Preisstufe) ----
+// werbungStand: alle beworbenen eBay-Angebote aus den laufenden Kampagnen, je Produktnummer der Kampagnenname. Für die Anzeige;
+// vor jedem Schritt in Phase 2 fragt istBeworben das einzelne Angebot noch einmal live.
+let werbungStand = { at: 0, nummern: {}, fehler: null, laeuft: false };
+async function aktualisiereWerbung() {
+  if (werbungStand.laeuft) return;
+  werbungStand.laeuft = true;
+  try {
+    const r = await schreiber.beworbeneAngebote();
+    if (!r.ok) { werbungStand = { ...werbungStand, at: Date.now(), fehler: r.meldung }; return; }
+    const nummern = {};
+    for (const k of mitDb((db) => db.prepare("SELECT number, external_id FROM kanal WHERE channel = 'ebay' AND external_id IS NOT NULL").all())) if (r.angebote[k.external_id]) nummern[k.number] = r.angebote[k.external_id];
+    werbungStand = { at: Date.now(), nummern, fehler: null };
+    await werbungSpruenge();
+  } catch (e) { werbungStand = { ...werbungStand, at: Date.now(), fehler: e.message }; } finally { werbungStand.laeuft = false; }
+}
+// Jedes Angebot, das in Phase 2 auf einen Vorschlag wartet und laut eBay schon beworben wird, springt in die Preisstufe.
+async function werbungSpruenge(nummern = null) {
+  const db = appDb(), ergebnis = [];
+  const offen = nummern || db.prepare("SELECT number FROM leiter WHERE stufe = 'werbung' AND phase = 'vorschlag'").all().map((z) => z.number);
+  for (const nr of offen) {
+    const items = leiterKontext(nr).kanaele;
+    for (const it of items) {
+      const b = await schreiber.istBeworben(it.external_id);
+      if (b.ok && b.beworben) { const r = leiter.springeUeberWerbung(db, nr, b, einst(), { fuer: leiterKontext }); if (r.ok) ergebnis.push({ number: nr, kampagnen: b.kampagnen }); break; }
+    }
+  }
+  return ergebnis;
+}
+// Freigabe einer Leiterstufe. Phase 2 nur, wenn eBay bestätigt, dass das Angebot noch nicht beworben wird; sonst springt es in
+// die Preisstufe. Lässt sich das nicht prüfen (kein Zugang, eBay-Fehler), wird nichts freigegeben.
+async function freigeben(ctx, nr) {
+  const z = appDb().prepare("SELECT stufe, phase FROM leiter WHERE number = ?").get(nr);
+  if (z?.stufe === "werbung" && z.phase === "vorschlag") {
+    for (const it of leiterKontext(nr).kanaele) {
+      const b = await schreiber.istBeworben(it.external_id);
+      if (!b.ok) throw Object.assign(new Error(b.meldung + " Nothing was changed."), { status: 409 });
+      if (b.beworben) {
+        leiter.springeUeberWerbung(appDb(), nr, b, einst(), { fuer: leiterKontext });
+        return { number: nr, ausgang: "uebersprungen", text: `Already advertised (${b.kampagnen.join(", ")}): the listing skipped the ads phase and is now at the price step.` };
+      }
+    }
+  }
+  return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag }));
+}
 const leiterDaten = (produkte = produkteLaden()) => ({ impTag, trafficBis: trafficBis(), grenze90: leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d, einst: einst(), fuer: leiterKontext });
 // KI-Titelvorschlag für ein Produkt auf Stufe 1 (geht durch den Regelprüfer, siehe ki-titel.mjs)
 async function titelVorschlag(nummer, produkte, wer) {
@@ -94,7 +135,8 @@ const leseDetails = (s) => { try { return s ? JSON.parse(s) : null; } catch { re
 function dashboardDaten() {
   const db = appDb();
   const starts = db.prepare("SELECT number, stufe, at, details FROM leiter_verlauf WHERE ereignis = 'gestartet'").all()
-    .map((v) => ({ number: v.number, stufe: v.stufe, tag: v.at.slice(0, 10), vonHand: !!leseDetails(v.details)?.vonHand }));
+    .map((v) => ({ number: v.number, stufe: v.stufe, tag: v.at.slice(0, 10), at: v.at, vonHand: !!leseDetails(v.details)?.vonHand }));
+  const abbrueche = db.prepare("SELECT number, at FROM leiter_verlauf WHERE ereignis IN ('abgebrochen', 'zurueckgesetzt')").all();
   const auswertungen = db.prepare("SELECT number, stufe, details FROM leiter_verlauf WHERE ereignis = 'ausgewertet'").all()
     .map((v) => ({ number: v.number, stufe: v.stufe, erholt: !!leseDetails(v.details)?.erholt }));
   const kontrolle = db.prepare("SELECT number, stufe_start FROM leiter WHERE (stufe = 'kontrolle' OR ergebnis = 'kontrolle') AND stufe_start IS NOT NULL").all()
@@ -106,13 +148,14 @@ function dashboardDaten() {
     const zeilen = pm.prepare("SELECT number, datum, SUM(impressionen) imp, SUM(aufrufe) auf, SUM(transaktionen) trans FROM traffic_tag WHERE datum > ? AND number IN (SELECT value FROM json_each(?)) GROUP BY number, datum").all(ab, JSON.stringify(nummern));
     for (const z of zeilen) { if (!tage.has(z.number)) tage.set(z.number, new Map()); tage.get(z.number).set(z.datum, { imp: z.imp || 0, auf: z.auf || 0, trans: z.trans || 0 }); }
   });
-  return dashboard.baueDashboard({ starts, auswertungen, kontrolle, tage, trafficBis: trafficBis(), einst: einst() });
+  return dashboard.baueDashboard({ starts, abbrueche, auswertungen, kontrolle, tage, trafficBis: trafficBis(), einst: einst() });
 }
 let leiterLaeuft = false;
 // Ein Lauf: Prüfzeiten auswerten, neue Angebote aufnehmen, für Stufe 1 Titel vorschlagen. Ändert nichts bei eBay.
 // Bewegung "hand" (Standard seit 20.11.): der Tageslauf holt nur KI-Titel; aufnehmen nur per Knopf "Draw listings by lot"
 // (art "ziehen"), weiterschieben nur per Knopf an der Karte (leiter.schiebeVonHand).
-async function leiterLauf(wer, art = "tag") {
+// ziehen: { anzahl, kontrolle } vom Knopf (Anzahl ohne Obergrenze, Kontrollgruppe ja/nein je Ziehung).
+async function leiterLauf(wer, art = "tag", ziehen = {}) {
   if (leiterLaeuft) return null;
   leiterLaeuft = true;
   try {
@@ -121,7 +164,8 @@ async function leiterLauf(wer, art = "tag") {
     const bewerten = automatisch && art !== "ziehen", aufnehmen = automatisch || art === "ziehen";
     const ausgewertet = bewerten || aufnehmen ? leiter.werteAus(appDb(), { ...daten, nurKontrolle: !bewerten }) : [];
     const kontrolleVorher = leiter.anzahlKontrolle(appDb());
-    const neu = aufnehmen ? leiter.nimmAuf(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() }) : [];
+    const neu = aufnehmen ? leiter.nimmAuf(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub(), ...(art === "ziehen" ? ziehen : {}) }) : [];
+    if (bewerten) await werbungSpruenge(); // automatisch weiter in Phase 2: schon beworbene springen gleich in die Preisstufe
     let vorschlaege = 0, ohne = 0;
     for (const n of leiter.ohneTitelVorschlag(appDb())) { const r = await titelVorschlag(n, produkte, "system"); if (r.ok) vorschlaege++; else ohne++; }
     const details = { ausgewertet: ausgewertet.length, erholt: ausgewertet.filter((a) => a.erholt).length, aufgenommen: neu.length, kontrolle: leiter.anzahlKontrolle(appDb()) - kontrolleVorher, bewegung: automatisch ? "automatisch" : "hand", art, titelVorschlaege: vorschlaege, ohneVorschlag: ohne, ki: ki.konfiguriert() };
@@ -321,24 +365,22 @@ const ROUTEN = {
     return r.wert;
   },
   "/api/produkte": (q) => mitDb((db) => {
-    const suche = q.get("q") ? "%" + q.get("q").toLowerCase() + "%" : null;
-    // Traffic-Tabelle ist optional (eine pm.db vom Server hat sie evtl. nicht): dann bleiben die Felder leer.
-    const hatTraffic = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic'").get();
-    const tr = (spalte, tage) => hatTraffic ? `(SELECT SUM(${spalte}) FROM traffic t WHERE t.number = produkt.number AND t.tage = ${tage})` : "NULL";
-    const sql = "SELECT number, title, image_url, status, grams, print_s, ship_method, units_total, units_90d, avg_price, last_sold_at, "
-      + `${tr("impressionen", 30)} impressionen_30d, ${tr("aufrufe", 30)} aufrufe_30d, ${tr("transaktionen", 30)} transaktionen_30d, ${tr("impressionen", 90)} impressionen_90d, ${tr("aufrufe", 90)} aufrufe_90d `
-      + "FROM produkt" + (suche ? " WHERE lower(title) LIKE ? OR number LIKE ?" : "") + " ORDER BY units_90d DESC, units_total DESC LIMIT 500";
-    return suche ? db.prepare(sql).all(suche, suche) : db.prepare(sql).all();
+    const suche = (q.get("q") || "").toLowerCase();
+    return ladeProdukte(db).filter((p) => !suche || String(p.title || "").toLowerCase().includes(suche) || p.number.includes(suche))
+      .sort((a, b) => (b.units_90d || 0) - (a.units_90d || 0) || (b.units_total || 0) - (a.units_total || 0)).slice(0, 500);
   }),
   "/api/traffic": () => mitDb((db) => {
     if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic'").get()) return [];
-    return db.prepare("SELECT tage, SUM(impressionen) impressionen, SUM(aufrufe) aufrufe, SUM(transaktionen) transaktionen FROM traffic GROUP BY tage ORDER BY tage").all();
+    return db.prepare("SELECT tage, SUM(impressionen) impressionen, SUM(aufrufe) aufrufe, SUM(transaktionen) transaktionen FROM traffic t WHERE " + ebayTrafficFilter(db) + " GROUP BY tage ORDER BY tage").all();
   }),
   "/api/produkt": (q) => mitDb((db) => {
     const nr = q.get("nr");
     const p = db.prepare("SELECT * FROM produkt WHERE number = ?").get(nr);
     if (!p) throw Object.assign(new Error("Product " + String(nr).slice(0, 40) + " not found."), { status: 404 });
-    p.kanaele = db.prepare("SELECT channel, listed, external_id, preis_aktuell, kanal_status, units_total, units_90d, last_sold_at FROM kanal WHERE number = ? AND channel = 'ebay'").all(nr); // nur eBay (Scope)
+    const analyse = ladeProdukte(db).find((x) => x.number === nr);
+    if (!analyse) throw Object.assign(new Error("No eBay listing for this product."), { status: 404 });
+    Object.assign(p, analyse);
+    p.kanaele = db.prepare("SELECT channel, listed, external_id, preis_aktuell, kanal_status, units_total, units_90d, last_sold_at FROM kanal WHERE number = ?").all(nr);
     p.bilder = db.prepare("SELECT url, position, kind FROM bild WHERE number = ? ORDER BY position").all(nr);
     return p;
   }),
@@ -347,9 +389,18 @@ const ROUTEN = {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
     const optionen = { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() };
     const k = leiter.kandidaten(appDb(), produkte, daten.einst, new Date(), optionen);
-    return { ...leiter.uebersicht(appDb(), produkte, daten), kandidaten: k.length, status: leiterStatus(),
-      kandidatenListe: k.map((p) => ({ number: p.number, title: p.title ?? null, impressionen_90d: p.impressionen_90d ?? null, units_90d: p.units_90d ?? null })),
-      trichter: leiter.trichter(appDb(), produkte, daten.einst, new Date(), optionen) };
+    if (Date.now() - werbungStand.at > 6 * 3600e3) aktualisiereWerbung().catch(() => {}); // höchstens alle 6 h, im Hintergrund
+    const beworben = (nr) => werbungStand.nummern[nr] || null;
+    const ue = leiter.uebersicht(appDb(), produkte, daten), tr = leiter.trichter(appDb(), produkte, daten.einst, new Date(), optionen);
+    for (const a of ue.angebote) a.beworben = beworben(a.number);
+    for (const x of tr.liste) x.beworben = beworben(x.number);
+    // eBay-Angebotsnummer je Produkt für den Link "Open on eBay"
+    const ebayNr = Object.fromEntries(mitDb((db) => db.prepare("SELECT number, external_id FROM kanal WHERE channel = 'ebay' AND listed = 1 AND external_id IS NOT NULL").all()).map((r) => [r.number, r.external_id]));
+    for (const a of ue.angebote) a.ebay_id = ebayNr[a.number] || null;
+    return { ...ue, kandidaten: k.length, status: leiterStatus(),
+      kandidatenListe: k.map((p) => ({ number: p.number, title: p.title ?? null, impressionen_90d: p.impressionen_90d ?? null, units_90d: p.units_90d ?? null, beworben: beworben(p.number) })),
+      trichter: tr, werbung: { stand: werbungStand.at ? new Date(werbungStand.at).toISOString() : null, anzahl: Object.keys(werbungStand.nummern).length, fehler: werbungStand.fehler },
+      schreiben: { titel: schreiber.konfiguriert() && schreiber.schreibenAn(), werbung: schreiber.konfiguriert() && schreiber.schreibenAn() && schreiber.werbungAn(), preis: schreiber.konfiguriert() && schreiber.schreibenAn() && schreiber.preisAn() } };
   },
   // Alles, was mit einem Produkt geschehen ist: Stand auf der Leiter, Lebenslauf und die Protokolleinträge (für die Seite Products)
   "/api/produkt/verlauf": (q) => {
@@ -442,8 +493,20 @@ const POST_ROUTEN = {
   "/api/leiter/freigabe": async (req, ctx) => {
     adminNoetig(ctx);
     const nr = String((await leseJson(req))?.number ?? "").slice(0, 40);
-    return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag }));
+    return freigeben(ctx, nr);
   },
+  // Mehrere Titel auf einmal freigeben (Häkchen in der Arbeitsliste): jedes Angebot einzeln, mit denselben Prüfungen
+  "/api/leiter/freigabe-mehrere": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req);
+    const nummern = Array.isArray(b?.numbers) ? [...new Set(b.numbers.map((n) => String(n).slice(0, 40)))].slice(0, 100) : [];
+    if (!nummern.length) throw Object.assign(new Error("Please tick at least one listing."), { status: 400 });
+    const ergebnisse = [];
+    for (const nr of nummern) { try { ergebnisse.push({ number: nr, ok: true, ...(await freigeben(ctx, nr)) }); } catch (e) { ergebnisse.push({ number: nr, ok: false, text: e.message }); } }
+    return { ergebnisse, angewendet: ergebnisse.filter((e) => e.ausgang === "angewendet").length, probelauf: ergebnisse.filter((e) => e.ausgang === "probelauf").length, fehler: ergebnisse.filter((e) => !e.ok || e.ausgang === "fehlgeschlagen").length };
+  },
+  // "Start over": alles ohne eBay-Änderung zurück zu Eligible
+  "/api/leiter/neustart": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.setzeZurueck(appDb(), ctx, b?.grund)); },
   // Admin setzt ein Angebot aus der Auswahlliste auf die Leiter; der KI-Titelvorschlag wird gleich mitgeholt (ändert nichts bei eBay)
   "/api/leiter/aufnehmen": async (req, ctx) => {
     adminNoetig(ctx);
@@ -454,10 +517,31 @@ const POST_ROUTEN = {
     return { number: nr, vorschlag: v.ok, hinweis: v.ok ? null : v.fehler };
   },
   // Bewegung per Knopf: neue Angebote per Los aufnehmen (mit Kontrollgruppe) und ein Angebot weiterschieben oder als wieder gesehen beenden
-  "/api/leiter/ziehen": async (req, ctx) => { adminNoetig(ctx); await leseJson(req); const r = await leiterLauf(ctx.name, "ziehen"); if (!r) throw Object.assign(new Error("The ladder is already running."), { status: 409 }); return r; },
-  "/api/leiter/schieben": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); const produkte = produkteLaden(); return antwort(leiter.schiebeVonHand(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.ziel, leiterDaten(produkte))); },
+  "/api/leiter/ziehen": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req);
+    const anzahl = Number(b?.anzahl);
+    if (!Number.isInteger(anzahl) || anzahl < 1 || anzahl > 1000) throw Object.assign(new Error("Please choose how many listings to draw (a whole number from 1)."), { status: 400 });
+    if (typeof b?.kontrolle !== "boolean") throw Object.assign(new Error("Please choose whether to draw a control group."), { status: 400 });
+    const r = await leiterLauf(ctx.name, "ziehen", { anzahl, kontrolle: b.kontrolle });
+    if (!r) throw Object.assign(new Error("The ladder is already running."), { status: 409 });
+    return r;
+  },
+  "/api/leiter/schieben": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
+    const r = antwort(leiter.schiebeVonHand(appDb(), ctx, nr, b?.ziel, leiterDaten(produkteLaden())));
+    const sprung = r.stufe === "werbung" ? await werbungSpruenge([nr]) : [];
+    return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null };
+  },
   "/api/leiter/vonhand": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.starteVonHand(appDb(), ctx, String(b?.number ?? "").slice(0, 40), { impTag })); },
-  "/api/leiter/ueberspringen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.ueberspringe(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund, einst(), { fuer: leiterKontext })); },
+  "/api/leiter/ueberspringen": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
+    const r = antwort(leiter.ueberspringe(appDb(), ctx, nr, b?.grund, einst(), { fuer: leiterKontext }));
+    const sprung = r.stufe === "werbung" ? await werbungSpruenge([nr]) : [];
+    return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null };
+  },
   "/api/leiter/entscheidung": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.entscheide(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.entscheidung, b?.notiz)); },
   "/api/leiter/abbrechen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.brichAb(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund)); },
   // Builder und Admin: einen Titel von Hand eintragen (muss den Regelprüfer bestehen) oder die KI erneut fragen
@@ -548,5 +632,7 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`Parture Groupwork läuft: http://127.0.0.1:${PORT}  (DB: ${dbPfad()})`);
   if (SICH_AUTO) { setTimeout(pruefeSicherung, 45e3).unref(); setInterval(pruefeSicherung, 15 * 60e3).unref(); }
   if (LEITER_AUTO) { setTimeout(pruefeLeiter, 60e3).unref(); setInterval(pruefeLeiter, 15 * 60e3).unref(); }
+  // Liste der beworbenen eBay-Angebote (Phase 2 nur für nicht beworbene): beim Start und alle 6 Stunden
+  if (schreiber.konfiguriert()) { setTimeout(() => aktualisiereWerbung().catch(() => {}), 30e3).unref(); setInterval(() => aktualisiereWerbung().catch(() => {}), 6 * 3600e3).unref(); }
   if (TRAFFIC_AUTO) { console.log(`Automatischer Traffic-Import: täglich ab ${TRAFFIC_UHR}:00 Uhr (Verzögerung ${verzoegerungTage()} Tage).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
 });
