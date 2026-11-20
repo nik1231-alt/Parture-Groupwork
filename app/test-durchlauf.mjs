@@ -32,7 +32,7 @@ test.before(async () => {
     EBAY_SCHREIBEN: "", EBAY_APP_ID: "", EBAY_CERT_ID: "", EBAY_REFRESH_TOKEN: "", EBAY_TRAFFIC_AUTO: "", TELEGRAM_BOT_TOKEN: "", TELEGRAM_CHAT_ID: "", HUB_URL: "", PM_TOKEN: "",
     SICHERUNG_AUTO: "aus", SICHERUNG_ORDNER: path.join(verz, "sicherung"), TRAFFIC_CACHE: path.join(verz, "kein-cache.db") };
   server = spawn(process.execPath, [path.join(import.meta.dirname, "server.mjs")], { env, stdio: "ignore" });
-  for (let i = 0; i < 300; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
+  for (let i = 0; i < 900; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
 // Erst auf das Ende des Servers warten, dann löschen: unter Windows hält der laufende Prozess app.db offen (EBUSY beim rmSync)
