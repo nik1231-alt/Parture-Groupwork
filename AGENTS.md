@@ -27,6 +27,6 @@ These rules hold for every coding agent (Claude, Codex, Copilot …) and every p
 - Plain Node.js (ESM) and plain browser JavaScript; the only dependency is `better-sqlite3`, pinned to an exact version.
   Adding a dependency needs a reason in the pull request.
 - Data from outside (titles, user input, eBay answers) is inserted into the page as text only (`textContent`), never as HTML.
-- Every visible text in the interface is English (`app/test-oberflaeche.mjs` checks it); comments may be German.
+- All text in this repository is English: the interface (`app/test-oberflaeche.mjs` checks it), messages, documentation, comments and test names. Many file, function and variable names are German; keep them (renaming is risky), but write new names in English and see the README section "German names" for the meanings.
 - Every new rule gets a test next to it, including the rejected case (wrong role → 403, invalid input → 400, wrong state → 409).
 - `npm test` must be green before a pull request is merged into `main`. The watcher deploys `main` to PROD only after green tests.
