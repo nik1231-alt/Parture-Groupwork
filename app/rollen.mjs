@@ -1,13 +1,13 @@
-// Rollen: "admin" darf Änderungen freigeben (und damit bei eBay ändern lassen) und Rollen vergeben.
-// "builder" baut und schlägt vor (Tests anlegen, neue Titel eintragen, zur Freigabe senden), ändert aber nichts bei eBay.
-// Die Rolle steht in der Tabelle "benutzer" (siehe login.mjs). Neue Benutzer sind Builder.
+// Roles: "admin" may approve changes (and thereby have eBay changed) and assign roles.
+// "builder" builds and suggests (create tests, enter new titles, send for approval), but changes nothing on eBay.
+// The role is in the table "benutzer" (users, see login.mjs). New users are builders.
 import * as protokoll from "./protokoll.mjs";
 
 export const ROLLEN = ["admin", "builder"];
 const fehler = (status, text) => ({ ok: false, status, fehler: text });
 
-// Muss nach login.bereiteVor laufen. Ergänzt die Spalte "rolle". Gab es beim Ergänzen schon Benutzer, wird der älteste Admin,
-// denn bisher konnten nur Personen mit Zugriff auf den Rechner Benutzer anlegen.
+// Must run after login.bereiteVor. Adds the column "rolle". If there were already users when adding it, the oldest becomes admin,
+// because until now only people with access to the computer could create users.
 export function bereiteVor(db) {
   const spalten = db.prepare("PRAGMA table_info(benutzer)").all();
   if (!spalten.length || spalten.some((c) => c.name === "rolle")) return;
@@ -20,14 +20,14 @@ export const rolleVon = (db, name) => db.prepare("SELECT rolle FROM benutzer WHE
 export const anzahlAdmins = (db) => db.prepare("SELECT COUNT(*) n FROM benutzer WHERE rolle = 'admin'").get().n;
 export const liste = (db) => db.prepare("SELECT name, rolle, erstellt_at FROM benutzer ORDER BY CASE rolle WHEN 'admin' THEN 0 ELSE 1 END, name").all();
 
-// Ohne Rechteprüfung: nur für die Befehlszeile auf dem Server-Rechner (npm run benutzer -- rolle ...).
+// Without a rights check: only for the command line on the server computer (npm run benutzer -- rolle ...).
 export function legeFest(db, name, rolle) {
   if (!ROLLEN.includes(rolle)) return fehler(400, "Unknown role. Use admin or builder.");
   const r = db.prepare("UPDATE benutzer SET rolle = ? WHERE name = ?").run(rolle, String(name).trim().toLowerCase());
   return r.changes ? { ok: true, wert: { name, rolle } } : fehler(404, "Unknown user.");
 }
 
-// Aus der Oberfläche: nur ein Admin, und es bleibt immer mindestens ein Admin übrig.
+// From the interface: only an admin, and at least one admin always remains.
 export function setzeRolle(db, akteur, name, rolle, jetzt = new Date()) {
   if (akteur?.rolle !== "admin") return fehler(403, "Only an admin can change roles.");
   if (typeof name !== "string" || typeof rolle !== "string" || !ROLLEN.includes(rolle)) return fehler(400, "Unknown user or role.");

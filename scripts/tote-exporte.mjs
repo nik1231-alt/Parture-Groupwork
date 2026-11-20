@@ -1,7 +1,7 @@
-// Toter Code (Checkliste A4.6): jede exportierte Funktion in app/, die keine andere Datei in app/, public/ oder scripts/ erwähnt.
-// Aufruf: npm run tote   Ausgabe leer und Exit 0 = nichts Totes; sonst Liste und Exit 1.
-// Bewusst einfach: "erwähnt" heißt, der Name steht als ganzes Wort in einer anderen Datei (Import, Aufruf über modul.name, auch ein
-// Kommentar). Ein Wort wie "liste" kommt in vielen Dateien vor; das Skript findet also nicht alles Tote, aber was es meldet, ist sicher tot.
+// Dead code (checklist A4.6): every exported function in app/ that no other file in app/, public/ or scripts/ mentions.
+// Call: npm run tote   Empty output and exit 0 = nothing dead; otherwise a list and exit 1.
+// Deliberately simple: "mentions" means the name appears as a whole word in another file (import, call through module.name, even a
+// comment). A word like "liste" occurs in many files; so the script does not find everything dead, but what it reports is surely dead.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const ORDNER = ["app", "public", "scripts"];
 
-// Begründete Ausnahmen: Name -> Grund. Nur hier eintragen, was absichtlich exportiert, aber von keiner anderen Datei benutzt wird.
+// Justified exceptions: name -> reason. Enter here only what is exported on purpose but used by no other file.
 const AUSNAHMEN = {
 };
 

@@ -1,9 +1,9 @@
-// Benutzer anlegen oder Passwort ändern (auf dem Rechner, auf dem der Server läuft):
-//   npm run benutzer -- anlegen <name> [admin|builder]   (der erste Benutzer wird automatisch Admin, sonst Builder)
+// Create a user or change a password (on the computer where the server runs):
+//   npm run benutzer -- anlegen <name> [admin|builder]   (the first user automatically becomes admin, otherwise builder)
 //   npm run benutzer -- passwort <name>
 //   npm run benutzer -- rolle <name> <admin|builder>
 //   npm run benutzer -- liste
-// Das Passwort wird verdeckt abgefragt und steht nie in der Befehlszeile, in einer Datei oder im Verlauf.
+// The password is asked for hidden and is never in the command line, in a file or in the history.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,7 @@ db.pragma("journal_mode = WAL");
 login.bereiteVor(db);
 rollen.bereiteVor(db);
 
-// Ohne Terminal (Eingabe per Pipe): alle Zeilen einmal einlesen und der Reihe nach verteilen
+// Without a terminal (input by pipe): read all lines once and hand them out one after another
 let zeilen = null;
 const leseZeilen = (ein) => new Promise((resolve) => { let s = ""; ein.setEncoding("utf8"); ein.on("data", (c) => { s += c; }); ein.on("end", () => resolve(s.split(/\r?\n/))); });
 

@@ -1,7 +1,7 @@
-// Änderungsprotokoll: wer hat wann was getan, und was ist dabei herausgekommen.
-// Es wird nur angehängt. Die App kann Einträge weder ändern noch löschen (Trigger in der Datenbank brechen das ab).
-// Wer direkten Zugriff auf die Datei daten/app.db hat, könnte die Trigger entfernen: Das Protokoll ist ein Nachweis
-// innerhalb der App, kein manipulationssicherer Beleg.
+// Change log: who did what when, and what came of it.
+// It is only appended to. The app can neither change nor delete entries (triggers in the database abort that).
+// Whoever has direct access to the file daten/app.db could remove the triggers: the log is a proof
+// inside the app, not tamper-proof evidence.
 const MAX_DETAILS = 4000;
 
 export function bereiteVor(db) {
@@ -9,11 +9,11 @@ export function bereiteVor(db) {
     CREATE TABLE IF NOT EXISTS protokoll (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       zeit TEXT NOT NULL,
-      benutzer TEXT NOT NULL,       -- wer es ausgelöst hat ("system" für automatische Läufe)
-      rolle TEXT,                   -- Rolle zum Zeitpunkt der Aktion
+      benutzer TEXT NOT NULL,       -- who triggered it ("system" for automatic runs)
+      rolle TEXT,                   -- role at the time of the action
       aktion TEXT NOT NULL,         -- z. B. change_proposed, change_approved, ebay_changed, role_changed
-      objekt TEXT,                  -- z. B. "item 1234567890" oder "user anna"
-      details TEXT,                 -- JSON (alter und neuer Wert, eBay-Antwort ...)
+      objekt TEXT,                  -- e.g. "item 1234567890" or "user anna"
+      details TEXT,                 -- JSON (old and new value, eBay answer ...)
       ergebnis TEXT NOT NULL        -- ok | error | dry_run | refused
     );
     CREATE TRIGGER IF NOT EXISTS protokoll_kein_update BEFORE UPDATE ON protokoll BEGIN SELECT RAISE(ABORT, 'The log is append-only.'); END;

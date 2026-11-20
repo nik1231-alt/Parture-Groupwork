@@ -1,13 +1,13 @@
-// Benachrichtigung an den Admin über Telegram: neuer Vorschlag wartet, Import oder Sicherung fehlgeschlagen.
-// Nur aktiv, wenn TELEGRAM_BOT_TOKEN und TELEGRAM_CHAT_ID in der .env des Servers stehen. Sonst passiert nichts.
-// Eine Meldung darf die App nie stören: Fehler werden verschluckt (und höchstens auf der Konsole vermerkt).
-// In die Nachricht kommen nur Namen und Zahlen, nie Zugangsdaten.
+// Notification to the admin through Telegram: a new suggestion is waiting, an import or backup failed.
+// Only active if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are in the server's .env. Otherwise nothing happens.
+// A message must never disturb the app: errors are swallowed (and at most noted on the console).
+// Only names and numbers go into the message, never credentials.
 export function erzeuge({ env = process.env, fetchFn = fetch, log = console.warn } = {}) {
   const token = String(env.TELEGRAM_BOT_TOKEN || "").trim();
   const chat = String(env.TELEGRAM_CHAT_ID || "").trim();
   const konfiguriert = () => !!token && !!chat;
   const kurz = (t) => String(t).replace(/\s+/g, " ").slice(0, 900);
-  // Telegram-Fehlermeldungen enthalten die URL mit dem Token nicht, aber sicherheitshalber wird der Token nie weitergegeben
+  // Telegram error messages do not contain the URL with the token, but to be safe the token is never passed on
   const ohneToken = (t) => (token ? String(t).split(token).join("***") : String(t));
   async function sende(text) {
     if (!konfiguriert()) return false;
