@@ -15,12 +15,13 @@ const appdb = path.join(verz, "app.db"), pmdb = path.join(verz, "pm.db");
 { const d = new Database(appdb); bereiteVor(d); legeBenutzerAn(d, "anna", "ein-langes-passwort"); d.close(); }
 const setzeStand = (bis) => { fs.rmSync(pmdb, { force: true }); const d = new Database(pmdb); d.exec("CREATE TABLE stand (exportiert_at TEXT, traffic_bis TEXT)"); d.prepare("INSERT INTO stand VALUES (?, ?)").run(new Date().toISOString(), bis); d.close(); };
 fs.mkdirSync(path.join(verz, "daten"), { recursive: true });
-// Startzeit des Testservers: bis zu 30 s (300 × 100 ms). 5 s reichten auf dem Server-Laptop bei knappem Speicher nicht (PROD lehnte ec0076c am 19.11. deshalb ab).
+// Startzeit des Testservers: bis zu 90 s (900 × 100 ms). 5 s reichten am 19.11. nicht, 30 s am 20.11. auch nicht, als PROD und VORSCHAU
+// bei knappem Speicher gleichzeitig testeten (5cebbb9 abgelehnt). Ein gesunder Start dauert unter 1 s, die Grenze kostet dann nichts.
 const basis = `http://127.0.0.1:${PORT}`;
 let server;
 test.before(async () => {
   server = spawn(process.execPath, [path.join(import.meta.dirname, "server.mjs")], { env: { ...process.env, PM_OHNE_ENV: "1", PM_PORT: String(PORT), PM_APPDB: appdb, PM_DB: pmdb, PM_UMGEBUNG: "vorschau", TRAFFIC_VERZOEGERUNG_TAGE: String(VERZOEGERUNG_STANDARD), SICHERUNG_AUTO: "aus", SICHERUNG_ORDNER: path.join(verz, "s"), CF_ACCESS_TEAM_DOMAIN: "", CF_ACCESS_AUD: "" }, stdio: "ignore" });
-  for (let i = 0; i < 300; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
+  for (let i = 0; i < 900; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
 // Erst warten, bis der Server-Prozess wirklich beendet ist: auf Windows hält er app.db sonst noch offen und rmSync scheitert mit EBUSY (Serverprobe 17.11.2026).
