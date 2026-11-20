@@ -933,7 +933,9 @@ function zeichneEinstellungen() {
   const zuruecksetzen = zweiStufig(el("button", { class: "knopf", type: "button", text: "Reset to defaults" }), "Really reset?", async () => {
     try { await post("/api/einstellungen/zuruecksetzen", {}); meldung("Settings reset to the defaults."); await ladeEinstellungen(); laden(); } catch (x) { fehler.textContent = x.message; }
   });
-  const form = el("form", { novalidate: true }, abschnitte, fehler, el("div", { class: "aktionen" }, speichern, zuruecksetzen));
+  // Regeln ändern nur Admins (Werbesatz und Preisschritt kosten Geld); der Server prüft das ebenfalls
+  const form = el("form", { novalidate: true }, abschnitte, fehler, istAdmin() ? el("div", { class: "aktionen" }, speichern, zuruecksetzen) : el("p", { class: "leise klein", text: "Only an admin can change the rules." }));
+  if (!istAdmin()) for (const z of zeilen) z.eingabe.disabled = true;
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault(); fehler.textContent = ""; speichern.disabled = true;
     try {
