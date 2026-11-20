@@ -194,7 +194,7 @@ function zeile(p) {
   const bild = bildUrl(p.image_url);
   const fu = zustand.funnel?.get(p.number);
   const hinweis = fu ? el("div", { class: "hinweiszeile" }, el("span", {}, statusChip(fu.status), " ", fu.grund), el("a", { class: "knopf knopf-klein", href: `#ladder/${encodeURIComponent(p.number)}`, text: "Show in Funnel" })) : null;
-  const mehrInfo = el("div", { class: "produkt-mehr" }, el("p", { class: "leise klein", text: "Loading variants, channels and history …" }));
+  const mehrInfo = el("div", { class: "produkt-mehr" }, el("p", { class: "leise klein", text: "Loading variants, eBay listing and history …" }));
   return el("details", { class: "zeile", ontoggle: (ev) => { if (ev.target.open && !mehrInfo.dataset.geladen) { mehrInfo.dataset.geladen = "1"; ladeProduktMehr(p.number, mehrInfo); } } },
     el("summary", { class: "zeilenkopf spalten" },
       bild ? el("img", { class: "bild", src: bild, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
@@ -209,7 +209,7 @@ function zeile(p) {
       el("p", { text: p.begruendung }),
       el("dl", { class: "kennzahlen" },
         kennzahl("Views 90 d", zahl(p.aufrufe_90d)), kennzahl("Click rate", prozent(p.klickrate, 2)), kennzahl("eBay conversion", prozent(p.conversion)),
-        kennzahl("Sales total", zahl(p.units_total)), kennzahl("Last sold", datum(p.last_sold_at)), kennzahl("In catalogue since", datum(p.created_at))),
+        kennzahl("eBay sales total", zahl(p.units_total)), kennzahl("Last sold", datum(p.last_sold_at)), kennzahl("In catalogue since", datum(p.created_at))),
       hinweis, mehrInfo));
 }
 
@@ -232,7 +232,7 @@ async function ladeProduktMehr(nr, ziel) {
         el("div", {}, el("h3", { text: "Channels · reference only" }),
           p.kanaele.length ? el("ul", { class: "varianten" }, p.kanaele.map((k) => el("li", {}, el("span", { text: KANAL[k.channel] || k.channel }),
             el("span", { class: "leise", text: `${k.listed ? "listed" : "not listed"}${k.preis_aktuell ? " · " + eur(k.preis_aktuell) : ""} · ${zahl(k.units_90d ?? 0)} sales in 90 days` }))))
-            : el("p", { class: "leise klein", text: "Not listed on any channel." }))),
+            : el("p", { class: "leise klein", text: "No eBay listing." }))),
       el("h3", { text: "History" }),
       geschichte.length ? el("ol", { class: "lebenslauf" }, geschichte.map((g) => el("li", { text: `${zeitpunkt(g.at)} · ${g.text}${g.wer && g.wer !== "system" ? ` (${g.wer})` : ""}` })))
         : el("p", { class: "leise klein", text: "Nothing has happened with this product in the app yet." }));
@@ -558,18 +558,18 @@ function zeichneProblem(d) {
   const v80 = d.verkaeufe.fuer80, i80 = d.impressionen.fuer80;
   fuelle($("#ansicht-problem"),
     el("div", { class: "einstieg" }, el("h1", { text: "Problem" }),
-      el("p", { class: "leise", text: "Live from the shop's own numbers (last 90 days): a few products carry almost all sales, while a long tail of listings is hardly ever shown to buyers. This page is the reason the Funnel exists." })),
+      el("p", { class: "leise", text: "Live from the shop's eBay numbers (active eBay listings, eBay sales and impressions, last 90 days; other marketplaces are left out on purpose): a few listings carry most of the sales, while a long tail is hardly ever shown to buyers. This page is the reason the Funnel exists." })),
     el("div", { class: "kpis" },
-      kachel("Products", zahl(d.produkte), `${zahl(d.ebayAktiv)} active on eBay`),
-      kachel("Sold nothing", zahl(d.ohneVerkauf), `${pz(d.ohneVerkauf / d.produkte)} of all products, last 90 days`, "warn"),
+      kachel("eBay listings", zahl(d.ebayAktiv), `active, of ${zahl(d.produkte)} products in the catalogue`),
+      kachel("Sold nothing on eBay", zahl(d.ohneVerkauf), `${pz(d.ohneVerkauf / d.ebayAktiv)} of eBay listings, last 90 days`, "warn"),
       kachel("Barely seen on eBay", zahl(d.kaumGesehen), `${pz(d.kaumGesehen / d.ebayAktiv)} of eBay listings under ${zahl(d.grenze90)} impressions`, "offen"),
       kachel("Never shown", zahl(d.ohneImpressionen), "eBay listings with 0 impressions in 90 days", "grau")),
     el("div", { class: "aussagen" },
-      aussage(pz(v80?.anteil, 1), "of the products bring 80 % of the sales", `${zahl(v80?.anzahl)} of ${zahl(d.verkaeufe.anzahl)} products · the best 10 % bring ${pz(d.verkaeufe.top10)}`, "phase"),
+      aussage(pz(v80?.anteil, 1), "of the eBay listings bring 80 % of the eBay sales", `${zahl(v80?.anzahl)} of ${zahl(d.verkaeufe.anzahl)} listings · the best 10 % bring ${pz(d.verkaeufe.top10)}`, "phase"),
       aussage(pz(i80?.anteil), "of the eBay listings get 80 % of the impressions", `${zahl(i80?.anzahl)} of ${zahl(d.impressionen.anzahl)} listings · the best 10 % get ${pz(d.impressionen.top10)}`, "kontrolle")),
     el("section", { class: "panel" },
       el("h2", { text: "Where sales and visibility come from" }),
-      el("p", { class: "leise klein", text: "Products sorted from best to worst. The curve shows how much of the total the best x % bring. The higher and steeper it rises, the more the total depends on a few products. The dashed line would be a shop where every product does equally well." }),
+      el("p", { class: "leise klein", text: "eBay listings sorted from best to worst. The curve shows how much of the total the best x % bring. The higher and steeper it rises, the more the total depends on a few products. The dashed line would be a shop where every product does equally well." }),
       konzentrationsBild(d)),
     el("div", { class: "problem-raster" },
       el("section", { class: "panel" }, el("h2", { text: "Seen × sold" }),
@@ -596,16 +596,16 @@ function konzentrationsBild(d) {
     svg("line", { x1: x(t), x2: x(t), y1: o, y2: o + h, class: "d-gitter" }), svgText(x(t), H - u + 18, pz(t), "d-klein", "middle")]);
   const marke = (pt, klasse, text, unten) => pt ? [svg("line", { x1: x(pt.anteil), x2: x(pt.anteil), y1: y(0.8), y2: o + h, class: "k-hilfslinie " + klasse }),
     svg("circle", { cx: x(pt.anteil), cy: y(0.8), r: 5, class: "k-punkt " + klasse }), svgText(x(pt.anteil) + (unten ? 10 : 16), y(0.8) + (unten ? 20 : -14), text, "d-wert " + klasse)] : [];
-  return el("div", { class: "d-rahmen" }, svg("svg", { viewBox: `0 0 ${B} ${H}`, class: "diagramm", role: "img", "aria-label": `80 % of sales come from ${pz(d.verkaeufe.fuer80?.anteil, 1)} of the products, 80 % of impressions from ${pz(d.impressionen.fuer80?.anteil)} of the eBay listings` },
+  return el("div", { class: "d-rahmen" }, svg("svg", { viewBox: `0 0 ${B} ${H}`, class: "diagramm", role: "img", "aria-label": `80 % of eBay sales come from ${pz(d.verkaeufe.fuer80?.anteil, 1)} of the listings, 80 % of impressions from ${pz(d.impressionen.fuer80?.anteil)} of the eBay listings` },
     ...gitter,
     svg("line", { x1: x(0), y1: y(0), x2: x(1), y2: y(1), class: "k-gleich" }),
     svg("line", { x1: l, x2: B - r, y1: y(0.8), y2: y(0.8), class: "k-achtzig" }), svgText(B - r, y(0.8) - 6, "80 %", "d-klein", "end"),
     svg("path", { d: pfad(d.impressionen.kurve), class: "k-kurve kontrolle" }),
     svg("path", { d: pfad(d.verkaeufe.kurve), class: "k-kurve phase" }),
-    ...marke(d.verkaeufe.fuer80, "phase", `Sales: ${pz(d.verkaeufe.fuer80?.anteil, 1)} of products`, false),
+    ...marke(d.verkaeufe.fuer80, "phase", `Sales: ${pz(d.verkaeufe.fuer80?.anteil, 1)} of listings`, false),
     ...marke(d.impressionen.fuer80, "kontrolle", `Impressions: ${pz(d.impressionen.fuer80?.anteil)}`, true),
-    svgText(l + w / 2, H - 6, "Share of products, best first", "d-klein", "middle")),
-    el("div", { class: "legende" }, el("span", { class: "leg phase", text: "Sales (all products)" }), el("span", { class: "leg kontrolle", text: "Impressions (eBay listings)" }), el("span", { class: "leg gleich", text: "Every product equal" })));
+    svgText(l + w / 2, H - 6, "Share of eBay listings, best first", "d-klein", "middle")),
+    el("div", { class: "legende" }, el("span", { class: "leg phase", text: "eBay sales" }), el("span", { class: "leg kontrolle", text: "eBay impressions" }), el("span", { class: "leg gleich", text: "Every product equal" })));
 }
 
 // Vier Felder gesehen × verkauft: Fläche je Feld nach Anzahl, das Ziel des Funnels ist markiert
@@ -804,7 +804,7 @@ function statusInhalt(f) {
   const tabelle = el("div", { class: "tabelle" }), treffer = el("p", { class: "leise ergebnis-zeile" }), mehr = el("div", { class: "mehr" });
   const zeile = (x) => { const b = bildUrl(x.image_url); return el("div", { class: "fzeile" },
     b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
-    el("div", { class: "name" }, el("div", { class: "titel", text: x.title || "(untitled)" }), el("div", { class: "nummer", text: `No. ${x.number} · ${zahl(x.impressionen_90d)} impressions · ${zahl(x.units_90d ?? 0)} sales in 90 days` })),
+    el("div", { class: "name" }, el("div", { class: "titel", text: x.title || "(untitled)" }), el("div", { class: "nummer", text: `No. ${x.number} · ${zahl(x.impressionen_90d)} impressions · ${zahl(x.units_90d ?? 0)} eBay sales in 90 days` })),
     el("div", {}, statusChip(x.status)), el("div", { class: "grund leise", text: x.grund })); };
   // Nur Trefferliste neu zeichnen, damit das Suchfeld beim Tippen den Fokus behält
   function zeichneTreffer() {
@@ -822,7 +822,7 @@ function statusInhalt(f) {
 
 // Admin: ein bestimmtes Angebot aus allen Kandidaten wählen und sofort auf die Leiter setzen (der KI-Titel kommt gleich mit)
 function auswahlAufnehmen(liste) {
-  const option = (p) => el("option", { value: p.number, text: `${p.number} · ${p.title || "(untitled)"} · ${zahl(p.impressionen_90d)} impressions / 90 days · ${zahl(p.units_90d)} sales` });
+  const option = (p) => el("option", { value: p.number, text: `${p.number} · ${p.title || "(untitled)"} · ${zahl(p.impressionen_90d)} impressions / 90 days · ${zahl(p.units_90d)} eBay sales` });
   const wahl = el("select", { "aria-label": "Listing for the ladder" }, el("option", { value: "", text: liste.length ? `Choose one of ${zahl(liste.length)} listings …` : "No listing qualifies right now" }), ...liste.map(option));
   const suche = el("input", { type: "search", placeholder: "Filter by number or word", "aria-label": "Filter the list",
     oninput: () => { const q = suche.value.trim().toLowerCase(); wahl.replaceChildren(wahl.firstChild, ...liste.filter((p) => !q || `${p.number} ${p.title || ""}`.toLowerCase().includes(q)).map(option)); } });
@@ -831,7 +831,7 @@ function auswahlAufnehmen(liste) {
       leiterAktion("/api/leiter/aufnehmen", { number: wahl.value }, (r) => r.vorschlag ? `Listing ${r.number} is on the ladder, the title suggestion is ready below.` : `Listing ${r.number} is on the ladder, but there is no title suggestion yet: ${r.hinweis}`); } });
   return el("div", { class: "panel auswahl" },
     el("h2", { text: "Add a listing" }),
-    el("p", { class: "leise klein", text: "Every listing that qualifies for the ladder: low impressions, active on eBay, not blocked, not in a test. Sorted by sales, best first. The listing starts at step 1; nothing changes on eBay until you approve the title." }),
+    el("p", { class: "leise klein", text: "Every listing that qualifies for the ladder: low impressions, active on eBay, not blocked, not in a test. Sorted by eBay sales, best first. The listing starts at step 1; nothing changes on eBay until you approve the title." }),
     el("div", { class: "auswahl-zeile" }, suche, wahl, knopf));
 }
 
@@ -839,7 +839,7 @@ function leiterKarte(a) {
   const b = bildUrl(a.image_url);
   const kopf = el("div", { class: "leiter-kopf" },
     b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
-    el("div", {}, el("div", { class: "titel", text: a.title || "(untitled)" }), el("div", { class: "leise klein", text: `No. ${a.number} · ${zahl(a.impressionen_90d)} impressions in 90 days · ${zahl(a.units_90d)} sales · on the ladder since ${datum(a.eingestiegen_at)}` })),
+    el("div", {}, el("div", { class: "titel", text: a.title || "(untitled)" }), el("div", { class: "leise klein", text: `No. ${a.number} · ${zahl(a.impressionen_90d)} impressions in 90 days · ${zahl(a.units_90d)} eBay sales · on the ladder since ${datum(a.eingestiegen_at)}` })),
     el("span", { class: "badge " + (a.stufe === "raus" ? (a.ergebnis === "erholt" ? "gut" : "") : a.phase === "laeuft" ? "laeuft" : "vorbereitet"), text: a.stufe === "raus" ? ERGEBNIS_LEITER[a.ergebnis] || a.ergebnis : STUFE_TEXT[a.stufe] }));
   const inhalt = a.phase === "laeuft" ? leiterLaeuft(a) : a.phase === "offen" ? leiterPruefung(a) : a.phase === "vorschlag" ? leiterVorschlag(a) : [];
   const zustandKlasse = a.stufe === "raus" ? "raus" : a.phase === "laeuft" ? "laeuft" : a.phase === "offen" ? "offen" : "wartet";

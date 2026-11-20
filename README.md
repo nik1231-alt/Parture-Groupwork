@@ -47,8 +47,8 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 
 | Page | Who | What |
 |---|---|---|
-| **Products** | everyone | every product with price, sales, impressions and diagnosis; open a row for its variants, channels, funnel status and full history |
-| **Problem** | everyone | live analysis of why the app exists: 80 % of sales come from 8.5 % of the products, 80 % of eBay impressions from 35 % of the listings (20.11.2026); seen × sold for every listing; how impressions are spread |
+| **Products** | everyone | every product with eBay price, eBay sales, impressions and diagnosis; open a row for its variants, channel reference details, funnel status and full history |
+| **Problem** | everyone | live analysis of why the app exists (eBay only): 80 % of eBay sales come from 17.8 % of the eBay listings, 80 % of eBay impressions from 35 % of the listings (20.11.2026); seen × sold for every listing; how impressions are spread |
 | **Funnel** | everyone (actions: admin) | KPIs, all products as one bar by status, why products are not eligible, the ladder as a flow, the effect of each phase against the control group, the work queue with the interim result, and a table of all products with their status and the reason for it |
 | **Team** | admin | assign roles |
 | **Log** | everyone | the append-only log and the operating status (environment, version, write switches, backup, data age) |
@@ -126,7 +126,7 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
                                                                              └──► app.db (users, ladder, settings, log)
 ```
 
-- **`pm.db`** holds only public or technical fields: products, channels, images, 30/90-day traffic sums, daily traffic, the
+- **`pm.db`** holds only public or technical fields: products, their eBay listing (no other marketplaces), images, 30/90-day traffic sums, daily traffic, the
   block list of a running shop experiment. **Never** costs, fees, margins, revenue, customers or addresses: the export checks
   column names and texts before it swaps the file.
 - **`app.db`** belongs to the app and lives on the machine that runs it, never in the repository.
@@ -137,7 +137,8 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
 - The app knows no costs, so it cannot tell whether a lower price still pays off; the admin checks that before approving.
 - One waiting time takes 14 to 21 days, so the first measured net effect comes two to three weeks after the first approval.
 - With only a few listings per phase the net effect is noisy; it gets reliable as more listings pass through.
-- Only eBay. Amazon, Etsy and the shop are shown, but the app changes nothing there.
+- Only eBay. Sales and traffic from other marketplaces (shop, Amazon, Etsy) are out of scope on purpose: the hub does not export
+  them in new exports. Older catalogues may still show other channels as labelled reference details; these never enter analysis. All performance metrics use eBay only.
 
 ## More
 
