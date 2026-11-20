@@ -364,3 +364,6 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
   .fzeile > div:nth-child(3), .fzeile > .grund { grid-column: 2; }
   .fz.ebene-2 .fz-name, .fz.ebene-3 .fz-name { padding-left: 22px; }
 }
+
+/* Gesperrte Felder (z. B. Settings für Builder) sehen auch gesperrt aus */
+.feld:disabled, select:disabled, input:disabled, textarea:disabled { background: var(--karte-leise); color: var(--leise); cursor: not-allowed; border-style: dashed; }

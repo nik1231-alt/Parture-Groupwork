@@ -847,11 +847,13 @@ const LOG_TEXT = {
   role_changed: "Role changed", change_proposed: "Change proposed", change_approved: "Approved", change_rejected: "Rejected", revert_proposed: "Revert proposed",
   ebay_changed: "Changed on eBay", ebay_failed: "eBay change failed", ebay_refused: "Not changed (title differs or listing inactive)", ebay_already_current: "Already up to date", ebay_dry_run: "Dry run",
   password_changed: "Password changed", backup: "Backup", test_created: "Test created", test_started: "Test started", test_started_manually: "Test started manually", test_closed: "Test closed", traffic_sync: "Traffic import",
-  ladder_run: "Ladder run", ladder_freigegeben: "Ladder step changed on eBay", ladder_probelauf: "Ladder step: dry run", ladder_fehlgeschlagen: "Ladder step failed", ladder_started_manually: "Ladder step started by hand",
+  ladder_run: "Ladder run", ladder_added: "Put on the ladder", ladder_freigegeben: "Ladder step changed on eBay", ladder_probelauf: "Ladder step: dry run", ladder_fehlgeschlagen: "Ladder step failed", ladder_started_manually: "Ladder step started by hand",
   ladder_skipped: "Ladder step skipped", ladder_decided: "Manual check decided", ladder_removed: "Taken off the ladder",
 };
 // Die Protokoll-Details haben deutsche Schlüssel (so stehen sie in der Datenbank); angezeigt werden sie englisch
 const DETAIL_TEXT = {
+  ausgewertet: "checked", erholt: "seen again", aufgenommen: "on the ladder", titelVorschlaege: "title suggestions", ohneVorschlag: "without suggestion", ki: "AI",
+  stufe: "step", vorschlag: "suggestion", titel: "title", quelle: "source", modell: "model", satz: "ad rate", text: "result", vonHand: "by hand", entscheidung: "decision", notiz: "note",
   test: "test", number: "product", alt: "old title", neu: "new title", art: "kind", aenderung: "change", anzahl: "count", schreibenAn: "writing to eBay", verkauft: "sold so far",
   ack: "eBay answer", grund: "reason", fehler: "error", hinweis: "note", von: "from", zu: "to", dateien: "files", aktuell_bei_ebay: "now on eBay", listingStatus: "listing status",
   seed: "draw number", kontrolle: "control", gesperrt: "excluded (price experiment)", ohneZugangsdaten: "no eBay credentials", abschluss: "outcome", gekuerzt: "shortened",
@@ -860,7 +862,15 @@ const DETAIL_TEXT = {
 };
 const WERT_TEXT = { titel: "new title", zurueck: "revert", behalten: "keep", true: "yes", false: "no" };
 const ERGEBNIS_TEXT = { ok: "ok", error: "error", dry_run: "dry run", refused: "refused" };
-const detailText = (details) => Object.entries(details).map(([k, v]) => `${DETAIL_TEXT[k] || k}: ${v !== null && typeof v === "object" ? JSON.stringify(v) : WERT_TEXT[String(v)] ?? v}`).join(" · ");
+// Verschachtelte Werte (z. B. der Vorschlag einer Leiterstufe) lesbar statt als JSON: das Wichtigste zuerst, Prüfdetails weg
+const WICHTIG = ["titel", "alt", "satz", "neu", "quelle", "modell"];
+const wertText = (v) => {
+  if (v === null || typeof v !== "object") return WERT_TEXT[String(v)] ?? v;
+  if (Array.isArray(v)) return v.length + " " + (v.length === 1 ? "entry" : "entries");
+  const teile = WICHTIG.filter((k) => v[k] != null && v[k] !== "").map((k) => `${DETAIL_TEXT[k] || k} “${v[k]}”`);
+  return teile.length ? teile.join(", ") : Object.entries(v).filter(([, x]) => x === null || typeof x !== "object").map(([k, x]) => `${DETAIL_TEXT[k] || k} ${x}`).join(", ");
+};
+const detailText = (details) => Object.entries(details).map(([k, v]) => `${DETAIL_TEXT[k] || k}: ${wertText(v)}`).join(" · ");
 async function ladeLog() {
   const root = $("#ansicht-log");
   try {
