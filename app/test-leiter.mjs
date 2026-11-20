@@ -237,3 +237,36 @@ test("Freigabe prüft den Titel noch einmal: ein Vorschlag aus der Zeit vor eine
   assert.equal(s.auf.length, 0, "bei eBay wurde nichts geschrieben");
   assert.equal(zeile(d, "A").phase, "vorschlag", "die Stufe bleibt offen");
 });
+
+// ---------- Bewegung von Hand (Niko 20.11.: Produkte wandern nur per Knopf) ----------
+test("von Hand weiterschieben: nur Admin, nur in laufender Prüfzeit, misst bis heute gegen die Kontrollgruppe", () => {
+  const d = neueDb(), e = { ...EK, leiterMax: 1 };
+  const [nr] = leiter.nimmAuf(d, shop(), e, T0, { seed: 7 });
+  const impTag = (n, von) => (von >= "2026-11-20" && n === nr ? 6 : 3);
+  const daten = { impTag, trafficBis: "2026-11-27", grenze90: 900, einst: e };
+  assert.equal(leiter.schiebeVonHand(d, ADMIN, nr, "weiter", daten, tag(8)).status, 409, "noch keine laufende Prüfzeit");
+  leiter.setzeTitelVorschlag(d, BUILDER, nr, titelVorschlag, T0);
+  leiter.starteVonHand(d, ADMIN, nr, { impTag }, T0);
+  assert.equal(leiter.schiebeVonHand(d, BUILDER, nr, "weiter", daten, tag(8)).status, 403);
+  assert.equal(leiter.schiebeVonHand(d, ADMIN, nr, "irgendwohin", daten, tag(8)).status, 400);
+  const r = leiter.schiebeVonHand(d, ADMIN, nr, "weiter", daten, tag(8));
+  assert.equal(r.ok, true); assert.equal(r.wert.stufe, "werbung");
+  assert.equal(r.wert.messung.gemessenTage, 7, "20.11. bis 27.11. liegen in den Daten");
+  assert.equal(r.wert.messung.netto, 1, "Angebot 3 → 6, Kontrolle bleibt 3: +100 %");
+  assert.equal(zeile(d, nr).stufe, "werbung"); assert.equal(zeile(d, nr).phase, "vorschlag");
+  assert.equal(leiter.wirkung(d).titel.mitKontrolle, 1, "die Messung von Hand zählt in der Wirkung je Phase");
+});
+
+test("von Hand als wieder gesehen beenden; der automatische Teil bewertet bei nurKontrolle keine Stufe", () => {
+  const d = neueDb(), e = { ...EK, leiterMax: 1 };
+  const [nr] = leiter.nimmAuf(d, shop(), e, T0, { seed: 7 });
+  leiter.setzeTitelVorschlag(d, BUILDER, nr, titelVorschlag, T0);
+  leiter.starteVonHand(d, ADMIN, nr, { impTag: impVon() }, T0);
+  // Prüfzeit vorbei, aber Bewegung von Hand: werteAus mit nurKontrolle lässt die Stufe laufen
+  assert.deepEqual(leiter.werteAus(d, daten({}, "2026-12-10", { einst: e, nurKontrolle: true }), tag(21)), []);
+  assert.equal(zeile(d, nr).phase, "laeuft");
+  const r = leiter.schiebeVonHand(d, ADMIN, nr, "erholt", daten({}, "2026-12-10", { einst: e }), tag(21));
+  assert.equal(r.ok, true);
+  assert.equal(zeile(d, nr).stufe, "raus"); assert.equal(zeile(d, nr).ergebnis, "erholt");
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ladder_moved'").get().n, 1);
+});

@@ -48,7 +48,8 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 | Page | Who | What |
 |---|---|---|
 | **Products** | everyone | every product with price, sales, impressions and diagnosis; open a row for its variants, channels, funnel status and full history |
-| **Funnel** | everyone (actions: admin) | KPIs, the funnel with a count per status, the effect of each phase against the control group, the work queue, and a table of all products with their status and the reason for it |
+| **Problem** | everyone | live analysis of why the app exists: 80 % of sales come from 8.5 % of the products, 80 % of eBay impressions from 35 % of the listings (20.11.2026); seen × sold for every listing; how impressions are spread |
+| **Funnel** | everyone (actions: admin) | KPIs, all products as one bar by status, why products are not eligible, the ladder as a flow, the effect of each phase against the control group, the work queue with the interim result, and a table of all products with their status and the reason for it |
 | **Team** | admin | assign roles |
 | **Log** | everyone | the append-only log and the operating status (environment, version, write switches, backup, data age) |
 | **Settings** | everyone (save: admin) | every rule value: limits, waiting times, ad rate, price step |
@@ -60,7 +61,7 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 All products
  ├─ Not eligible ── with the reason: enough impressions · too new or no data · no active eBay listing · blocked by a price test
  └─ Eligible ────── low impressions (bottom quarter of the shop), active on eBay, free
-      │  the daily run draws 2 × free places by lot and splits them in half
+      │  "Draw listings by lot": 2 × free places, split in half
       ├─ Control group ── stays unchanged for 49 days (all three waiting times together)
       └─ Phase 1  new title (AI + rule check) ── 14 days ──► seen again? yes ─► leaves ("Seen again")
          Phase 2  eBay ads 10 %             ── 14 days ──► seen again? yes ─► leaves
@@ -72,8 +73,12 @@ All products
 - **Net effect** of a phase = (listing after ÷ before) ÷ (control group after ÷ before) − 1, over exactly the same days. If the
   whole shop gets busier, the control group rises too and the net effect stays near zero. From +20 % a phase counts as clearly better.
 - **The lot** uses a stored seed, so the same candidates and the same seed always give the same split (`ziehe` in `app/experimente.mjs`).
-- **Daily run** from 6:00 (or *Run the ladder now*): evaluate finished waiting times, release controls whose time is over, draw
-  new listings, ask the AI for titles. The run never changes eBay.
+- **Movement by hand** (default, *Settings → Funnel movement*): products only move when an admin clicks. *Draw listings by
+  lot* takes new listings (with control group); on a running card, *Next phase →* or *Seen again ✓* end the waiting time,
+  measured up to that day against the control group and kept in the history. The daily run from 6:00 only fetches AI titles.
+- **Automatic movement** (optional): the daily run also evaluates finished waiting times, releases controls and draws new
+  listings. Neither mode ever changes eBay without an approval.
+- **Data:** the company hub exports the catalogue and eBay traffic to the app every hour (whitelist only, see *Data*).
 - **Add a listing** (admin): pick any eligible product from a list and put it on step 1 right away, e.g. for a demo.
 - After leaving, a product pauses 90 days before it can enter again.
 
@@ -117,7 +122,7 @@ only fetches eBay. Existing saved experiment baselines and historical verdicts a
 use newly started measurements for comparisons under the strict channel filter.
 
 ```
-Parture hub (company data) ──04:30, whitelist only──► pm.db ──read only──► app ──after approval──► eBay
+Parture hub (company data) ──hourly, whitelist only──► pm.db ──read only──► app ──after approval──► eBay
                                                                              └──► app.db (users, ladder, settings, log)
 ```
 

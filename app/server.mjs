@@ -21,6 +21,7 @@ import * as sicherung from "./sicherung.mjs";
 import * as benachrichtigung from "./benachrichtigung.mjs";
 import { laDatum, verzoegerungTage, NACHPRUEFEN_TAGE } from "./traffic.mjs";
 import * as leiter from "./leiter.mjs";
+import * as problem from "./problem.mjs";
 import * as kiTitel from "./ki-titel.mjs";
 import { pruefeTitel } from "./titel-regeln.mjs";
 import { spawn } from "node:child_process";
@@ -85,17 +86,21 @@ async function titelVorschlag(nummer, produkte, wer) {
 }
 let leiterLaeuft = false;
 // Ein Lauf: Prüfzeiten auswerten, neue Angebote aufnehmen, für Stufe 1 Titel vorschlagen. Ändert nichts bei eBay.
-async function leiterLauf(wer) {
+// Bewegung "hand" (Standard seit 20.11.): der Tageslauf holt nur KI-Titel; aufnehmen nur per Knopf "Draw listings by lot"
+// (art "ziehen"), weiterschieben nur per Knopf an der Karte (leiter.schiebeVonHand).
+async function leiterLauf(wer, art = "tag") {
   if (leiterLaeuft) return null;
   leiterLaeuft = true;
   try {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
-    const ausgewertet = leiter.werteAus(appDb(), daten);
+    const automatisch = daten.einst.leiterBewegung === "automatisch";
+    const bewerten = automatisch && art !== "ziehen", aufnehmen = automatisch || art === "ziehen";
+    const ausgewertet = bewerten || aufnehmen ? leiter.werteAus(appDb(), { ...daten, nurKontrolle: !bewerten }) : [];
     const kontrolleVorher = leiter.anzahlKontrolle(appDb());
-    const neu = leiter.nimmAuf(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() });
+    const neu = aufnehmen ? leiter.nimmAuf(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() }) : [];
     let vorschlaege = 0, ohne = 0;
     for (const n of leiter.ohneTitelVorschlag(appDb())) { const r = await titelVorschlag(n, produkte, "system"); if (r.ok) vorschlaege++; else ohne++; }
-    const details = { ausgewertet: ausgewertet.length, erholt: ausgewertet.filter((a) => a.erholt).length, aufgenommen: neu.length, kontrolle: leiter.anzahlKontrolle(appDb()) - kontrolleVorher, titelVorschlaege: vorschlaege, ohneVorschlag: ohne, ki: ki.konfiguriert() };
+    const details = { ausgewertet: ausgewertet.length, erholt: ausgewertet.filter((a) => a.erholt).length, aufgenommen: neu.length, kontrolle: leiter.anzahlKontrolle(appDb()) - kontrolleVorher, bewegung: automatisch ? "automatisch" : "hand", art, titelVorschlaege: vorschlaege, ohneVorschlag: ohne, ki: ki.konfiguriert() };
     protokoll.schreibe(appDb(), { benutzer: wer, rolle: wer === "system" ? null : "admin", aktion: "ladder_run", objekt: "ladder", details });
     return details;
   } catch (e) {
@@ -326,6 +331,8 @@ const ROUTEN = {
     const eintraege = db.prepare("SELECT zeit, benutzer, aktion, details, ergebnis FROM protokoll WHERE objekt = ? ORDER BY id DESC LIMIT 50").all("product " + nr);
     return { number: nr, leiter: zeile, verlauf, protokoll: eintraege };
   },
+  // Seite Problem: wie ungleich Sichtbarkeit und Verkäufe verteilt sind (problem.mjs), live aus derselben Produktliste
+  "/api/problem": () => { const produkte = produkteLaden(); return problem.auswerten(produkte, leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d); },
   "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal GROUP BY channel ORDER BY produkte DESC").all()),
   // Live-Stand vom Hub (nur auf dem Server, lokal fehlt HUB_URL): dieselbe Whitelist, aber Stand jetzt statt 04:30.
   "/api/live": async () => {
@@ -416,6 +423,9 @@ const POST_ROUTEN = {
     const v = await titelVorschlag(nr, produkte, ctx.name);
     return { number: nr, vorschlag: v.ok, hinweis: v.ok ? null : v.fehler };
   },
+  // Bewegung per Knopf: neue Angebote per Los aufnehmen (mit Kontrollgruppe) und ein Angebot weiterschieben oder als wieder gesehen beenden
+  "/api/leiter/ziehen": async (req, ctx) => { adminNoetig(ctx); await leseJson(req); const r = await leiterLauf(ctx.name, "ziehen"); if (!r) throw Object.assign(new Error("The ladder is already running."), { status: 409 }); return r; },
+  "/api/leiter/schieben": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); const produkte = produkteLaden(); return antwort(leiter.schiebeVonHand(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.ziel, leiterDaten(produkte))); },
   "/api/leiter/vonhand": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.starteVonHand(appDb(), ctx, String(b?.number ?? "").slice(0, 40), { impTag })); },
   "/api/leiter/ueberspringen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.ueberspringe(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund, einst(), { fuer: leiterKontext })); },
   "/api/leiter/entscheidung": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.entscheide(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.entscheidung, b?.notiz)); },
