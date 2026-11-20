@@ -7,7 +7,8 @@ import { EINSTELLUNGEN } from "./regeln.mjs";
 import * as protokoll from "./protokoll.mjs";
 import * as leiter from "./leiter.mjs";
 
-const E = { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 900, leiterMax: 3 };
+// Ohne Kontrollgruppe, damit die Aufnahme in den älteren Tests vorhersagbar bleibt; die Kontrollgruppe hat eigene Tests unten
+const E = { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 900, leiterMax: 3, leiterKontrolle: false };
 const ADMIN = { name: "niko", rolle: "admin" }, BUILDER = { name: "anna", rolle: "builder" };
 const T0 = new Date("2026-11-20T09:00:00Z");
 const tag = (n) => new Date(T0.getTime() + n * 864e5);
@@ -154,4 +155,72 @@ test("von Hand aufnehmen (Auswahlliste): nur Admin, nur Kandidaten, auch über d
   assert.equal(leiter.aktiveNummern(d).size, 4, "über leiterMax (3) hinaus");
   assert.equal(d.prepare("SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ladder_added' AND benutzer = 'niko'").get().n, 1);
   assert.equal(JSON.parse(d.prepare("SELECT details FROM leiter_verlauf WHERE number = 'D'").get().details).vonHand, true);
+});
+
+// ---------- Kontrollgruppe ----------
+const EK = { ...E, leiterKontrolle: true, leiterMax: 2 };
+
+test("Kontrollgruppe: der Lauf zieht 2 × frei Kandidaten und lost sie je zur Hälfte auf Leiter und Kontrolle, gleicher seed = gleiche Ziehung", () => {
+  const d = neueDb();
+  const neu = leiter.nimmAuf(d, shop(), EK, T0, { seed: 42 });
+  assert.equal(neu.length, 2, "zwei Plätze frei -> zwei auf die Leiter");
+  const kontrolle = d.prepare("SELECT number, phase, stufe_start FROM leiter WHERE stufe = 'kontrolle' ORDER BY number").all();
+  assert.equal(kontrolle.length, 2, "und zwei in die Kontrollgruppe");
+  assert.ok(kontrolle.every((k) => k.phase === "kontrolle" && k.stufe_start === "2026-11-20"));
+  const alle = [...neu, ...kontrolle.map((k) => k.number)].sort();
+  assert.deepEqual(alle, ["A", "B", "C", "D"], "die vier mit den meisten Verkäufen; E bleibt frei");
+  const d2 = neueDb();
+  assert.deepEqual(leiter.nimmAuf(d2, shop(), EK, T0, { seed: 42 }), neu, "derselbe seed ergibt dieselbe Ziehung");
+  assert.equal(JSON.parse(d.prepare("SELECT details FROM leiter_verlauf WHERE number = ?").get(neu[0]).details).seed, 42, "der seed steht im Lebenslauf");
+  // Kontrollangebote belegen keinen Leiterplatz, sind aber für Tests und eine neue Aufnahme gesperrt
+  assert.deepEqual(leiter.nimmAuf(d, shop(), EK, T0, { seed: 1 }), [], "die Leiter ist voll");
+  assert.ok(kontrolle.every((k) => leiter.aktiveNummern(d).has(k.number)));
+  assert.ok(!leiter.kandidaten(d, shop(), EK, T0).some((p) => kontrolle.some((k) => k.number === p.number)));
+});
+
+test("Auswertung mit Kontrollgruppe: steigt der ganze Shop, zeigt der Nettoeffekt 0; steigt nur das Angebot, den echten Effekt", () => {
+  for (const [name, nurAngebot, erwartet] of [["Saison", false, 0], ["echter Effekt", true, 1]]) {
+    const d = neueDb(), e = { ...EK, leiterMax: 1 };
+    const [nr] = leiter.nimmAuf(d, shop(), e, T0, { seed: 7 });
+    const ktr = d.prepare("SELECT number FROM leiter WHERE stufe = 'kontrolle'").get().number;
+    // vor dem 20.11. 3 Impressionen am Tag, danach 6: beim Saison-Fall für alle, sonst nur für das Angebot auf der Leiter
+    const impTag = (n, von) => (von >= "2026-11-20" && (!nurAngebot || n === nr) ? 6 : 3);
+    leiter.setzeTitelVorschlag(d, BUILDER, nr, titelVorschlag, T0);
+    leiter.starteVonHand(d, ADMIN, nr, { impTag }, T0);
+    const [a] = leiter.werteAus(d, { impTag, trafficBis: "2026-12-04", grenze90: 900, einst: e }, tag(15));
+    assert.deepEqual(a.kontrolle, { anzahl: 1, vorher90: 270, nachher90: nurAngebot ? 270 : 540 }, name);
+    assert.equal(a.netto, erwartet, name);
+    const w = leiter.wirkung(d).titel;
+    assert.equal(w.ausgewertet, 1); assert.equal(w.mitKontrolle, 1); assert.equal(w.netto, erwartet, name);
+    assert.equal(d.prepare("SELECT stufe FROM leiter WHERE number = ?").get(ktr).stufe, "kontrolle", "die Kontrolle läuft weiter");
+  }
+});
+
+test("Kontrollzeit vorbei (alle drei Prüfzeiten): das Kontrollangebot verlässt die Gruppe und macht 90 Tage Pause", () => {
+  const d = neueDb();
+  leiter.nimmAuf(d, shop(), { ...EK, leiterMax: 1 }, T0, { seed: 7 });
+  const ktr = d.prepare("SELECT number FROM leiter WHERE stufe = 'kontrolle'").get().number;
+  assert.equal(leiter.kontrollTage(EK), 49);
+  leiter.werteAus(d, daten({}, "2027-01-07", { einst: EK }), tag(50));
+  assert.equal(zeile(d, ktr).stufe, "kontrolle", "ein Tag vor Schluss: noch in der Gruppe");
+  leiter.werteAus(d, daten({}, "2027-01-08", { einst: EK }), tag(51));
+  assert.equal(zeile(d, ktr).stufe, "raus"); assert.equal(zeile(d, ktr).ergebnis, "kontrolle");
+  const t = leiter.trichter(d, shop(), EK, tag(51)).liste.find((x) => x.number === ktr);
+  assert.equal(t.status, "raus"); assert.equal(t.art, "pause");
+});
+
+test("Funnel: jedes Produkt hat genau einen Status und einen Grund, in der Reihenfolge der Aufnahme", () => {
+  const d = neueDb();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0); // A auf die Leiter
+  const produkte = [...shop(), { number: "N", title: "neu", created_at: "2026-11-01T10:00:00Z", units_total: 0, units_90d: 0, impressionen_90d: 5, ebay_aktiv: 1 }];
+  const f = leiter.trichter(d, produkte, E, T0, { gesperrt: new Set(["D"]) });
+  const s = Object.fromEntries(f.liste.map((x) => [x.number, [x.status, x.art]]));
+  assert.deepEqual(s, { A: ["titel", null], B: ["geeignet", null], C: ["geeignet", null], D: ["nicht_geeignet", "gesperrt"], E: ["geeignet", null],
+    X: ["nicht_geeignet", "kein_ebay"], OK: ["nicht_geeignet", "genug"], N: ["nicht_geeignet", "neu"] });
+  assert.ok(f.liste.every((x) => x.grund && x.grund.length > 10), "jeder Status hat einen lesbaren Grund");
+  assert.equal(f.zahl.geeignet, 3); assert.equal(f.zahl.nicht_geeignet, 4); assert.equal(f.kpi.aufLeiter, 1);
+  assert.deepEqual(f.gruende, { kein_ebay: 1, gesperrt: 1, im_test: 0, neu: 1, genug: 1 });
+  assert.equal(f.kpi.impressionen90, 300 + 301 + 302 + 303 + 304 + 10 + 5000 + 5);
+  // "geeignet" im Funnel = genau die Kandidaten des nächsten Laufs
+  assert.deepEqual(f.liste.filter((x) => x.status === "geeignet").map((x) => x.number).sort(), leiter.kandidaten(d, produkte, E, T0, { gesperrt: new Set(["D"]) }).map((p) => p.number).sort());
 });

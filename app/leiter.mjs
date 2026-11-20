@@ -11,10 +11,20 @@
 // (Saison), sinkt sie, und ein Angebot gilt nicht fälschlich als gescheitert.
 // Jede Stufe ändert bei eBay erst nach Freigabe durch einen Admin. Was die Stufen bei eBay tun, steht in fuehreAus (unten).
 // Jede Funktion liefert { ok, wert } oder { ok: false, status, fehler }, wie die anderen Module.
+//
+// Kontrollgruppe (läuft immer mit, keine eigene Seite): Der tägliche Lauf zieht doppelt so viele Kandidaten, wie Plätze frei sind,
+// und lost sie je zur Hälfte auf die Leiter und in die Kontrollgruppe. Kontrollangebote bleiben bei eBay unverändert, so lange wie
+// die drei Prüfzeiten zusammen dauern. Bei jeder Auswertung einer Stufe misst die App dieselben Tage an der Kontrollgruppe: Steigt
+// der ganze Shop (Saison), steigt die Kontrolle mit, und der Nettoeffekt zeigt, was die Stufe selbst gebracht hat.
+import crypto from "node:crypto";
 import { bewerte, leiteSchwellenAb, EINSTELLUNGEN } from "./regeln.mjs";
+import { ziehe } from "./experimente.mjs";
+import { netto } from "./auswertung.mjs";
 import * as protokoll from "./protokoll.mjs";
 
 export const STUFEN = ["titel", "werbung", "preis", "pruefung"];
+export const KONTROLLE = "kontrolle";
+export const kontrollTage = (einst = EINSTELLUNGEN) => einst.leiterTageTitel + einst.leiterTageWerbung + einst.leiterTagePreis;
 export const ENTSCHEIDUNGEN = ["ueberarbeiten", "offline", "behalten"];
 // Nach so vielen Tagen darf ein Angebot, das die Leiter verlassen hat, wieder hinein (wenn es wieder wenig Impressionen hat)
 export const WIEDER_NACH_TAGEN = 90;
@@ -32,9 +42,9 @@ export function bereiteVor(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS leiter (
       number TEXT PRIMARY KEY,
-      stufe TEXT NOT NULL,                  -- titel | werbung | preis | pruefung | raus
-      phase TEXT NOT NULL,                  -- vorschlag (wartet auf Freigabe) | laeuft (Prüfzeit) | offen (manuelle Prüfung) | fertig
-      ergebnis TEXT,                        -- bei raus: erholt | ueberarbeiten | offline | behalten | abgebrochen
+      stufe TEXT NOT NULL,                  -- titel | werbung | preis | pruefung | kontrolle | raus
+      phase TEXT NOT NULL,                  -- vorschlag (wartet auf Freigabe) | laeuft (Prüfzeit) | offen (manuelle Prüfung) | kontrolle | fertig
+      ergebnis TEXT,                        -- bei raus: erholt | ueberarbeiten | offline | behalten | abgebrochen | kontrolle (Kontrollzeit vorbei)
       eingestiegen_at TEXT NOT NULL,
       stufe_start TEXT,                     -- Tag (JJJJ-MM-TT), an dem die Maßnahme der laufenden Stufe bei eBay live ging
       basis_imp_tag REAL,                   -- Impressionen je Tag in den 30 Tagen vor diesem Tag
@@ -77,17 +87,47 @@ export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date
 }
 
 // Nimmt neue Angebote auf, bis höchstens einst.leiterMax gleichzeitig auf der Leiter stehen. Gibt die neuen Nummern zurück.
+// Mit Kontrollgruppe (einst.leiterKontrolle): die nächsten 2 × frei Kandidaten werden per Los geteilt (ziehe aus experimente.mjs,
+// gleicher seed = gleiche Ziehung, der seed steht im Lebenslauf). Gibt die Nummern zurück, die auf die Leiter kamen.
 export function nimmAuf(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), optionen = {}) {
-  const frei = Math.max(0, einst.leiterMax - aktiveNummern(db).size);
-  const neu = kandidaten(db, produkte, einst, jetzt, optionen).slice(0, frei).map((p) => p.number);
-  db.transaction(() => { for (const n of neu) trageEin(db, n, null, "system", jetzt); })();
-  return neu;
+  const frei = Math.max(0, einst.leiterMax - aufLeiter(db));
+  const k = kandidaten(db, produkte, einst, jetzt, optionen);
+  if (!einst.leiterKontrolle) {
+    const neu = k.slice(0, frei).map((p) => p.number);
+    db.transaction(() => { for (const n of neu) trageEin(db, n, null, "system", jetzt); })();
+    return neu;
+  }
+  if (!frei) return [];
+  const seed = optionen.seed ?? crypto.randomInt(1, 2147483646);
+  const { test, kontrolle } = ziehe(k.slice(0, 2 * frei), 2 * frei, seed);
+  db.transaction(() => {
+    for (const p of test) trageEin(db, p.number, { seed }, "system", jetzt);
+    for (const p of kontrolle) trageEin(db, p.number, { seed }, "system", jetzt, KONTROLLE);
+  })();
+  return test.map((p) => p.number);
 }
 
-function trageEin(db, number, details, benutzer, jetzt) {
-  db.prepare("INSERT INTO leiter (number, stufe, phase, eingestiegen_at, aktualisiert_at) VALUES (?, 'titel', 'vorschlag', ?, ?) ON CONFLICT(number) DO UPDATE SET stufe = 'titel', phase = 'vorschlag', ergebnis = NULL, eingestiegen_at = excluded.eingestiegen_at, stufe_start = NULL, basis_imp_tag = NULL, vorschlag = NULL, aktualisiert_at = excluded.aktualisiert_at")
-    .run(number, jetzt.toISOString(), jetzt.toISOString());
-  verlauf(db, number, "titel", "aufgenommen", details, benutzer, jetzt);
+const aufLeiter = (db) => db.prepare("SELECT COUNT(*) n FROM leiter WHERE stufe NOT IN ('raus', 'kontrolle')").get().n;
+
+function trageEin(db, number, details, benutzer, jetzt, stufe = "titel") {
+  const phase = stufe === KONTROLLE ? KONTROLLE : "vorschlag", start = stufe === KONTROLLE ? tag(jetzt) : null;
+  db.prepare("INSERT INTO leiter (number, stufe, phase, eingestiegen_at, stufe_start, aktualisiert_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(number) DO UPDATE SET stufe = excluded.stufe, phase = excluded.phase, ergebnis = NULL, eingestiegen_at = excluded.eingestiegen_at, stufe_start = excluded.stufe_start, basis_imp_tag = NULL, vorschlag = NULL, aktualisiert_at = excluded.aktualisiert_at")
+    .run(number, stufe, phase, jetzt.toISOString(), start, jetzt.toISOString());
+  verlauf(db, number, stufe, stufe === KONTROLLE ? "kontrolle" : "aufgenommen", details, benutzer, jetzt);
+}
+
+// Kontrollangebote, deren Kontrollzeit die Tage von..bis ganz abdeckt: die Vergleichsgruppe für eine Stufe mit diesem Zeitfenster
+function kontrollGruppe(db, von, bis, einst) {
+  return db.prepare("SELECT number, stufe_start FROM leiter WHERE (stufe = 'kontrolle' OR ergebnis = 'kontrolle') AND stufe_start IS NOT NULL").all()
+    .filter((z) => z.stufe_start <= von && plusTage(z.stufe_start, kontrollTage(einst)) >= bis).map((z) => z.number);
+}
+// Impressionen je Tag der Kontrollgruppe vor (30 Tage) und während eines Zeitfensters, als Summe der Gruppe
+function kontrollVergleich(db, impTag, von, bis, einst) {
+  const nr = kontrollGruppe(db, von, bis, einst);
+  if (!nr.length) return null;
+  const vorher = nr.reduce((s, n) => s + impTag(n, plusTage(von, -BASIS_TAGE - 1), plusTage(von, -1)), 0);
+  const nachher = nr.reduce((s, n) => s + impTag(n, von, bis), 0);
+  return { anzahl: nr.length, vorher90: Math.round(vorher * 90), nachher90: Math.round(nachher * 90) };
 }
 
 // Admin wählt ein bestimmtes Angebot aus den Kandidaten (Auswahlliste auf der Seite Ladder) und setzt es sofort auf die Leiter,
@@ -233,7 +273,11 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
     const jeTag = impTag(z.number, z.stufe_start, ende);
     const hoch90 = Math.round(jeTag * 90);
     const erholt = hoch90 >= grenze90;
-    const details = { tage, vorher90: Math.round((z.basis_imp_tag ?? 0) * 90), nachher90: hoch90, grenze90: Math.round(grenze90), erholt };
+    const vorher90 = Math.round((z.basis_imp_tag ?? 0) * 90);
+    // Dieselben Tage an der Kontrollgruppe: Nettoeffekt = (Angebot nachher/vorher) / (Kontrolle nachher/vorher) − 1
+    const kontrolle = kontrollVergleich(db, impTag, z.stufe_start, ende, einst);
+    const nettoEffekt = kontrolle ? netto({ vorher: vorher90, nachher: hoch90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
+    const details = { tage, vorher90, nachher90: hoch90, grenze90: Math.round(grenze90), erholt, kontrolle, netto: nettoEffekt };
     db.transaction(() => {
       verlauf(db, z.number, z.stufe, "ausgewertet", details, "system", jetzt);
       if (erholt) setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "erholt" }, jetzt);
@@ -241,8 +285,71 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
     })();
     ergebnisse.push({ number: z.number, stufe: z.stufe, ...details });
   }
+  // Kontrollzeit vorbei (alle drei Prüfzeiten): das Angebot ist frei und darf nach 90 Tagen wieder aufgenommen werden
+  for (const z of db.prepare("SELECT * FROM leiter WHERE stufe = 'kontrolle' AND stufe_start IS NOT NULL").all()) {
+    if (trafficBis < plusTage(z.stufe_start, kontrollTage(einst))) continue;
+    db.transaction(() => {
+      setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: KONTROLLE }, jetzt);
+      verlauf(db, z.number, KONTROLLE, "kontrolle_ende", { tage: kontrollTage(einst) }, "system", jetzt);
+    })();
+  }
   return ergebnisse;
 }
+
+// Wirkung je Stufe gegen die Kontrollgruppe: alle Auswertungen dieser Stufe zusammen (Summe vorher/nachher der Angebote und der
+// jeweils gleichzeitigen Kontrollgruppe). Ohne Kontrollgruppe zählt die Auswertung nur bei "wieder gesehen", nicht im Nettoeffekt.
+export function wirkung(db) {
+  const aus = {};
+  for (const s of ["titel", "werbung", "preis"]) aus[s] = { ausgewertet: 0, erholt: 0, mitKontrolle: 0, vorher90: 0, nachher90: 0, kontrolleVorher90: 0, kontrolleNachher90: 0, netto: null };
+  for (const v of db.prepare("SELECT stufe, details FROM leiter_verlauf WHERE ereignis = 'ausgewertet'").all()) {
+    const d = json(v.details), w = aus[v.stufe];
+    if (!d || !w) continue;
+    w.ausgewertet++; if (d.erholt) w.erholt++;
+    if (!d.kontrolle) continue;
+    w.mitKontrolle++; w.vorher90 += d.vorher90; w.nachher90 += d.nachher90; w.kontrolleVorher90 += d.kontrolle.vorher90; w.kontrolleNachher90 += d.kontrolle.nachher90;
+  }
+  for (const w of Object.values(aus)) if (w.mitKontrolle) w.netto = netto({ vorher: w.vorher90, nachher: w.nachher90 }, { vorher: w.kontrolleVorher90, nachher: w.kontrolleNachher90 });
+  return aus;
+}
+
+// Der Funnel: wo steht jedes Produkt und warum. Die Prüfung läuft in derselben Reihenfolge wie die Aufnahme (kandidaten oben),
+// so dass "eligible" hier genau die Angebote sind, die der nächste Lauf nehmen würde.
+//   status: nicht_geeignet | geeignet | kontrolle | titel | werbung | preis | pruefung | erholt | raus
+//   art (nur bei nicht_geeignet): kein_ebay | gesperrt | im_test | pause | genug | neu
+export const STATUS = ["nicht_geeignet", "geeignet", KONTROLLE, ...STUFEN, "erholt", "raus"];
+export function trichter(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), { imTest = new Map(), gesperrt = new Set() } = {}) {
+  const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt);
+  const zeilen = new Map(db.prepare("SELECT * FROM leiter").all().map((z) => [z.number, z]));
+  const pauseBis = (z) => plusTage(z.aktualisiert_at.slice(0, 10), WIEDER_NACH_TAGEN);
+  const heute = tag(jetzt);
+  const liste = produkte.map((p) => {
+    const z = zeilen.get(p.number), b = bewerte(p, abgeleitet, jetzt);
+    const zeile = (status, grund, art = null) => ({ number: p.number, title: p.title ?? null, image_url: p.image_url ?? null, impressionen_90d: p.impressionen_90d ?? null, units_90d: p.units_90d ?? null, status, art, grund, phase: z?.phase ?? null });
+    if (z?.stufe === KONTROLLE) return zeile(KONTROLLE, `Control group since ${z.stufe_start}: stays unchanged on eBay until ${plusTage(z.stufe_start, kontrollTage(einst))}, so each step can be measured against it.`);
+    if (z && STUFEN.includes(z.stufe)) return zeile(z.stufe, PHASE_GRUND[z.phase] || "");
+    if (z?.stufe === "raus" && pauseBis(z) > heute) {
+      if (z.ergebnis === "erholt") return zeile("erholt", `Seen again after the ladder. Can come back after ${pauseBis(z)} if impressions drop again.`);
+      return zeile("raus", `${ERGEBNIS_GRUND[z.ergebnis] || "Left the ladder"}. Can come back after ${pauseBis(z)}.`, "pause");
+    }
+    if (p.ebay_aktiv === 0) return zeile("nicht_geeignet", "No active eBay listing, so the title cannot be changed.", "kein_ebay");
+    if (gesperrt.has(p.number)) return zeile("nicht_geeignet", "Part of a running price test in the shop. Changing the title now would mix two effects.", "gesperrt");
+    if (imTest.has(p.number)) return zeile("nicht_geeignet", "In a running title test.", "im_test");
+    if (b.gruppe === "warten") return zeile("nicht_geeignet", b.begruendung, "neu");
+    if (b.gruppe !== "sichtbarkeit") return zeile("nicht_geeignet", b.begruendung, "genug");
+    return zeile("geeignet", b.begruendung + " Waiting for a place on the ladder.");
+  });
+  const zahl = Object.fromEntries(STATUS.map((s) => [s, liste.filter((x) => x.status === s).length]));
+  const gruende = Object.fromEntries(["kein_ebay", "gesperrt", "im_test", "neu", "genug"].map((a) => [a, liste.filter((x) => x.status === "nicht_geeignet" && x.art === a).length]));
+  const summe = (f) => liste.filter(f).reduce((s, x) => s + (Number(x.impressionen_90d) || 0), 0);
+  const kpi = {
+    produkte: liste.length, impressionen90: summe(() => true),
+    aufLeiter: STUFEN.reduce((s, x) => s + zahl[x], 0), impressionenLeiter90: summe((x) => STUFEN.includes(x.status)),
+    impressionenKontrolle90: summe((x) => x.status === KONTROLLE), grenze90: Math.round(abgeleitet.wenigImpressionen90d),
+  };
+  return { zahl, gruende, kpi, liste };
+}
+const PHASE_GRUND = { vorschlag: "A suggestion is ready and waits for an admin's approval.", laeuft: "The change is live on eBay; the waiting time is running.", offen: "Title, ads and price did not help; an admin decides what happens." };
+const ERGEBNIS_GRUND = { ueberarbeiten: "Decided after the manual check: rework the listing", offline: "Decided after the manual check: take it offline", behalten: "Decided after the manual check: keep it as it is", abgebrochen: "Taken off the ladder by an admin", kontrolle: "Was in the control group" };
 
 // Admin entscheidet nach der manuellen Prüfung. Die App ändert dabei nichts bei eBay: "offline" ist ein Auftrag an den Admin.
 export function entscheide(db, nutzer, number, entscheidung, notiz, jetzt = new Date()) {
@@ -289,7 +396,9 @@ export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst =
     return { number: z.number, title: x.title ?? null, image_url: x.image_url ?? null, units_90d: x.units_90d ?? null, impressionen_90d: x.impressionen_90d ?? null,
       stufe: z.stufe, phase: z.phase, ergebnis: z.ergebnis, eingestiegen_at: z.eingestiegen_at, stufe_start: z.stufe_start, vorschlag: json(z.vorschlag), stand, verlauf: verlaeufe.get(z.number) || [] };
   });
-  const zahl = Object.fromEntries([...STUFEN, "raus"].map((s) => [s, zeilen.filter((z) => z.stufe === s).length]));
-  const raus = Object.fromEntries(["erholt", ...ENTSCHEIDUNGEN, "abgebrochen"].map((e) => [e, zeilen.filter((z) => z.ergebnis === e).length]));
-  return { zahl, raus, grenze90: Math.round(grenze90), trafficBis, max: einst.leiterMax, tage: { titel: einst.leiterTageTitel, werbung: einst.leiterTageWerbung, preis: einst.leiterTagePreis }, werbesatz: einst.werbesatz, preisSchritt: einst.preisSchritt, angebote: zeilen };
+  const zahl = Object.fromEntries([...STUFEN, KONTROLLE, "raus"].map((s) => [s, zeilen.filter((z) => z.stufe === s).length]));
+  const raus = Object.fromEntries(["erholt", ...ENTSCHEIDUNGEN, "abgebrochen", KONTROLLE].map((e) => [e, zeilen.filter((z) => z.ergebnis === e).length]));
+  return { zahl, raus, grenze90: Math.round(grenze90), trafficBis, max: einst.leiterMax, tage: { titel: einst.leiterTageTitel, werbung: einst.leiterTageWerbung, preis: einst.leiterTagePreis, kontrolle: kontrollTage(einst) },
+    kontrolleAn: !!einst.leiterKontrolle, werbesatz: einst.werbesatz, preisSchritt: einst.preisSchritt, wirkung: wirkung(db), angebote: zeilen };
 }
+export const anzahlKontrolle = (db) => db.prepare("SELECT COUNT(*) n FROM leiter WHERE stufe = 'kontrolle'").get().n;
