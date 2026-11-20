@@ -1,4 +1,4 @@
-// Tests der Auswertung für die Diagramme (auswertung.mjs) und ihrer Anbindung an Test-Detail und Demo.
+// Tests of the evaluation for the charts (auswertung.mjs) and its connection to the test detail and the demo.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -73,7 +73,7 @@ test("Demo: single listings add up exactly to the example's sums, verdict and ch
   assert.deepEqual(baueDemo(E).faelle[0].auswertung, d.faelle[0].auswertung, "gleiche Beispiele bei jedem Aufruf");
 });
 
-// ---- Anbindung an Test-Detail ----
+// ---- Connection to the test detail ----
 const JETZT = new Date("2026-11-10T12:00:00Z");
 const TAGE = (n) => new Date(JETZT.getTime() + n * 86400000);
 const shop = (faktor = 1) => Array.from({ length: 40 }, (_, i) => ({ number: "L" + String(i).padStart(2, "0"), title: "Niedrig " + i, created_at: "2025-12-01T10:00:00.000Z", units_90d: 1, units_total: 3, aufrufe_90d: 30, impressionen_90d: 100 + i, impressionen_30d: Math.round((30 + i) * faktor), aufrufe_30d: 3, transaktionen_30d: 1, image_url: null, avg_price: 5 }));

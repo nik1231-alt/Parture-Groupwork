@@ -1,6 +1,6 @@
-// Tests für die Beispiel-Urteile (demo.mjs): Die Vorführung zeigt erfundene Zahlen, gerechnet mit der ECHTEN Urteilsfunktion.
-// Hier wird geprüft, dass sie genau die drei gedachten Urteile ergeben und als Beispiel gekennzeichnet sind, damit niemand
-// sie für echte Ergebnisse hält.
+// Tests for the example verdicts (demo.mjs): the demo shows invented figures, calculated with the REAL verdict function.
+// This checks that they give exactly the three intended verdicts and are marked as an example, so that nobody
+// takes them for real results.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { baueDemo } from "./demo.mjs";

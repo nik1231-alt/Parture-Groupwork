@@ -1,5 +1,5 @@
-// Tests für den Regelprüfer (titel-regeln.mjs) und den KI-Titelvorschlag (ki-titel.mjs, mit einer nachgebauten KI, ohne Netz).
-// Die bösen Beispiele sind absichtlich so formuliert, wie eine KI sie schreiben würde.
+// Tests for the rule checker (titel-regeln.mjs) and the AI title suggestion (ki-titel.mjs, with a rebuilt AI, without network).
+// The bad examples are deliberately worded the way an AI would write them.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { pruefeTitel, markenIn } from "./titel-regeln.mjs";
@@ -43,7 +43,7 @@ test("Form: length, keyword lists, emojis, special characters, capital letters",
   assert.ok(regeln("2x Halter passend für Bosch L-Boxx ✅").includes("form"), "Emoji");
   assert.ok(regeln("2x Halter passend für Bosch L-Boxx!!!").includes("form"), "Ausrufezeichen");
   assert.ok(regeln("2x HALTER passend für Bosch L-Boxx").includes("form"), "Großbuchstaben");
-  // Füllwörter dürfen doppelt vorkommen, und was im alten Titel schon stand, bleibt erlaubt
+  // Filler words may occur twice, and what was already in the old title stays allowed
   assert.equal(pruefeTitel("Blende für Türgriff für BMW E30", "2x Blende passend für Türgriff für BMW E30").ok, true);
   assert.equal(pruefeTitel("Adapterplatte für Fritz!Box 7590", "Adapterplatte passend für Fritz!Box 7590 Wandhalterung").ok, true);
 });
@@ -55,7 +55,7 @@ test("Risky things from the old title do not block, but are shown as a note", ()
   assert.match(r.hinweise[0].text, /Top/);
 });
 
-// ---------- KI-Vorschlag mit nachgebauter Gemini-Antwort (kein Netz) ----------
+// ---------- AI suggestion with a rebuilt Gemini answer (no network) ----------
 const ENV = { GOOGLE_API_KEY: "test-schluessel" };
 function geminiMit(antwort, status = 200) {
   const f = async (url, opt) => { f.url = url; f.opt = opt; f.body = JSON.parse(opt.body); return { status, ok: status < 300, json: async () => antwort }; };
@@ -74,7 +74,7 @@ test("AI: the first suggestion that passes the rules is taken; the others are li
   assert.equal(r.wert.quelle, "ki");
   assert.equal(r.wert.titel, "Wandhalterung passend für Bosch L-Boxx, 2x Halter schwarz");
   assert.equal(r.wert.verworfen.length, 1);
-  // die Anfrage geht an Gemini, nennt den alten Titel und die Regeln und verlangt festes JSON; der Schlüssel steht im Kopf, nicht in der Adresse
+  // the request goes to Gemini, names the old title and the rules and demands fixed JSON; the key is in the header, not in the address
   assert.equal(f.url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent");
   assert.equal(f.opt.headers["x-goog-api-key"], "test-schluessel");
   assert.match(f.body.contents[0].parts[0].text, /Bosch L-Boxx/);
@@ -99,7 +99,7 @@ test("AI: if it refuses, the key is wrong or everything fails, the rule-based su
   assert.match(o.fehler, /GOOGLE_API_KEY/);
 });
 
-// Echte KI-Vorschläge vom 20.11.: die alte Regel verlangte nur irgendwo ein Bezugswort, "BMW X3 F25 … passend" ging durch.
+// Real AI suggestions of 20 Nov: the old rule demanded a reference word only somewhere, "BMW X3 F25 … passend" went through.
 test("Brands: the brand must come after \"passend für …\", not before; if it was already at the front of the old title, only a note", () => {
   const alt = "Aufbewahrungsbox Armlehne kompatibel mit BMW X3 F25";
   const vorne = pruefeTitel("BMW X3 F25 Armlehne Aufbewahrungsbox passend", alt);

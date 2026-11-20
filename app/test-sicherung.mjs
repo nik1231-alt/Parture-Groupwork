@@ -1,4 +1,4 @@
-// Tests für die Sicherung (app/sicherung.mjs): Online-Backup, Prüfung, Aufräumen, zweiter Ort, Zurückspielen.
+// Tests for the backup (app/sicherung.mjs): online backup, check, clean-up, second location, restore.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -65,7 +65,7 @@ test("Configuration: default paths and override by environment", () => {
   assert.equal(k.behalte, 14);
   assert.equal(k.ziel2, "");
   const k2 = konfiguration({ SICHERUNG_ORDNER: "/y", SICHERUNG_ZIEL2: "/z", SICHERUNG_BEHALTEN: "5", PM_APPDB: "/a.db" }, "/x");
-  // path.resolve, nicht der rohe String: auf Windows wird "/y" zu "C:\y" (Serverprobe 17.11.2026)
+  // path.resolve, not the raw string: on Windows "/y" becomes "C:\y" (server probe 17 Nov 2026)
   assert.equal(k2.ziel, path.resolve("/y")); assert.equal(k2.ziel2, path.resolve("/z")); assert.equal(k2.behalte, 5); assert.equal(k2.quellen[0].pfad, path.resolve("/a.db"));
   assert.equal(dateiName("app", new Date("2026-01-02T03:04:00Z")), "app-2026-01-02-0304.db");
 });

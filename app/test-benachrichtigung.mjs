@@ -1,9 +1,9 @@
-// Tests für die Telegram-Benachrichtigung: ohne Zugangsdaten passiert nichts, Fehler stören nie, der Token landet in keiner Ausgabe.
+// Tests for the Telegram notification: without credentials nothing happens, errors never disturb, the token ends up in no output.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { erzeuge } from "./benachrichtigung.mjs";
 
-// Erfundener Token, zur Laufzeit zusammengesetzt (sonst schlägt der Geheimnis-Scan an)
+// Invented token, assembled at run time (otherwise the secret scan would trigger)
 const ENV = { TELEGRAM_BOT_TOKEN: ["123456789", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi"].join(":"), TELEGRAM_CHAT_ID: "42" };
 
 test("without token and chat id: not configured, no network call", async () => {

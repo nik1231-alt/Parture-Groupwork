@@ -1,12 +1,12 @@
-// Tests für die Titelhilfe (titelhilfe.mjs): Sie schlägt nur Wörter vor, die in gut gesehenen Angeboten des eigenen Shops
-// vorkommen und im Titel noch fehlen; sie erfindet keine Titel. Die Daten unten sind so gebaut, dass das Ergebnis eindeutig ist.
+// Tests for the title help (titelhilfe.mjs): it suggests only words that occur in well-seen listings of the own shop
+// and are still missing in the title; it invents no titles. The data below is built so that the result is unambiguous.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { woerter, hinweiseFuer } from "./titelhilfe.mjs";
 import { TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 
 const p = (nr, title, imp) => ({ number: String(nr), title, impressionen_90d: imp });
-// 10 gut gesehene Angebote mit "halterung" und "magnetisch", 30 schlecht gesehene ohne
+// 10 well-seen listings with "halterung" and "magnetisch", 30 poorly seen ones without
 const daten = [
   ...Array.from({ length: 10 }, (_, i) => p(100 + i, `Handy Halterung magnetisch Auto Modell ${i}`, 5000 - i)),
   ...Array.from({ length: 30 }, (_, i) => p(200 + i, `Ständer Tisch Modell ${i}`, 10 + i)),

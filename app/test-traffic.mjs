@@ -1,4 +1,4 @@
-// Tests für den Traffic-Import (traffic.mjs). Kein Netz: eBay wird durch eine Ersatzfunktion nachgestellt.
+// Tests for the traffic import (traffic.mjs). No network: eBay is imitated by a substitute function.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { laDatum, addTage, tageListe, planeTage, zaehleAbweichungen, fensterSummen, abdeckung, holeTag, holeZeitraum, holeKontrolle, LimitFehler } from "./traffic.mjs";
@@ -49,7 +49,7 @@ test("Control: share of the account total that the listings explain", () => {
   assert.equal(abdeckung(tage, null, ["2026-11-10"]), null);
 });
 
-// ---------- Abruf mit Ersatz für eBay ----------
+// ---------- Fetch with a substitute for eBay ----------
 const antwort = (daten, status = 200) => ({ ok: status === 200, status, json: async () => daten });
 const bericht = (zeilen) => ({ header: { metrics: [{ key: "TOTAL_IMPRESSION_TOTAL" }, { key: "LISTING_VIEWS_TOTAL" }, { key: "TRANSACTION" }] }, records: zeilen.map(([id, i, a, t]) => ({ dimensionValues: [{ value: id }], metricValues: [{ value: i }, { value: a }, { value: t }] })) });
 

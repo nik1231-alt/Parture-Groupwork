@@ -1,6 +1,6 @@
-// Tests für das Dashboard (ergebnisse.mjs): Status je Phase, Nettoeffekt gegen die Kontrollgruppe (gleich wie leiter.werteAus),
-// Zwischenstand während der Prüfzeit, Kurve, einzelne Angebote besser/schlechter, Sonderfälle ohne Daten oder ohne Kontrolle.
-// Reine Rechnung mit erfundenen Tageswerten; keine Datenbank, kein Netz.
+// Tests for the dashboard (ergebnisse.mjs): status per phase, net effect against the control group (same as leiter.werteAus),
+// interim state during the waiting time, curve, single listings better/worse, special cases without data or without a control.
+// Pure calculation with invented daily values; no database, no network.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { baueDashboard, benoetigt, BASIS_TAGE } from "./dashboard.mjs";
@@ -10,7 +10,7 @@ import { netto } from "./auswertung.mjs";
 const E = { ...EINSTELLUNGEN, leiterTageTitel: 4, leiterTageWerbung: 4, leiterTagePreis: 4 };
 const plusTage = (t, n) => new Date(Date.parse(t + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 const START = "2026-11-20";
-// Tageswerte: vor dem Start "vorher" Impressionen je Tag, danach "nachher"; Aufrufe und Verkäufe als Anteil
+// Daily values: before the start "vorher" impressions per day, afterwards "nachher"; views and sales as a share
 function reihe(vorher, nachher, { aufVorher = 0.03, aufNachher = 0.03, trans = 0, start = START, von = -40, bis = 10 } = {}) {
   const m = new Map();
   for (let i = von; i <= bis; i++) { const imp = i <= 0 ? vorher : nachher; m.set(plusTage(start, i), { imp, auf: imp * (i <= 0 ? aufVorher : aufNachher), trans: i > 0 ? trans : 0 }); }
@@ -31,7 +31,7 @@ test("Finished phase: net effect as in the ladder, final status, all figures per
   assert.equal(p.gelaufen, 4); assert.equal(p.angebote, 2); assert.equal(p.kontrolleAnzahl, 2);
   assert.equal(p.test.vorher.imp, 3); assert.equal(p.test.nachher.imp, 6);
   assert.ok(Math.abs(p.kontrolle.nachher.imp - 3.3) < 1e-9);
-  // dieselbe Formel wie leiter.werteAus / auswertung.netto: (6/3) / (3.3/3) − 1
+  // the same formula as leiter.werteAus / auswertung.netto: (6/3) / (3.3/3) − 1
   assert.ok(Math.abs(p.netto.imp - netto({ vorher: 3, nachher: 6 }, { vorher: 3, nachher: 3.3 })) < 1e-9);
   assert.ok(Math.abs(p.netto.imp - (2 / 1.1 - 1)) < 1e-9, "+82 %");
   assert.equal(p.besser, 2); assert.equal(p.schlechter, 0); assert.equal(p.gleich, 0);
@@ -47,7 +47,7 @@ test("Running phase: interim figures only over days with finished data, status p
 });
 
 test("Curve: 100 = average of the 7 days before, aligned per listing at its own start day, missing start day", () => {
-  // B startet einen Tag später als A: beide steigen am eigenen Tag 1 auf das Doppelte
+  // B starts one day later than A: both double on their own day 1
   const g = grund();
   g.starts[1] = { number: "B", stufe: "titel", tag: plusTage(START, 1), vonHand: false };
   g.tage.set("B", reihe(3, 6, { start: plusTage(START, 1) }));

@@ -1,4 +1,4 @@
-// Test des echten Servers: Was darf ein Builder, was nur ein Admin? Es wird nie bei eBay geschrieben (keine Zugangsdaten, EBAY_SCHREIBEN aus).
+// Test of the real server: what may a builder do, what only an admin? Nothing is ever written to eBay (no credentials, EBAY_SCHREIBEN off).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -16,7 +16,7 @@ const appdb = path.join(verz, "app.db");
   const d = new Database(appdb); bereiteVor(d);
   legeBenutzerAn(d, "niko", "ein-langes-passwort", new Date("2026-11-01T10:00:00Z"));
   legeBenutzerAn(d, "anna", "ein-langes-passwort", new Date("2026-11-02T10:00:00Z"));
-  rollen.bereiteVor(d); // der älteste Benutzer (niko) wird Admin, anna ist Builder
+  rollen.bereiteVor(d); // the oldest user (niko) becomes admin, anna is a builder
   d.close();
 }
 const basis = `http://127.0.0.1:${PORT}`;
@@ -26,7 +26,7 @@ test.before(async () => {
   for (let i = 0; i < 900; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
-// Erst auf das Ende des Servers warten, dann löschen: unter Windows hält der laufende Prozess app.db offen (EBUSY)
+// First wait for the end of the server, then delete: on Windows the running process keeps app.db open (EBUSY)
 test.after(async () => {
   if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
   fs.rmSync(verz, { recursive: true, force: true });

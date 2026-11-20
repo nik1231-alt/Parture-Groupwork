@@ -1,4 +1,4 @@
-// Test des echten Servers: startet ihn mit einer Wegwerf-Datenbank und prüft, was ohne und mit Anmeldung möglich ist.
+// Test of the real server: starts it with a throw-away database and checks what is possible without and with a login.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -20,8 +20,8 @@ test.before(async () => {
   for (let i = 0; i < 900; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
-// Erst auf das Ende des Servers warten, dann löschen: unter Windows hält der laufende Prozess app.db offen (EBUSY beim rmSync,
-// Parture-Server 18.11.2026) — dieselbe Falle wie in test-betrieb-http.mjs.
+// First wait for the end of the server, then delete: on Windows the running process keeps app.db open (EBUSY on rmSync,
+// Parture server, 18 Nov 2026) — the same trap as in test-betrieb-http.mjs.
 test.after(async () => {
   if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
   fs.rmSync(verz, { recursive: true, force: true });
@@ -72,13 +72,13 @@ test("with login: cookie is HttpOnly and SameSite=Strict, pages and data are rea
   const cookie = c.split(";")[0];
   const seite = await fetch(basis + "/", { headers: { Cookie: cookie } });
   assert.match(await seite.text(), /Listings/);
-  // Nach einem Ausrollen muss sofort die neue Oberfläche kommen (Cloudflare hielt sonst bis zu 2 h das alte app.js)
+  // After a rollout the new interface must come at once (Cloudflare otherwise kept delivering the old app.js for up to 2 h)
   for (const p of ["/", "/app.js", "/app.css"]) assert.equal((await fetch(basis + p, { headers: { Cookie: cookie } })).headers.get("cache-control"), "no-cache", p);
-  // Die Versionsangabe der Skripte ist der laufende Stand, nicht der feste Wert aus der Datei (sonst blieb nach #43 das alte app.js)
+  // The version number of the scripts is the running version, not the fixed value from the file (otherwise the old app.js stayed after #43)
   const html = await (await fetch(basis + "/", { headers: { Cookie: cookie } })).text();
   assert.match(html, /\/app\.js\?v=[\w.-]+"/); assert.doesNotMatch(html, /\?v=2026-11-20/);
   assert.equal((await fetch(basis + "/api/einstellungen", { headers: { Cookie: cookie } })).status, 200);
-  // Seite Results: beide Teile (je Lauf aus #47, Tag für Tag aus #48) antworten auch ohne Traffic-Daten, das Skript wird ausgeliefert
+  // Page Results: both parts (per run from #47, day by day from #48) also answer without traffic data, the script is delivered
   for (const p of ["/api/ergebnisse", "/api/ergebnisse/beispiel", "/api/dashboard", "/dashboard.js"]) assert.equal((await fetch(basis + p, { headers: { Cookie: cookie } })).status, 200, p);
   const ich = await (await fetch(basis + "/api/ich", { headers: { Cookie: cookie } })).json();
   assert.deepEqual([ich.daten.angemeldet, ich.daten.name], [true, "anna"]);

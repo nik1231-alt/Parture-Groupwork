@@ -1,5 +1,5 @@
-// Tests für die Seite Results (ergebnisse.mjs, ergebnisse-demo.mjs): Läufe getrennt auswerten, Urteil "klarer Anstieg / Rückgang / nicht von Zufall
-// zu unterscheiden / zu früh", die Zahlen stimmen mit der Seite Funnel (leiter.wirkung) überein, Randfälle und die Beispielansicht mit erfundenen Zahlen.
+// Tests for the page Results (ergebnisse.mjs, ergebnisse-demo.mjs): evaluate runs separately, verdict "clear increase / decrease / not distinguishable from chance
+// / too early", the figures agree with the page Funnel (leiter.wirkung), edge cases and the example view with invented figures.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -10,7 +10,7 @@ import { EINSTELLUNGEN } from "./regeln.mjs";
 
 const nahe = (a, b, msg, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${msg ?? ""} ${a} != ${b}`);
 const K = (v, n) => ({ anzahl: 20, vorher90: v, nachher90: n });
-// Ein Angebot mit einer Auswertung in einer Phase (details wie in leiter.werteAus); tag = Tag, an dem es auf die Leiter kam
+// A listing with one evaluation in a phase (details as in leiter.werteAus); tag = day on which it came onto the ladder
 const angebot = (number, stufe, vorher90, nachher90, kontrolle, tag = "2026-10-01", erholt = false) => ({
   number, title: "Listing " + number, stufe: "pruefung", phase: "fertig", ergebnis: null, eingestiegen_at: tag + "T06:00:00.000Z",
   verlauf: [{ stufe, ereignis: "ausgewertet", at: "2026-10-20T06:00:00.000Z", details: { vorher90, nachher90, erholt, kontrolle, netto: kontrolle ? (nachher90 / vorher90) / (kontrolle.nachher90 / kontrolle.vorher90) - 1 : null } }],

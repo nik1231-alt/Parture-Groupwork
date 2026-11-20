@@ -1,5 +1,5 @@
-// Oberfläche nur englisch (Checkliste A1.11): sichtbare Texte in public/ und Fehlermeldungen der Module, die bei der Oberfläche
-// ankommen, enthalten keine Umlaute und kein ß. Kommentare dürfen deutsch bleiben, deshalb werden sie vorher entfernt.
+// Interface English only (checklist A1.11): visible texts in public/ and error messages of the modules that reach the interface
+// contain no umlauts and no ß. Comments are English as well; they are removed beforehand anyway so that only strings are checked.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -8,8 +8,8 @@ import path from "node:path";
 const WURZEL = path.join(import.meta.dirname, "..");
 const DEUTSCH = /[äöüÄÖÜß]/;
 
-// Zerlegt JavaScript grob in Zeichenketten ('…', "…", `…`) und überspringt Kommentare. Regex-Literale werden nicht erkannt;
-// in den Dateien hier enthält keines ein Anführungszeichen, und ein Fehlgriff würde den Test eher rot als falsch grün machen.
+// Splits JavaScript roughly into strings ('…', "…", `…`) and skips comments. Regex literals are not recognised;
+// none of the files here contains a quotation mark in one, and a mistake would make the test turn red rather than wrongly green.
 function zeichenketten(quelle) {
   const aus = []; let i = 0;
   while (i < quelle.length) {
@@ -49,7 +49,7 @@ test("public/*.html: no umlauts or ß outside comments", () => {
 });
 
 test("app/*.mjs: error messages to the interface (new Error, fehler(status, …)) are English", () => {
-  // Nur Dateien, deren Meldungen über den Server bei der Oberfläche ankommen (Befehlszeilen-Werkzeuge wie benutzer.mjs und waechter.mjs bleiben deutsch)
+  // Only files whose messages reach the interface through the server (command-line tools such as benutzer.mjs and waechter.mjs are English too, but do not reach the interface)
   const ui = ["auswertung", "bewertung", "demo", "ebay-schreiben", "einstellungen", "experimente", "export-ebay", "freigabe", "login", "protokoll", "regeln", "rollen", "server", "sicherung", "titelhilfe", "traffic"];
   const muster = /(?:new Error|fehler)\(\s*(?:\d+\s*,\s*)?(["'`])((?:\\.|(?!\1).)*)\1/g;
   const woerter = /\b(nicht|nur|fehlt|gefunden|antwortet|bitte|unter|kein|keine|ungültig)\b/i;

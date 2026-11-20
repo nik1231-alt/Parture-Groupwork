@@ -1,11 +1,11 @@
-// Tests für die Seite Problem (problem.mjs): Konzentration (wie viele Produkte bringen 80 %), Verteilung in Stufen mit der
-// Grenze der Diagnose als Kante und die vier Felder gesehen × verkauft. Reine Rechnung, kleine Beispieldaten.
+// Tests for the page Problem (problem.mjs): concentration (how many products bring 80 %), distribution into bands with the
+// diagnosis limit as an edge, and the four fields seen × sold. Pure calculation, small example data.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { konzentration, stufen, auswerten } from "./problem.mjs";
 
 test("Concentration: 80 % of the sum comes from the fewest products needed for it", () => {
-  // 10 Produkte: eines bringt 80, der Rest je 2 + 2 Nullen → Summe 80 + 7×2 + 0 = 94
+  // 10 products: one brings 80, the rest 2 each + 2 zeros → sum 80 + 7×2 + 0 = 94
   const k = konzentration([80, 2, 2, 2, 2, 2, 2, 2, 0, 0]);
   assert.equal(k.summe, 94);
   assert.equal(k.null, 2);
