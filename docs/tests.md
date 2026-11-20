@@ -16,6 +16,7 @@ test touches `pm.db` or `app.db`: each one builds a throwaway database in memory
 | `server.mjs` (browser safety) | `test-xss.mjs`, `test-fehlerbilder-http.mjs`, `test-betrieb-http.mjs`, `test-durchlauf.mjs` | no `innerHTML`, strict CSP, foreign origin refused, broken JSON refused, a full run from builder to admin through the real server; builder cannot change settings (403) |
 | `regeln.mjs`, `einstellungen.mjs`, `bewertung.mjs` | `test.mjs` (51), `test-los.mjs` | diagnosis limits, settings out of range refused, block list, the lot is fair and repeatable |
 | `auswertung.mjs`, `demo.mjs` | `test-auswertung.mjs`, `test-demo.mjs` | net effect, outliers, the example verdicts |
+| `ergebnisse.mjs`, `ergebnisse-demo.mjs` | `test-ergebnisse.mjs` | verdict per phase, same numbers as the Funnel page, too few listings, no control group, impressions over time, the example view |
 | `traffic.mjs`, `sicherung.mjs`, `waechter.mjs` | `test-traffic.mjs`, `test-sicherung.mjs`, `test-waechter.mjs` | data lag, backup and restore, deploy only after green tests, rollback, restart of a hanging app (in temporary git repositories) |
 | `benachrichtigung.mjs`, `titelhilfe.mjs` | `test-benachrichtigung.mjs`, `test-titelhilfe.mjs` | messages only with a token; title help suggests only words that exist |
 | `public/` | `test-oberflaeche.mjs` | every visible text is English |

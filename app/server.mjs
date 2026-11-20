@@ -15,6 +15,8 @@ import * as rollen from "./rollen.mjs";
 import * as protokoll from "./protokoll.mjs";
 import * as freigabe from "./freigabe.mjs";
 import * as ebaySchreiben from "./ebay-schreiben.mjs";
+import { baueErgebnisse } from "./ergebnisse.mjs";
+import { baueDemoErgebnisse } from "./ergebnisse-demo.mjs";
 import { baueDemo } from "./demo.mjs";
 import * as titelhilfe from "./titelhilfe.mjs";
 import * as sicherung from "./sicherung.mjs";
@@ -78,6 +80,12 @@ const leiterKontext = (nummer) => mitDb((db) => {
   let varianten = []; try { varianten = JSON.parse(db.prepare("SELECT variant_meta FROM produkt WHERE number = ?").get(nummer)?.variant_meta || "null")?.values || []; } catch { /* ohne Varianten */ }
   return { kanaele, varianten };
 });
+// Impressionen je Kalendertag eines Produkts zwischen zwei Tagen (einschließlich), für den Verlauf auf der Seite Results
+const tageswerte = (nummer, von, bis) => mitDb((db) => {
+  if (!tabelleDa(db, "traffic_tag")) return {};
+  return Object.fromEntries(db.prepare("SELECT datum, SUM(impressionen) s FROM traffic_tag WHERE number = ? AND datum >= ? AND datum <= ? GROUP BY datum").all(nummer, von, bis).map((r) => [r.datum, r.s || 0]));
+});
+const ersterTrafficTag = () => { try { return mitDb((db) => (tabelleDa(db, "traffic_tag") ? db.prepare("SELECT MIN(datum) d FROM traffic_tag").get()?.d ?? null : null)); } catch { return null; } };
 const leiterDaten = (produkte = produkteLaden()) => ({ impTag, trafficBis: trafficBis(), grenze90: leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d, einst: einst(), fuer: leiterKontext });
 // KI-Titelvorschlag für ein Produkt auf Stufe 1 (geht durch den Regelprüfer, siehe ki-titel.mjs)
 async function titelVorschlag(nummer, produkte, wer) {
@@ -341,6 +349,12 @@ const ROUTEN = {
   },
   // Seite Problem: wie ungleich Sichtbarkeit und Verkäufe verteilt sind (problem.mjs), live aus derselben Produktliste
   "/api/problem": () => { const produkte = produkteLaden(); return problem.auswerten(produkte, leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d); },
+  // Seite Results: Wirkung jeder Phase der Leiter auf die Impressionen (ergebnisse.mjs); das Beispiel hat erfundene Zahlen und zeigt, wie man es liest
+  "/api/ergebnisse": () => {
+    const produkte = produkteLaden(), daten = leiterDaten(produkte);
+    return baueErgebnisse(leiter.uebersicht(appDb(), produkte, daten), tageswerte, { besserAb: daten.einst.besserAb, bis: daten.trafficBis, ab: ersterTrafficTag() });
+  },
+  "/api/ergebnisse/beispiel": () => baueDemoErgebnisse(einst()),
   "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal WHERE channel = 'ebay' GROUP BY channel ORDER BY produkte DESC").all()),
   // Live-Stand vom Hub (nur auf dem Server, lokal fehlt HUB_URL): dieselbe Whitelist, aber Stand jetzt statt 04:30.
   "/api/live": async () => {
