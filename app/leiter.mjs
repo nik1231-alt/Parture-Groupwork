@@ -444,6 +444,24 @@ export function setzeZurueck(db, nutzer, grund, jetzt = new Date()) {
   return ok({ zurueckgesetzt: weg.length, behalten: zeilen.length - weg.length });
 }
 
+// Schon bei eBay verkaufte Angebote, die vor der Regel leiterNurOhneVerkauf auf die Leiter kamen (Niko 20.11.: "wieso ist das
+// Produkt im Funnel, wenn wir es schon verkauft haben"), gehen wieder runter — aber nur, solange bei eBay nichts geändert wurde.
+// Gilt für Phase und Kontrolle gleich, sonst stünden in der Kontrollgruppe verkaufte gegen nie verkaufte Angebote.
+export function raeumeVerkaufteAb(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date()) {
+  if (einst.leiterNurOhneVerkauf === "nein") return [];
+  const nach = new Map(produkte.map((p) => [p.number, p]));
+  const weg = db.prepare("SELECT * FROM leiter WHERE stufe != 'raus'").all().filter((z) => nach.has(z.number) && schonVerkauft(nach.get(z.number), einst) && !geaendert(db, z));
+  if (!weg.length) return [];
+  db.transaction(() => {
+    for (const z of weg) {
+      db.prepare("DELETE FROM leiter WHERE number = ?").run(z.number);
+      verlauf(db, z.number, z.stufe, "zurueckgesetzt", { grund: `Already sold on eBay (${Number(nach.get(z.number).units_total)} in total), so it is left alone. Nothing had been changed on eBay.`, automatisch: true }, "system", jetzt);
+    }
+  })();
+  protokoll.schreibe(db, { benutzer: "system", aktion: "ladder_sold_removed", objekt: "ladder", details: { entfernt: weg.length, nummern: weg.map((z) => z.number).slice(0, 100) } }, jetzt);
+  return weg.map((z) => z.number);
+}
+
 // Angebote, die bei eBay schon beworben werden, sind für Phase 2 nicht berechtigt (Niko 20.11.) und springen direkt in die
 // Preisstufe. info: { kampagnen: [Name] } aus ebay-schreiben.istBeworben. Ändert nichts bei eBay.
 export function springeUeberWerbung(db, number, info, einst = EINSTELLUNGEN, kontext = {}, jetzt = new Date()) {

@@ -162,6 +162,7 @@ async function leiterLauf(wer, art = "tag", ziehen = {}) {
   leiterLaeuft = true;
   try {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
+    const entfernt = leiter.raeumeVerkaufteAb(appDb(), produkte, daten.einst); // vor dem Ziehen: schon bei eBay verkaufte gehen runter
     const automatisch = daten.einst.leiterBewegung === "automatisch";
     const bewerten = automatisch && art !== "ziehen", aufnehmen = automatisch || art === "ziehen";
     const ausgewertet = bewerten || aufnehmen ? leiter.werteAus(appDb(), { ...daten, nurKontrolle: !bewerten }) : [];
@@ -170,7 +171,7 @@ async function leiterLauf(wer, art = "tag", ziehen = {}) {
     if (bewerten) await werbungSpruenge(); // automatisch weiter in Phase 2: schon beworbene springen gleich in die Preisstufe
     let vorschlaege = 0, ohne = 0;
     for (const n of leiter.ohneTitelVorschlag(appDb())) { const r = await titelVorschlag(n, produkte, "system"); if (r.ok) vorschlaege++; else ohne++; }
-    const details = { ausgewertet: ausgewertet.length, erholt: ausgewertet.filter((a) => a.erholt).length, aufgenommen: neu.length, kontrolle: leiter.anzahlKontrolle(appDb()) - kontrolleVorher, bewegung: automatisch ? "automatisch" : "hand", art, titelVorschlaege: vorschlaege, ohneVorschlag: ohne, ki: ki.konfiguriert() };
+    const details = { ausgewertet: ausgewertet.length, erholt: ausgewertet.filter((a) => a.erholt).length, aufgenommen: neu.length, verkaufteEntfernt: entfernt.length, kontrolle: leiter.anzahlKontrolle(appDb()) - kontrolleVorher, bewegung: automatisch ? "automatisch" : "hand", art, titelVorschlaege: vorschlaege, ohneVorschlag: ohne, ki: ki.konfiguriert() };
     protokoll.schreibe(appDb(), { benutzer: wer, rolle: wer === "system" ? null : "admin", aktion: "ladder_run", objekt: "ladder", details });
     return details;
   } catch (e) {
@@ -641,6 +642,8 @@ server.listen(PORT, "127.0.0.1", () => {
   if (SICH_AUTO) { setTimeout(pruefeSicherung, 45e3).unref(); setInterval(pruefeSicherung, 15 * 60e3).unref(); }
   if (LEITER_AUTO) { setTimeout(pruefeLeiter, 60e3).unref(); setInterval(pruefeLeiter, 15 * 60e3).unref(); }
   // Liste der beworbenen eBay-Angebote (Phase 2 nur für nicht beworbene): beim Start und alle 6 Stunden
+  // Nach jedem Ausrollen einmal: schon bei eBay verkaufte Angebote ohne eBay-Änderung von der Leiter (leiter.raeumeVerkaufteAb)
+  setTimeout(() => { try { const p = produkteLaden(); leiter.raeumeVerkaufteAb(appDb(), p, leiterDaten(p).einst); } catch (e) { console.error("Leiter aufräumen:", e.message); } }, 20e3).unref();
   if (schreiber.konfiguriert()) { setTimeout(() => aktualisiereWerbung().catch(() => {}), 30e3).unref(); setInterval(() => aktualisiereWerbung().catch(() => {}), 6 * 3600e3).unref(); }
   if (TRAFFIC_AUTO) { console.log(`Automatischer Traffic-Import: täglich ab ${TRAFFIC_UHR}:00 Uhr (Verzögerung ${verzoegerungTage()} Tage).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
 });
