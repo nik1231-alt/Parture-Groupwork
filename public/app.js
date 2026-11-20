@@ -17,6 +17,10 @@ function el(tag, props = {}, ...kinder) {
   return n;
 }
 
+// Wie replaceChildren, aber Listen werden ausgepackt und null/false weggelassen (replaceChildren selbst schreibt sie als Text hin:
+// so stand auf der Seite Ladder "[object HTMLDivElement]" statt der Karten und "null" darunter)
+const fuelle = (ziel, ...kinder) => ziel.replaceChildren(...kinder.flat(Infinity).filter((k) => k != null && k !== false));
+
 const LOCALE = "en-GB";
 const zahl = (v) => (v == null ? "–" : Number(v).toLocaleString(LOCALE));
 const eur = (v) => (v == null ? "–" : Number(v).toLocaleString(LOCALE, { style: "currency", currency: "EUR" }));
@@ -64,7 +68,7 @@ async function kopiere(text) {
 function zeigeFehler(e, erneut) {
   const box = $("#fehler");
   box.hidden = false;
-  box.replaceChildren(el("strong", { text: "Something went wrong. " }), document.createTextNode(e.message + " "), erneut ? el("button", { class: "knopf", type: "button", onclick: erneut, text: "Try again" }) : null);
+  fuelle(box, el("strong", { text: "Something went wrong. " }), document.createTextNode(e.message + " "), erneut ? el("button", { class: "knopf", type: "button", onclick: erneut, text: "Try again" }) : null);
 }
 // Zweistufiger Knopf für Folgenreiches: erster Klick fragt nach, zweiter führt aus (nach 4 Sekunden zurück)
 function zweiStufig(knopf, frage, aktion) {
@@ -167,7 +171,7 @@ function zeichneTabs() {
     class: "tab", type: "button", role: "tab", "aria-selected": String(zustand.tab === schluessel), title: hinweis,
     onclick: () => { zustand.tab = schluessel; zustand.sichtbar = SEITENGROESSE; zeichneListings(); },
   }, punkt ? el("span", { class: "punkt", style: `--punkt: var(--g-${punkt})` }) : null, name, el("span", { class: "tab-zahl", text: zahl(anzahl) }));
-  $("#tabs").replaceChildren(
+  fuelle($("#tabs"), 
     ...Object.entries(gruppen).map(([k, g]) => tab(k, g.label, uebersicht[k], k, g.regel)),
     tab("alle", "All", summe.produkte, null, "All listings"));
 }
@@ -253,7 +257,7 @@ function zeichneTestUebersicht() {
     try { const r = await post("/api/experiment", {}); location.hash = "tests/" + r.id; }
     catch (e) { neu.disabled = false; meldung(e.message); }
   });
-  root.replaceChildren(
+  fuelle(root, 
     el("div", { class: "einstieg" }, el("h1", { text: "Tests" }),
       el("p", { class: "leise", text: "A test changes the titles of half of a group of listings and compares them with the other half after the same time. That shows whether the change really helped, or whether the whole shop just had a good month." })),
     schritteListe(-1, 0),
@@ -288,7 +292,7 @@ function zeichneDetail(d) {
   const alleTitel = d.anzahl.titel === d.anzahl.test;
   const aktuell = d.status === "prepared" ? (alleTitel ? 2 : 1) : d.status === "approval" ? 2 : d.status === "running" ? 3 : d.status === "ready" ? 4 : 6;
   const fertig = d.status === "closed" ? 6 : aktuell;
-  root.replaceChildren(
+  fuelle(root, 
     zurueck(),
     el("div", { class: "kopf-zeile", style: "margin: 8px 0 16px" }, el("div", {}, el("h1", { text: d.name }), el("p", { class: "leise klein", text: `${d.anzahl.test} test + ${d.anzahl.kontrolle} control listings · drawn ${datum(d.erstellt_at)} (draw number ${d.seed}) · lever: title and search terms` })), badge(d)),
     schritteListe(d.status === "closed" ? -1 : aktuell, fertig),
@@ -495,7 +499,7 @@ async function ladeFreigaben() {
     const f = await api("/api/freigaben");
     const offene = f.aenderungen.filter((a) => a.status === "offen" || a.status === "fehlgeschlagen").map((a) => a.experiment_id + ":" + a.art);
     const gruppiert = (offenFlag) => gruppenKarten(f, (a) => offene.includes(a.experiment_id + ":" + a.art) === offenFlag, ladeFreigaben);
-    root.replaceChildren(
+    fuelle(root, 
       el("div", { class: "einstieg" }, el("h1", { text: "Approvals" }),
         el("p", { class: "leise", text: `Builders propose new titles. An admin checks them here and approves. Only then does the app change the title on eBay, and every change is written to the Log. A single approval changes at most ${f.maxAenderungen} listings.` })),
       f.schreibenAn
@@ -518,7 +522,7 @@ const EREIGNIS_TEXT = { aufgenommen: "Entered the ladder (low impressions)", vor
 async function ladeLeiter() {
   const root = $("#ansicht-ladder");
   try { zeichneLeiter(await api("/api/leiter")); }
-  catch (e) { zeigeFehler(e, ladeLeiter); root.replaceChildren(); }
+  catch (e) { zeigeFehler(e, ladeLeiter); fuelle(root); }
 }
 async function leiterAktion(pfad, body, ok) {
   try { const r = await post(pfad, body); meldung(typeof ok === "function" ? ok(r) : ok); } catch (e) { meldung(e.message); }
@@ -533,22 +537,42 @@ function zeichneLeiter(l) {
   const fertig = l.angebote.filter((a) => a.stufe === "raus");
   const laufKnopf = istAdmin() ? el("button", { class: "knopf knopf-akzent", type: "button", disabled: st.laeuft, text: st.laeuft ? "Running …" : "Run the ladder now",
     onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/lauf", {}, (r) => `Done: ${r.aufgenommen} entered, ${r.ausgewertet} checked (${r.erholt} seen again), ${r.titelVorschlaege} title suggestions.`); } }) : null;
-  root.replaceChildren(
+  const schalter = (name, an, text) => el("li", {}, name + ":", el("span", { class: an ? "an" : "aus", text }));
+  const abschnitt = (titel, n) => el("div", { class: "abschnitt-kopf" }, el("h2", {}, titel, el("span", { class: "zahl-pille", text: String(n) })));
+  fuelle(root,
     el("div", { class: "einstieg" }, el("h1", { text: "Ladder" }),
-      el("p", { class: "leise", text: `Listings with low impressions climb step by step: first a new title, then ads, then a lower price. After each step the app waits, then checks whether the listing is seen again (at least ${zahl(l.grenze90)} impressions in 90 days, the limit of the diagnosis). If yes, it leaves the ladder; if not, the next step follows. After the third step a person checks the listing. Nothing changes on eBay without an admin's approval.` })),
+      el("p", { class: "leise", text: `Listings with low impressions climb step by step: a new title, then ads, then a lower price. After each step the app waits and checks whether buyers see the listing again (at least ${zahl(l.grenze90)} impressions in 90 days). If yes, it leaves the ladder; if not, the next step follows. Nothing changes on eBay without an admin's approval.` })),
     trichter(l),
-    el("div", { class: "panel" },
-      el("p", { class: "leise klein", text: [
-        st.ki ? `Titles: AI (${st.kiModell}), every suggestion passes the rule check first` : "Titles: no AI key on this computer, suggestions come from the title help",
-        `ads on eBay: ${st.werbungAn ? "on" : "off (dry run)"}`, `price changes on eBay: ${st.preisAn ? "on" : "off (dry run)"}`,
-        st.automatisch ? `runs daily from ${st.uhrzeit}:00` : "daily run is off", `last run: ${st.letzterLauf ? zeitpunkt(st.letzterLauf) : "never"}${st.letzterFehler ? " (failed, see Log)" : ""}`,
-        `${zahl(l.kandidaten)} more listings are waiting for a place (at most ${l.max} at a time)`].join(" · ") }),
-      laufKnopf ? el("div", { class: "aktionen" }, laufKnopf) : null),
-    el("h2", { text: `Waiting for a decision (${warten.length})`, style: "margin: 18px 0 10px" }),
-    warten.length ? warten.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "Nothing is waiting." }),
-    el("h2", { text: `Waiting time running (${laufen.length})`, style: "margin: 22px 0 10px" }),
-    laufen.length ? laufen.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "No step is running." }),
+    el("div", { class: "panel kopf-zeile" },
+      el("ul", { class: "leiter-status", "aria-label": "Ladder status" },
+        schalter("Titles", st.ki, st.ki ? `AI (${st.kiModell}) + rule check` : "title help, no AI key"),
+        schalter("Ads on eBay", st.werbungAn, st.werbungAn ? "on" : "dry run"),
+        schalter("Prices on eBay", st.preisAn, st.preisAn ? "on" : "dry run"),
+        schalter("Daily run", st.automatisch, st.automatisch ? `from ${st.uhrzeit}:00` : "off"),
+        el("li", { text: `Last run: ${st.letzterLauf ? zeitpunkt(st.letzterLauf) : "never"}${st.letzterFehler ? " (failed, see Log)" : ""}` }),
+        el("li", { text: `${zahl(l.kandidaten)} listings qualify · at most ${l.max} at a time` })),
+      laufKnopf),
+    istAdmin() ? auswahlAufnehmen(l.kandidatenListe || []) : null,
+    abschnitt("Waiting for a decision", warten.length),
+    warten.length ? warten.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "Nothing is waiting. New listings come with the daily run or through “Add a listing”." }),
+    abschnitt("Waiting time running", laufen.length),
+    laufen.length ? laufen.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "No step is running. A step starts when an admin approves it." }),
     fertig.length ? el("details", { class: "panel", style: "margin-top:22px" }, el("summary", { style: "cursor:pointer", text: `Left the ladder (${fertig.length})` }), fertig.map(leiterKarte)) : null);
+}
+
+// Admin: ein bestimmtes Angebot aus allen Kandidaten wählen und sofort auf die Leiter setzen (der KI-Titel kommt gleich mit)
+function auswahlAufnehmen(liste) {
+  const option = (p) => el("option", { value: p.number, text: `${p.number} · ${p.title || "(untitled)"} · ${zahl(p.impressionen_90d)} impressions / 90 days · ${zahl(p.units_90d)} sales` });
+  const wahl = el("select", { "aria-label": "Listing for the ladder" }, el("option", { value: "", text: liste.length ? `Choose one of ${zahl(liste.length)} listings …` : "No listing qualifies right now" }), ...liste.map(option));
+  const suche = el("input", { type: "search", placeholder: "Filter by number or word", "aria-label": "Filter the list",
+    oninput: () => { const q = suche.value.trim().toLowerCase(); wahl.replaceChildren(wahl.firstChild, ...liste.filter((p) => !q || `${p.number} ${p.title || ""}`.toLowerCase().includes(q)).map(option)); } });
+  const knopf = el("button", { class: "knopf knopf-akzent", type: "button", text: "Put on the ladder",
+    onclick: () => { if (!wahl.value) return meldung("Please choose a listing first."); knopf.disabled = true; knopf.textContent = "Asking the AI …";
+      leiterAktion("/api/leiter/aufnehmen", { number: wahl.value }, (r) => r.vorschlag ? `Listing ${r.number} is on the ladder, the title suggestion is ready below.` : `Listing ${r.number} is on the ladder, but there is no title suggestion yet: ${r.hinweis}`); } });
+  return el("div", { class: "panel auswahl" },
+    el("h2", { text: "Add a listing" }),
+    el("p", { class: "leise klein", text: "Every listing that qualifies for the ladder: low impressions, active on eBay, not blocked, not in a test. Sorted by sales, best first. The listing starts at step 1; nothing changes on eBay until you approve the title." }),
+    el("div", { class: "auswahl-zeile" }, suche, wahl, knopf));
 }
 
 // Der Trichter oben: wie viele Angebote auf welcher Stufe stehen und wie viele die Leiter wie verlassen haben
@@ -569,7 +593,8 @@ function leiterKarte(a) {
     el("div", {}, el("div", { class: "titel", text: a.title || "(untitled)" }), el("div", { class: "leise klein", text: `No. ${a.number} · ${zahl(a.impressionen_90d)} impressions in 90 days · ${zahl(a.units_90d)} sales · on the ladder since ${datum(a.eingestiegen_at)}` })),
     el("span", { class: "badge " + (a.stufe === "raus" ? (a.ergebnis === "erholt" ? "gut" : "") : a.phase === "laeuft" ? "laeuft" : "vorbereitet"), text: a.stufe === "raus" ? ERGEBNIS_LEITER[a.ergebnis] || a.ergebnis : STUFE_TEXT[a.stufe] }));
   const inhalt = a.phase === "laeuft" ? leiterLaeuft(a) : a.phase === "offen" ? leiterPruefung(a) : a.phase === "vorschlag" ? leiterVorschlag(a) : [];
-  return el("div", { class: "panel leiter-karte" }, kopf, ...inhalt, lebenslauf(a));
+  const zustandKlasse = a.stufe === "raus" ? "raus" : a.phase === "laeuft" ? "laeuft" : a.phase === "offen" ? "offen" : "wartet";
+  return el("div", { class: "panel leiter-karte " + zustandKlasse }, kopf, ...inhalt, lebenslauf(a));
 }
 
 function leiterLaeuft(a) {
@@ -605,8 +630,8 @@ function leiterVorschlag(a) {
     aus.push(el("div", { class: "aktionen" },
       kannFrei ? zweiStufig(el("button", { class: "knopf knopf-akzent", type: "button", text: "Approve and change on eBay" }), "Really change on eBay?", () => leiterAktion("/api/leiter/freigabe", { number: a.number }, (r) => r.text)) : null,
       kannFrei || a.stufe !== "titel" ? el("button", { class: "knopf", type: "button", text: "Done by hand", title: "The change was made on eBay by hand (or should count as started without a change)", onclick: () => leiterAktion("/api/leiter/vonhand", { number: a.number }, "Waiting time started.") }) : null,
-      zweiStufig(el("button", { class: "knopf", type: "button", text: "Skip this step" }), "Really skip?", () => leiterAktion("/api/leiter/ueberspringen", { number: a.number, grund: grund.value }, "Skipped. The next step is waiting."))),
-      el("div", { style: "max-width:420px; margin-top:8px" }, grund));
+      el("span", { class: "ueberspringen" }, grund,
+        zweiStufig(el("button", { class: "knopf", type: "button", text: "Skip this step" }), "Really skip?", () => leiterAktion("/api/leiter/ueberspringen", { number: a.number, grund: grund.value }, "Skipped. The next step is waiting.")))));
   } else aus.push(el("p", { class: "leise klein", text: "An admin approves this step. Until then nothing changes on eBay." }));
   return aus;
 }
@@ -667,7 +692,7 @@ function zeichneKonto() {
     el("h2", { text: "Change password" }),
     el("div", { class: "stapel" }, el("label", {}, el("span", { class: "leise klein", text: "Current password" }), alt), el("label", {}, el("span", { class: "leise klein", text: "New password (at least 10 characters)" }), neu), el("label", {}, el("span", { class: "leise klein", text: "Repeat new password" }), neu2)),
     fehler, el("div", { class: "aktionen" }, knopf));
-  root.replaceChildren(
+  fuelle(root, 
     el("div", { class: "einstieg" }, el("h1", { text: "Account" }), el("p", { class: "leise", text: `Signed in as ${zustand.ich.name} (${zustand.ich.rolle === "admin" ? "admin" : "builder"}). Please never share your password, not even with the team.` })),
     form);
 }
@@ -677,7 +702,7 @@ async function ladeTeam() {
   const root = $("#ansicht-team");
   try {
     const t = await api("/api/rollen");
-    root.replaceChildren(
+    fuelle(root, 
       el("div", { class: "einstieg" }, el("h1", { text: "Team" }),
         el("p", { class: "leise", text: "Admins approve changes that go to eBay and assign roles. Builders prepare tests and propose titles, but cannot change eBay. New people start as builders. Accounts are created on the computer that runs the app (npm run benutzer)." })),
       el("div", { class: "panel" },
@@ -727,7 +752,7 @@ async function ladeLog() {
     const jetztKnopf = ts && istAdmin() && ts.zugangsdaten
       ? el("button", { class: "knopf knopf-klein", type: "button", disabled: ts.laeuft, text: ts.laeuft ? "Import is running …" : "Import now", onclick: async () => { try { await post("/api/traffic/import", {}); meldung("Traffic import started. It takes a few minutes, reload the Log afterwards."); setTimeout(ladeLog, 2000); } catch (e) { meldung(e.message); } } })
       : null;
-    root.replaceChildren(
+    fuelle(root, 
       el("div", { class: "einstieg" }, el("h1", { text: "Log" }),
         el("p", { class: "leise", text: "Everything that was proposed, approved, changed on eBay or imported, with who did it and the result. Entries are only ever added, never edited. The latest 300 are shown." })),
       ts ? el("div", { class: "panel" }, el("h2", { text: "Traffic import" }),

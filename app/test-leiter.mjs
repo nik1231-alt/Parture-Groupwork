@@ -141,3 +141,17 @@ test("Übersicht: Zahl je Stufe, Zwischenstand der Prüfzeit und Lebenslauf", as
   assert.equal(a.stand.gelaufen, 7); assert.equal(a.stand.tage, 14); assert.equal(a.stand.jetzt90, 540);
   assert.ok(a.verlauf.length >= 3);
 });
+
+test("von Hand aufnehmen (Auswahlliste): nur Admin, nur Kandidaten, auch über die Höchstzahl hinaus, steht im Protokoll", () => {
+  const d = neueDb();
+  leiter.nimmAuf(d, shop(), E, T0); // A, B, C: die Leiter ist voll
+  assert.equal(leiter.nimmVonHandAuf(d, BUILDER, "D", shop(), E, T0).status, 403);
+  for (const nr of ["OK", "X", "A", "gibtsnicht"]) assert.equal(leiter.nimmVonHandAuf(d, ADMIN, nr, shop(), E, T0).status, 409, nr);
+  assert.equal(leiter.nimmVonHandAuf(d, ADMIN, "D", shop(), E, T0, { gesperrt: new Set(["D"]) }).status, 409, "gesperrt");
+  assert.deepEqual(leiter.nimmVonHandAuf(d, ADMIN, "D", shop(), E, T0), { ok: true, wert: { number: "D" } });
+  assert.equal(zeile(d, "D").stufe, "titel");
+  assert.equal(zeile(d, "D").phase, "vorschlag");
+  assert.equal(leiter.aktiveNummern(d).size, 4, "über leiterMax (3) hinaus");
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ladder_added' AND benutzer = 'niko'").get().n, 1);
+  assert.equal(JSON.parse(d.prepare("SELECT details FROM leiter_verlauf WHERE number = 'D'").get().details).vonHand, true);
+});
