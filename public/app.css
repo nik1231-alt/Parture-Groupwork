@@ -515,6 +515,8 @@ a.knopf { text-decoration: none; }
   .reiterleiste { overflow-x: auto; }
 }
 
+.sammel { flex-wrap: wrap; justify-content: flex-end; }
+.abschnitt-kopf { flex-wrap: wrap; }
 /* Seite Results */
 .lauf-waehler { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .lauf-liste { flex: 0 1 340px; min-width: 0; padding: 7px 10px; cursor: pointer; }
