@@ -39,7 +39,8 @@ test("Oberfläche: HTML-Seiten haben keine Inline-Skripte und keine on…=-Handl
   for (const f of fs.readdirSync(PUBLIC).filter((n) => n.endsWith(".html"))) {
     const html = fs.readFileSync(path.join(PUBLIC, f), "utf8");
     for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
-      assert.match(m[1], /\bsrc="\/[\w.-]+\.js"/, `${f}: Skript ohne eigene Datei`);
+      // eigene Datei, höchstens mit Versionsangabe (?v=…), damit ein Ausrollen nicht am Zwischenspeicher hängen bleibt
+      assert.match(m[1], /\bsrc="\/[\w.-]+\.js(\?v=[\w.-]+)?"/, `${f}: Skript ohne eigene Datei`);
       assert.equal(m[2].trim(), "", `${f}: Inline-Skript`);
     }
     assert.doesNotMatch(html, /\son[a-z]+\s*=/i, `${f}: Inline-Handler`);
