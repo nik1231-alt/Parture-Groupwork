@@ -12,7 +12,7 @@ import { EINSTELLUNGEN as E } from "./regeln.mjs";
 const g = (imp, auf = 0, trans = 0) => ({ imp, auf, trans });
 const z = (number, gruppe, vorher, nachher) => ({ number, gruppe, vorher, nachher });
 
-test("Median: ungerade, gerade, leer, mit unbrauchbaren Werten", () => {
+test("Median: odd, even, empty, with unusable values", () => {
   assert.equal(median([3, 1, 2]), 2);
   assert.equal(median([4, 1, 2, 3]), 2.5);
   assert.equal(median([]), null);
@@ -20,7 +20,7 @@ test("Median: ungerade, gerade, leer, mit unbrauchbaren Werten", () => {
   assert.equal(median([-1]), -1);
 });
 
-test("Summen und Veränderung je Gruppe stimmen, auch mit einem Ausreißer", () => {
+test("Sums and change per group are correct, also with an outlier", () => {
   const a = baueAuswertung([
     z("a", "test", g(100, 10, 1), g(110, 11, 1)), z("b", "test", g(100, 10, 1), g(90, 9, 0)), z("c", "test", g(100, 10, 1), g(1000, 100, 9)),
     z("d", "kontrolle", g(100), g(100)), z("e", "kontrolle", g(200), g(220)),
@@ -33,14 +33,14 @@ test("Summen und Veränderung je Gruppe stimmen, auch mit einem Ausreißer", () 
   assert.ok(Math.abs(a.kontrolle.aenderung.imp - 20 / 300) < 1e-12);
 });
 
-test("Nettoeffekt entspricht genau dem Urteil aus experimente.urteile", () => {
+test("Net effect equals exactly the verdict from experimente.urteile", () => {
   for (const [t, k] of [[[1200, 2100], [1250, 1300]], [[1180, 1290], [1200, 1280]], [[500, 100], [500, 800]], [[0, 50], [100, 100]], [[100, 100], [0, 0]], [[0, 0], [0, 0]]]) {
     const u = urteile({ vorher: g(t[0], 0, 4), nachher: g(t[1], 0, 3) }, { vorher: g(k[0], 0, 4), nachher: g(k[1], 0, 4) }, E);
     assert.equal(netto({ vorher: t[0], nachher: t[1] }, { vorher: k[0], nachher: k[1] }), u.primaer.netto, JSON.stringify([t, k]));
   }
 });
 
-test("Randfälle: leere Gruppen, Ausgangswert 0, fehlende Zahlen teilen nicht durch 0 und bleiben JSON-tauglich", () => {
+test("Edge cases: empty groups, starting value 0, missing figures do not divide by 0 and stay JSON-safe", () => {
   const a = baueAuswertung([], E);
   assert.equal(a.test.anzahl, 0); assert.equal(a.test.median, null); assert.equal(a.test.anteilBesser, null); assert.equal(a.netto.imp, 0, "leere Gruppen: weder Gewinn noch Verlust");
   const b = baueAuswertung([z("a", "test", g(0), g(50)), z("b", "kontrolle", g(0), g(0))], E);
@@ -50,18 +50,18 @@ test("Randfälle: leere Gruppen, Ausgangswert 0, fehlende Zahlen teilen nicht du
   for (const wert of [Infinity, NaN]) assert.equal(JSON.stringify(baueAuswertung([z("a", "test", g(10), g(wert))], E)).includes("Infinity"), false);
 });
 
-test("Angebote ohne Ausgangszahlen oder ohne aktuelle Zahlen zählen nicht mit und werden gemeldet", () => {
+test("Listings without starting figures or without current figures are not counted and are reported", () => {
   const a = baueAuswertung([z("a", "test", g(100), g(200)), z("b", "test", null, g(5)), z("c", "test", g(100), null), z("d", "kontrolle", g(100), g(100))], E);
   assert.equal(a.test.anzahl, 1); assert.equal(a.test.ausgelassen, 2); assert.equal(a.kontrolle.ausgelassen, 0);
   assert.equal(a.test.vorher.imp, 100);
 });
 
-test("Skala trägt die Grenzen aus den Einstellungen", () => {
+test("The scale carries the limits from the settings", () => {
   const a = baueAuswertung([], { ...E, besserAb: 0.35, schutzGrenze: 0.1, mindestImpressionen30: 99 });
   assert.deepEqual(a.skala, { besserAb: 0.35, schutzGrenze: 0.1, mindestImpressionen: 99 });
 });
 
-test("Demo: Einzelangebote ergeben genau die Summen des Beispiels, Urteil und Diagramm stimmen überein", () => {
+test("Demo: single listings add up exactly to the example's sums, verdict and chart agree", () => {
   const d = baueDemo(E);
   for (const f of d.faelle) {
     assert.equal(f.auswertung.test.anzahl, 20); assert.equal(f.auswertung.kontrolle.anzahl, 20);
@@ -88,7 +88,7 @@ function gestarteterTest() {
   return { d, id, ps };
 }
 
-test("Test-Detail: vor dem Start gibt es keine Auswertung, danach schon, die Liste bleibt schlank", () => {
+test("Test detail: no evaluation before the start, one afterwards, the list stays slim", () => {
   const d = new Database(":memory:"); einstellungen.bereiteVor(d); ex.bereiteVor(d);
   const id = ex.legeAn(d, {}, shop(), EINST, JETZT, 5).wert.id;
   assert.equal(ex.detail(d, id, shop(), JETZT, EINST).wert.auswertung, null);
@@ -101,7 +101,7 @@ test("Test-Detail: vor dem Start gibt es keine Auswertung, danach schon, die Lis
   assert.doesNotThrow(() => JSON.stringify(ex.detail(v.d, v.id, shop(2), TAGE(31), EINST)));
 });
 
-test("Test-Detail: verschwundene Angebote werden ausgelassen statt zu stören", () => {
+test("Test detail: vanished listings are left out instead of causing trouble", () => {
   const v = gestarteterTest();
   const a = ex.detail(v.d, v.id, shop(2).slice(0, 30), TAGE(31), EINST).wert.auswertung;
   assert.equal(a.test.anzahl + a.kontrolle.anzahl, 30);

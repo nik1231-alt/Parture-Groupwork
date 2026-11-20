@@ -33,7 +33,7 @@ test.after(async () => {
 async function cookie() { const r = await fetch(basis + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "anna", passwort: "ein-langes-passwort" }) }); return r.headers.get("set-cookie").split(";")[0]; }
 const betrieb = async (c) => (await (await fetch(basis + "/api/betrieb", { headers: { Cookie: c } })).json()).daten;
 
-test("Datenstand: Soll = heute minus Verzögerung. Pünktlich ist unauffällig, 1 Tag Rückstand auch, ab 2 Tagen veraltet", async () => {
+test("Data age: expected = today minus delay. On time is fine, 1 day behind too, from 2 days it is outdated", async () => {
   const c = await cookie();
   for (const [rueck, veraltet] of [[0, false], [1, false], [2, true], [6, true]]) {
     setzeStand(laDatum(new Date(), VERZOEGERUNG_STANDARD + rueck));
@@ -42,12 +42,12 @@ test("Datenstand: Soll = heute minus Verzögerung. Pünktlich ist unauffällig, 
   }
 });
 
-test("Datenstand: ohne Traffic-Datum oder mit unlesbarem Wert keine Warnung und kein Absturz", async () => {
+test("Data age: without a traffic date or with an unreadable value there is no warning and no crash", async () => {
   const c = await cookie();
   for (const bis of [null, "gestern", "2026-13-99x"]) { setzeStand(bis); const d = (await betrieb(c)).daten; assert.equal(d.veraltet, false); assert.equal(d.rueckstandTage, null); }
 });
 
-test("Umgebung steht im Status, und /healthz zeigt die Version aus dem Wächter-Status ohne Anmeldung", async () => {
+test("The environment is in the status, and /healthz shows the version from the watcher status without login", async () => {
   assert.equal((await betrieb(await cookie())).umgebung, "vorschau");
   // Auf dem Server läuft dieser Test IM Wächter-Ordner, dort liegt daten/waechter-status.json mit dem ausgerollten Commit.
   // Fest „null“ zu erwarten ließ den Wächter jeden zweiten Stand ablehnen (Serverprobe 17.11.2026: b86458b ABGELEHNT).

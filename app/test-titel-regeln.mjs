@@ -8,12 +8,12 @@ import * as kiTitel from "./ki-titel.mjs";
 const ALT = "2x Halter passend für Bosch L-Boxx Wandhalterung schwarz";
 const regeln = (neu, alt = ALT) => pruefeTitel(neu, alt).verstoesse.map((v) => v.regel);
 
-test("ein sauberer neuer Titel geht durch", () => {
+test("a clean new title goes through", () => {
   const r = pruefeTitel("Wandhalterung passend für Bosch L-Boxx, 2x Halter schwarz", ALT);
   assert.equal(r.ok, true, JSON.stringify(r.verstoesse));
 });
 
-test("Behauptungen werden abgelehnt: Original, Superlativ, Prüfsiegel, Umwelt, Preis, Garantie", () => {
+test("Claims are rejected: original, superlative, test mark, environment, price, guarantee", () => {
   for (const [neu, regel] of [
     ["Original Bosch L-Boxx Halter 2x Wandhalterung", "behauptung"],
     ["Bester Halter passend für Bosch L-Boxx 2x", "behauptung"],
@@ -24,19 +24,19 @@ test("Behauptungen werden abgelehnt: Original, Superlativ, Prüfsiegel, Umwelt, 
   ]) assert.ok(regeln(neu).includes(regel), neu);
 });
 
-test("Marken: keine neuen, und nur mit Bezugswort", () => {
+test("Brands: no new ones, and only with a reference word", () => {
   assert.ok(regeln("2x Halter passend für Bosch und Makita L-Boxx").includes("marke"), "Makita stand nicht im alten Titel");
   assert.ok(regeln("Bosch L-Boxx Halter 2x Wandhalterung").includes("marke"), "Bosch ohne „passend für“ klingt nach Hersteller");
   assert.deepEqual(markenIn("Adapter passend für IKEA Trofast &amp; Kallax"), ["ikea", "kallax", "trofast"]);
 });
 
-test("nichts erfinden: neue Zahlen und Farben werden abgelehnt", () => {
+test("Invent nothing: new numbers and colours are rejected", () => {
   assert.ok(regeln("4x Halter passend für Bosch L-Boxx Wandhalterung").includes("erfunden"), "4x statt 2x");
   assert.ok(regeln("2x Halter 30 cm passend für Bosch L-Boxx").includes("erfunden"), "Maß erfunden");
   assert.ok(regeln("2x Halter passend für Bosch L-Boxx weiß").includes("erfunden"), "Farbe erfunden");
 });
 
-test("Form: Länge, Schlagwortlisten, Emojis, Sonderzeichen, Großbuchstaben", () => {
+test("Form: length, keyword lists, emojis, special characters, capital letters", () => {
   assert.ok(regeln("2x Halter passend für Bosch L-Boxx " + "x".repeat(60)).includes("laenge"));
   assert.ok(regeln("").includes("laenge"));
   assert.ok(regeln("2x Halter Halter Halter passend für Bosch L-Boxx").includes("form"), "Halter dreimal");
@@ -48,7 +48,7 @@ test("Form: Länge, Schlagwortlisten, Emojis, Sonderzeichen, Großbuchstaben", (
   assert.equal(pruefeTitel("Adapterplatte für Fritz!Box 7590", "Adapterplatte passend für Fritz!Box 7590 Wandhalterung").ok, true);
 });
 
-test("Riskantes aus dem alten Titel blockiert nicht, wird aber als Hinweis gezeigt", () => {
+test("Risky things from the old title do not block, but are shown as a note", () => {
   const r = pruefeTitel("Luftauslass passend für VW T5 und Webasto Air Top", "Luftauslass kompatibel mit VW T5 MULTIVAN und Webasto Air Top");
   assert.equal(r.ok, true);
   assert.equal(r.hinweise.length, 1);
@@ -63,7 +63,7 @@ function geminiMit(antwort, status = 200) {
 }
 const kandidat = (vorschlaege) => ({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ vorschlaege }) }] } }] });
 
-test("KI: der erste Vorschlag, der die Regeln besteht, wird genommen; die anderen stehen mit Grund in verworfen", async () => {
+test("AI: the first suggestion that passes the rules is taken; the others are listed with a reason in discarded", async () => {
   const f = geminiMit(kandidat([
     { titel: "Original Bosch L-Boxx Halter", begruendung: "a" },
     { titel: "Wandhalterung passend für Bosch L-Boxx, 2x Halter schwarz", begruendung: "moves the search word forward" },
@@ -82,7 +82,7 @@ test("KI: der erste Vorschlag, der die Regeln besteht, wird genommen; die andere
   assert.equal(f.body.generationConfig.responseMimeType, "application/json");
 });
 
-test("KI: lehnt sie ab, ist der Schlüssel falsch oder fällt alles durch, kommt der Regelvorschlag aus der Titelhilfe, klar gekennzeichnet", async () => {
+test("AI: if it refuses, the key is wrong or everything fails, the rule-based suggestion from the title help is used, clearly marked", async () => {
   const abgelehnt = kiTitel.erzeuge({ env: ENV, fetchFn: geminiMit({ candidates: [{ finishReason: "SAFETY" }] }) });
   const r = await abgelehnt.vorschlag({ alt: "Halter passend für Bosch L-Boxx", hinweisWoerter: ["wandhalterung"] });
   assert.equal(r.ok, true);
@@ -100,7 +100,7 @@ test("KI: lehnt sie ab, ist der Schlüssel falsch oder fällt alles durch, kommt
 });
 
 // Echte KI-Vorschläge vom 20.11.: die alte Regel verlangte nur irgendwo ein Bezugswort, "BMW X3 F25 … passend" ging durch.
-test("Marken: die Marke muss hinter „passend für …“ stehen, nicht davor; stand sie schon im alten Titel vorne, nur ein Hinweis", () => {
+test("Brands: the brand must come after \"passend für …\", not before; if it was already at the front of the old title, only a note", () => {
   const alt = "Aufbewahrungsbox Armlehne kompatibel mit BMW X3 F25";
   const vorne = pruefeTitel("BMW X3 F25 Armlehne Aufbewahrungsbox passend", alt);
   assert.equal(vorne.ok, false);

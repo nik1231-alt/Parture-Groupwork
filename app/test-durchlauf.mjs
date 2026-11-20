@@ -50,7 +50,7 @@ const post = (p, c, body = {}) => anfrage("POST", p, c, body);
 async function anmelden(name) { const r = await post("/api/login", null, { name, passwort: "ein-langes-passwort" }); assert.equal(r.status, 200, name); return r.cookie.split(";")[0]; }
 const daten = (r, status = 200) => { assert.equal(r.status, status, JSON.stringify(r.json)); return r.json.daten; };
 
-test("Durchlauf: Builder zieht einen Test, schlägt Titel vor, Admin gibt im Probelauf frei, Protokoll und Testansicht stimmen", async () => {
+test("Full run: builder draws a test, proposes titles, admin approves as a dry run, log and test view are correct", async () => {
   // ---- Builder ----
   const anna = await anmelden("anna");
   assert.equal(daten(await get("/api/ich", anna)).rolle, "builder");

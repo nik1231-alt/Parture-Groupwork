@@ -24,7 +24,7 @@ const grund = (extra = {}) => ({
   trafficBis: plusTage(START, 4), einst: E, ...extra,
 });
 
-test("Phase fertig: Nettoeffekt wie in der Leiter, Status final, alle Zahlen je Angebot und Tag", () => {
+test("Finished phase: net effect as in the ladder, final status, all figures per listing and day", () => {
   const d = baueDashboard(grund());
   const p = d.phasen.find((x) => x.stufe === "titel");
   assert.equal(p.status, "fertig");
@@ -37,7 +37,7 @@ test("Phase fertig: Nettoeffekt wie in der Leiter, Status final, alle Zahlen je 
   assert.equal(p.besser, 2); assert.equal(p.schlechter, 0); assert.equal(p.gleich, 0);
 });
 
-test("Phase läuft: Zwischenstand nur über die Tage mit fertigen Daten, Status preliminary", () => {
+test("Running phase: interim figures only over days with finished data, status preliminary", () => {
   const d = baueDashboard(grund({ trafficBis: plusTage(START, 2) }));
   const p = d.phasen[0];
   assert.equal(p.status, "laeuft");
@@ -46,7 +46,7 @@ test("Phase läuft: Zwischenstand nur über die Tage mit fertigen Daten, Status 
   assert.ok(p.netto.imp > 0.2);
 });
 
-test("Kurve: 100 = Durchschnitt der 7 Tage vorher, je Angebot an seinem eigenen Starttag ausgerichtet, Starttag fehlt", () => {
+test("Curve: 100 = average of the 7 days before, aligned per listing at its own start day, missing start day", () => {
   // B startet einen Tag später als A: beide steigen am eigenen Tag 1 auf das Doppelte
   const g = grund();
   g.starts[1] = { number: "B", stufe: "titel", tag: plusTage(START, 1), vonHand: false };
@@ -60,7 +60,7 @@ test("Kurve: 100 = Durchschnitt der 7 Tage vorher, je Angebot an seinem eigenen 
   assert.ok(Math.abs(p.kurve.find((k) => k.tag === 1).kontrolle - 110) < 1e-9);
 });
 
-test("Einzelne Angebote: ab ±10 % besser oder schlechter, dazwischen etwa gleich", () => {
+test("Single listings: better or worse from ±10 %, roughly equal in between", () => {
   const g = grund();
   g.starts.push({ number: "C", stufe: "titel", tag: START }, { number: "D", stufe: "titel", tag: START });
   g.tage.set("B", reihe(3, 2)); g.tage.set("C", reihe(3, 3.2)); g.tage.set("D", reihe(0, 1));
@@ -68,7 +68,7 @@ test("Einzelne Angebote: ab ±10 % besser oder schlechter, dazwischen etwa gleic
   assert.deepEqual([p.besser, p.schlechter, p.gleich], [2, 1, 1], "A +100 %, D von 0 auf 1 besser; B −33 % schlechter; C +7 % gleich");
 });
 
-test("Klickrate und Verkäufe: je Gruppe, Kontrolle auf gleich viele Angebote umgerechnet", () => {
+test("Click rate and sales: per group, control converted to the same number of listings", () => {
   const g = grund();
   g.tage.set("A", reihe(3, 6, { aufNachher: 0.05, trans: 1 }));
   g.tage.set("K1", reihe(3, 3.3, { trans: 1 })); // K2 ohne Verkäufe → Durchschnitt 0,5 je Tag und Angebot
@@ -79,14 +79,14 @@ test("Klickrate und Verkäufe: je Gruppe, Kontrolle auf gleich viele Angebote um
   assert.ok(p.netto.auf > p.netto.imp, "Aufrufe stiegen stärker als Impressionen");
 });
 
-test("Ohne Kontrollgruppe über dieselben Tage: kein Nettoeffekt, aber die Zahlen der Phase", () => {
+test("Without a control group over the same days: no net effect, but the phase's figures", () => {
   const g = grund({ kontrolle: [{ number: "K1", start: plusTage(START, 1) }] }); // startet nach der Phase: deckt sie nicht ab
   const p = baueDashboard(g).phasen[0];
   assert.equal(p.kontrolle, null); assert.equal(p.netto.imp, null);
   assert.equal(p.ohneKontrolle, 2); assert.equal(p.test.nachher.imp, 6);
 });
 
-test("Geplant und wartend: keine Starts → geplant; Start ohne fertige Tage → läuft ohne Zahlen", () => {
+test("Planned and waiting: no starts → planned; start without finished days → running without figures", () => {
   const d = baueDashboard(grund());
   assert.equal(d.phasen.find((x) => x.stufe === "werbung").status, "geplant");
   assert.equal(d.phasen.find((x) => x.stufe === "preis").status, "geplant");
@@ -99,7 +99,7 @@ test("Geplant und wartend: keine Starts → geplant; Start ohne fertige Tage →
   assert.deepEqual(leer.summe, { aufLeiter: 0, kontrolle: 0, erholt: 0, aenderungenEbay: 0 });
 });
 
-test("Summen und Neustart: der jüngste Start je Angebot zählt, Starts von Hand sind keine eBay-Änderung", () => {
+test("Totals and restart: the latest start per listing counts, manual starts are no eBay change", () => {
   const g = grund({ auswertungen: [{ number: "A", stufe: "titel", erholt: true }, { number: "B", stufe: "titel", erholt: false }] });
   g.starts.push({ number: "A", stufe: "titel", tag: plusTage(START, -60), vonHand: true }, { number: "B", stufe: "werbung", tag: plusTage(START, 4), vonHand: true });
   const d = baueDashboard(g);
@@ -110,7 +110,7 @@ test("Summen und Neustart: der jüngste Start je Angebot zählt, Starts von Hand
   assert.equal(d.phasen.find((x) => x.stufe === "werbung").status, "laeuft");
 });
 
-test("Take off / Start over: ein Start zählt nicht mehr, wenn das Angebot danach abgebrochen oder zurückgesetzt wurde", () => {
+test("Take off / Start over: a start no longer counts if the listing was cancelled or reset afterwards", () => {
   const g = grund();
   g.starts = g.starts.map((s) => ({ ...s, at: s.tag + "T09:00:00Z" }));
   g.abbrueche = [{ number: "B", at: plusTage(START, 2) + "T10:00:00Z" }, { number: "A", at: plusTage(START, -5) + "T10:00:00Z" }];
@@ -119,14 +119,14 @@ test("Take off / Start over: ein Start zählt nicht mehr, wenn das Angebot danac
   assert.equal(d.summe.aufLeiter, 1);
 });
 
-test("Benötigte Daten: alle Angebote der Phasen und der Kontrolle, ab 31 Tage vor dem frühesten Start", () => {
+test("Data needed: all listings of the phases and of the control, from 31 days before the earliest start", () => {
   const b = benoetigt(grund());
   assert.deepEqual(b.nummern.sort(), ["A", "B", "K1", "K2"]);
   assert.equal(b.ab, plusTage(START, -BASIS_TAGE - 1));
   assert.deepEqual(benoetigt({}), { nummern: [], ab: null });
 });
 
-test("Keine Kosten, Gebühren oder Umsätze im Ergebnis (nur eBay-Mengen)", () => {
+test("No costs, fees or revenue in the result (only eBay quantities)", () => {
   const text = JSON.stringify(baueDashboard(grund()));
   assert.doesNotMatch(text, /preis_aktuell|umsatz|revenue|kosten|marge|avg_price/i);
 });

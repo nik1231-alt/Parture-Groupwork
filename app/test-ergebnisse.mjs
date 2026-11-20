@@ -19,7 +19,7 @@ const kontrolleAngebot = (nr) => ({ number: nr, stufe: "kontrolle", phase: "laeu
 const uebersicht = (angebote) => ({ angebote, tage: { titel: 14, werbung: 14, preis: 21 }, trafficBis: "2026-11-10" });
 const viele = (prefix, stufe, n, vorher, nachher, tag) => Array.from({ length: n }, (_, i) => angebot(prefix + i, stufe, vorher, nachher, K(1000, 1000), tag));
 
-test("95-%-Bereich: bekannter Fall mit drei Angeboten, zu wenige Werte, gleiche Werte", () => {
+test("95 % range: known case with three listings, too few values, equal values", () => {
   // Logarithmen 0,1 / 0,2 / 0,3: Mittel 0,2, Streuung 0,1, Standardfehler 0,0577, t(2) = 4,303 → Abstand 0,2484
   const s = schaetze([Math.exp(0.1) - 1, Math.exp(0.2) - 1, Math.exp(0.3) - 1]);
   nahe(s.effekt, Math.exp(0.2) - 1); nahe(s.von, Math.exp(0.2 - 0.2484) - 1, "von", 1e-3); nahe(s.bis, Math.exp(0.2 + 0.2484) - 1, "bis", 1e-3); assert.equal(s.n, 3);
@@ -30,18 +30,18 @@ test("95-%-Bereich: bekannter Fall mit drei Angeboten, zu wenige Werte, gleiche 
   assert.equal(tKritisch(0), null); assert.equal(tKritisch(1), 12.706); assert.equal(tKritisch(30), 2.042); assert.equal(tKritisch(500), 1.96);
 });
 
-test("Je mehr Angebote, desto enger der Bereich (gleiche Streuung)", () => {
+test("The more listings, the narrower the range (same spread)", () => {
   const mix = (n) => Array.from({ length: n }, (_, i) => (i % 2 ? 0.1 : 0.3));
   const a = schaetze(mix(6)), b = schaetze(mix(60));
   assert.ok(b.bis - b.von < a.bis - a.von);
 });
 
-test("Ein Angebot mit 0 Impressionen nachher (−100 %) bricht die Rechnung nicht", () => {
+test("A listing with 0 impressions afterwards (−100 %) does not break the calculation", () => {
   const s = schaetze([-1, 0.2, 0.1, 0.3, 0.2]);
   for (const v of [s.effekt, s.von, s.bis]) assert.ok(Number.isFinite(v));
 });
 
-test("Urteil: der ganze Bereich über null = klarer Anstieg, darunter = klarer Rückgang, sonst nicht von Zufall zu unterscheiden, zu wenige = zu früh", () => {
+test("Verdict: whole range above zero = clear increase, below = clear decrease, otherwise not distinguishable from chance, too few = too early", () => {
   const sch = (von, bis) => ({ effekt: (von + bis) / 2, von, bis, n: 10 });
   assert.equal(urteil(sch(0.05, 0.3), 10), "up");
   assert.equal(urteil(sch(-0.3, -0.05), 10), "down");
@@ -51,7 +51,7 @@ test("Urteil: der ganze Bereich über null = klarer Anstieg, darunter = klarer R
   assert.equal(urteil(null, 50), "too_few");
 });
 
-test("Nichts ausgewertet: leer, nur 'alle Läufe', drei Phasen ohne Zahlen", () => {
+test("Nothing evaluated: empty, only 'all runs', three phases without figures", () => {
   const e = baueErgebnisse(uebersicht([]));
   assert.equal(e.leer, true);
   assert.deepEqual(e.laeufe.map((l) => l.schluessel), [ALLE]);
@@ -59,7 +59,7 @@ test("Nichts ausgewertet: leer, nur 'alle Läufe', drei Phasen ohne Zahlen", () 
   for (const p of e.laeufe[0].phasen) { assert.equal(p.ausgewertet, 0); assert.equal(p.schaetzung, null); assert.equal(p.urteil, "too_few"); }
 });
 
-test("Läufe: ein Lauf je Starttag, neuester zuerst, jeder wertet nur seine eigenen Angebote aus, die Kontrollgruppe gehört zu keinem Lauf", () => {
+test("Runs: one run per start day, newest first, each evaluates only its own listings, the control group belongs to no run", () => {
   const alt = viele("A", "werbung", 6, 100, 150, "2026-10-01"), neu = viele("N", "werbung", 5, 100, 80, "2026-10-08");
   const e = baueErgebnisse(uebersicht([...alt, ...neu, kontrolleAngebot("K1"), kontrolleAngebot("K2")]));
   assert.deepEqual(e.laeufe.map((l) => l.schluessel), [ALLE, "2026-10-08", "2026-10-01"]);
@@ -71,7 +71,7 @@ test("Läufe: ein Lauf je Starttag, neuester zuerst, jeder wertet nur seine eige
   assert.equal(w(0).ausgewertet, 11, "alle zusammen");
 });
 
-test("Nettoeffekt und Summen je Phase: Angebote gegen Kontrollgruppe, ohne Kontrollgruppe zählt ein Angebot als geprüft, aber nicht im Effekt", () => {
+test("Net effect and sums per phase: listings against control group; without a control group a listing counts as checked but not in the effect", () => {
   const mitK = viele("A", "titel", 5, 100, 130), ohne = angebot("Z", "titel", 100, 500, null);
   const p = baueErgebnisse(uebersicht([...mitK, ohne])).laeufe[0].phasen[0];
   assert.equal(p.ausgewertet, 6); assert.equal(p.mitKontrolle, 5);
@@ -80,7 +80,7 @@ test("Nettoeffekt und Summen je Phase: Angebote gegen Kontrollgruppe, ohne Kontr
   assert.equal(p.urteil, "up", "alle fünf +30 %, Streuung 0: Bereich fällt auf einen Punkt über null");
 });
 
-test("Die Zahlen auf Results und auf der Seite Funnel (leiter.wirkung) weichen nie voneinander ab", () => {
+test("The figures on Results and on the Funnel page (leiter.wirkung) never differ", () => {
   const db = new Database(":memory:");
   leiter.bereiteVor(db);
   const ein = db.prepare("INSERT INTO leiter (number, stufe, phase, eingestiegen_at, aktualisiert_at) VALUES (?, 'pruefung', 'offen', '2026-09-01', '2026-10-20')");
@@ -102,7 +102,7 @@ test("Die Zahlen auf Results und auf der Seite Funnel (leiter.wirkung) weichen n
   db.close();
 });
 
-test("Funnel-Überblick: wie viele sind in jeder Phase angekommen und was ist aus ihnen geworden", () => {
+test("Funnel overview: how many reached each phase and what became of them", () => {
   const ev = (stufe, ereignis, details = null) => ({ stufe, ereignis, details });
   const aus = (stufe, erholt) => ev(stufe, "ausgewertet", { erholt });
   const a = (stufe, phase, ergebnis, verlauf) => ({ stufe, phase, ergebnis, verlauf });
@@ -122,21 +122,21 @@ test("Funnel-Überblick: wie viele sind in jeder Phase angekommen und was ist au
   for (const z of f.stufen) assert.equal(z.erholt + z.weiter + z.laeuft + z.wartet + z.uebersprungen + z.entfernt, z.erreicht, z.schluessel + ": jedes Angebot landet in genau einer Spalte");
 });
 
-test("Funnel-Überblick je Lauf: zählt nur die eigenen Angebote, die Kontrollgruppe zählt nicht mit", () => {
+test("Funnel overview per run: counts only its own listings, the control group does not count", () => {
   const e = baueErgebnisse(uebersicht([...viele("A", "titel", 3, 100, 110, "2026-10-01"), ...viele("B", "titel", 2, 100, 110, "2026-10-08"), kontrolleAngebot("K1")]));
   assert.equal(e.laeufe[0].fluss.stufen[0].erreicht, 5, "alle Läufe");
   assert.equal(e.laeufe[1].fluss.stufen[0].erreicht, 2, "neuer Lauf");
   assert.equal(e.laeufe[2].fluss.stufen[0].erreicht, 3, "älterer Lauf");
 });
 
-test("Laufende Angebote: werden gezählt, das erste Ende wird genannt, sie sind noch kein Ergebnis", () => {
+test("Running listings: are counted, the first end date is named, they are no result yet", () => {
   const laeuft = (nr, ende) => ({ number: nr, stufe: "werbung", phase: "laeuft", eingestiegen_at: "2026-10-01T06:00:00.000Z", verlauf: [], stand: { ende } });
   const e = baueErgebnisse(uebersicht([laeuft("L1", "2026-11-30"), laeuft("L2", "2026-11-25")]));
   assert.equal(e.leer, true);
   assert.equal(e.laeufe[0].phasen[1].laeuft, 2); assert.equal(e.laeufe[0].phasen[1].naechstesEnde, "2026-11-25");
 });
 
-test("Beispielansicht: erfundene Zahlen, immer dieselben, zwei Läufe plus alle, Werbung klar besser, Titel nicht von Zufall zu unterscheiden, alles endlich", () => {
+test("Example view: invented figures, always the same, two runs plus all, ads clearly better, title not distinguishable from chance, everything finite", () => {
   const a = baueDemoErgebnisse(EINSTELLUNGEN), b = baueDemoErgebnisse(EINSTELLUNGEN);
   assert.equal(a.beispiel, true);
   assert.equal(JSON.stringify(a), JSON.stringify(b), "feste Startwerte: jeder Aufruf gleich");

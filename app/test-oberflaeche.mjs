@@ -26,20 +26,20 @@ function zeichenketten(quelle) {
   return aus;
 }
 
-test("Zerleger: findet Zeichenketten und überspringt Kommentare (auch mit Umlauten und Adressen)", () => {
+test("Splitter: finds strings and skips comments (also with umlauts and addresses)", () => {
   const z = zeichenketten('// Kommentar mit Ä\nconst a = "eins"; /* Größe */ const b = `zwei ${x}`; const u = "https://x.y/z"; // noch ein Ö');
   assert.deepEqual(z.map((x) => x.text), ["eins", "zwei ${x}", "https://x.y/z"]);
   assert.ok(zeichenketten('const t = "Fehler: ungültig";').some((x) => DEUTSCH.test(x.text)), "ein deutscher Text würde gefunden");
 });
 
-test("public/*.js: keine Umlaute oder ß in Zeichenketten (alles Sichtbare ist englisch)", () => {
+test("public/*.js: no umlauts or ß in strings (everything visible is English)", () => {
   const funde = [];
   for (const f of fs.readdirSync(path.join(WURZEL, "public")).filter((x) => x.endsWith(".js")))
     for (const z of zeichenketten(fs.readFileSync(path.join(WURZEL, "public", f), "utf8"))) if (DEUTSCH.test(z.text)) funde.push(`${f}:${z.zeile} ${z.text.slice(0, 80)}`);
   assert.deepEqual(funde, []);
 });
 
-test("public/*.html: keine Umlaute oder ß außerhalb von Kommentaren", () => {
+test("public/*.html: no umlauts or ß outside comments", () => {
   const funde = [];
   for (const f of fs.readdirSync(path.join(WURZEL, "public")).filter((x) => x.endsWith(".html"))) {
     const ohne = fs.readFileSync(path.join(WURZEL, "public", f), "utf8").replace(/<!--[\s\S]*?-->/g, "");
@@ -48,7 +48,7 @@ test("public/*.html: keine Umlaute oder ß außerhalb von Kommentaren", () => {
   assert.deepEqual(funde, []);
 });
 
-test("app/*.mjs: Fehlermeldungen an die Oberfläche (new Error, fehler(status, …)) sind englisch", () => {
+test("app/*.mjs: error messages to the interface (new Error, fehler(status, …)) are English", () => {
   // Nur Dateien, deren Meldungen über den Server bei der Oberfläche ankommen (Befehlszeilen-Werkzeuge wie benutzer.mjs und waechter.mjs bleiben deutsch)
   const ui = ["auswertung", "bewertung", "demo", "ebay-schreiben", "einstellungen", "experimente", "export-ebay", "freigabe", "login", "protokoll", "regeln", "rollen", "server", "sicherung", "titelhilfe", "traffic"];
   const muster = /(?:new Error|fehler)\(\s*(?:\d+\s*,\s*)?(["'`])((?:\\.|(?!\1).)*)\1/g;

@@ -13,14 +13,14 @@ const daten = [
   p(999, "Handy Ständer Tisch", 50),
 ];
 
-test("Wörter: klein, ohne Füllwörter, ohne reine Zahlen, einmalig", () => {
+test("Words: lower case, without filler words, without pure numbers, unique", () => {
   assert.deepEqual(woerter("Handy-Halterung FÜR das Auto 3D 3D 12345"), ["handy-halterung", "auto", "3d"].filter((w) => woerter("Handy-Halterung FÜR das Auto 3D 3D 12345").includes(w)));
   assert.ok(!woerter("Halter für die Wand").includes("für"));
   assert.deepEqual(woerter(null), []);
   assert.ok(!woerter("Ab 12 99").includes("12"));
 });
 
-test("Hinweise: nur Wörter, die oben oft und unten selten vorkommen und im eigenen Titel fehlen", () => {
+test("Hints: only words that are frequent at the top and rare at the bottom and missing in the own title", () => {
   const r = hinweiseFuer(daten, "999");
   assert.equal(r.ok, true);
   const w = r.hinweise.map((h) => h.wort);
@@ -31,7 +31,7 @@ test("Hinweise: nur Wörter, die oben oft und unten selten vorkommen und im eige
   assert.equal(r.freieZeichen, TITEL_MAX_ZEICHEN - "Handy Ständer Tisch".length);
 });
 
-test("Hinweise: zu wenig Daten oder unbekanntes Produkt liefern ok:false statt Raten", () => {
+test("Hints: too little data or an unknown product return ok:false instead of guessing", () => {
   assert.equal(hinweiseFuer(daten.slice(0, 6), "100").ok, false);
   assert.equal(hinweiseFuer(daten, "nicht-da").ok, false);
   assert.equal(hinweiseFuer(daten.map((x) => ({ ...x, impressionen_90d: null })), "100").ok, false);

@@ -16,7 +16,7 @@ const PUBLIC = path.join(WURZEL, "public");
 const BOESE = `<script>alert("xss")</script> Holder <img src=x onerror=alert(1)>`;
 
 // ---------- statisch: die Oberfläche ----------
-test("Oberfläche: kein innerHTML, outerHTML, insertAdjacentHTML, document.write, eval oder new Function in public/*.js", () => {
+test("Interface: no innerHTML, outerHTML, insertAdjacentHTML, document.write, eval or new Function in public/*.js", () => {
   const verboten = /\.(innerHTML|outerHTML)\s*[+]?=|insertAdjacentHTML|document\.write|\beval\s*\(|new\s+Function\s*\(|createContextualFragment|DOMParser|javascript:/;
   const dateien = fs.readdirSync(PUBLIC).filter((f) => f.endsWith(".js"));
   assert.ok(dateien.length >= 3, "public/*.js nicht gefunden");
@@ -28,14 +28,14 @@ test("Oberfläche: kein innerHTML, outerHTML, insertAdjacentHTML, document.write
   }
 });
 
-test("Oberfläche: der Baustein el() setzt Text nur per textContent, Bilder nur von https", () => {
+test("Interface: the el() helper sets text only via textContent, images only from https", () => {
   const app = fs.readFileSync(path.join(PUBLIC, "app.js"), "utf8");
   assert.match(app, /if \(k === "text"\) n\.textContent = v;/, "el({ text }) muss textContent benutzen");
   assert.match(app, /for \(const kind of kinder\.flat\(\)\) if \(kind != null\) n\.append\(kind\);/, "Kinder werden per append eingesetzt (Zeichenketten werden dabei zu Textknoten)");
   assert.match(app, /const bildUrl = \(u\) => \(typeof u === "string" && \/\^https:\\\/\\\/\/i\.test\(u\) \? u : null\);/, "Bildadressen nur mit https://");
 });
 
-test("Oberfläche: HTML-Seiten haben keine Inline-Skripte und keine on…=-Handler (die CSP würde sie ohnehin blockieren)", () => {
+test("Interface: HTML pages have no inline scripts and no on…= handlers (the CSP would block them anyway)", () => {
   for (const f of fs.readdirSync(PUBLIC).filter((n) => n.endsWith(".html"))) {
     const html = fs.readFileSync(path.join(PUBLIC, f), "utf8");
     for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
@@ -80,7 +80,7 @@ async function anmelden() {
 }
 const istJson = (r) => { assert.match(r.headers.get("content-type"), /^application\/json/); assert.equal(r.headers.get("x-content-type-options"), "nosniff"); };
 
-test("API: ein Titel mit <script> kommt als JSON-Text zurück, unverändert, nie als HTML", async () => {
+test("API: a title with <script> comes back as JSON text, unchanged, never as HTML", async () => {
   const c = await anmelden();
   const liste = await fetch(basis + "/api/produkte?q=" + encodeURIComponent("<script>"), { headers: { Cookie: c } });
   istJson(liste);
@@ -96,7 +96,7 @@ test("API: ein Titel mit <script> kommt als JSON-Text zurück, unverändert, nie
   assert.equal(fehlt.status, 404); istJson(fehlt);
 });
 
-test("CSP: jede HTML-Antwort erlaubt nur Skripte aus der eigenen App (script-src 'self', kein unsafe-inline/eval)", async () => {
+test("CSP: every HTML response allows only scripts from the app itself (script-src 'self', no unsafe-inline/eval)", async () => {
   const c = await anmelden();
   const seiten = [["/", null], ["/login.html", null], ["/", c], ["/index.html", c]];
   for (const [p, cookie] of seiten) {

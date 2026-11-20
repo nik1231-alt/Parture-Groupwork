@@ -38,7 +38,7 @@ async function anmelden() {
   assert.equal(r.status, 200); return r.headers.get("set-cookie").split(";")[0];
 }
 
-test("pm.db fehlt: 503 mit verständlichem englischem Text, ohne Serverpfad; die App selbst läuft weiter", async () => {
+test("pm.db missing: 503 with an understandable English text, without a server path; the app itself keeps running", async () => {
   const c = await anmelden();
   for (const p of ["/api/bewertung", "/api/stand", "/api/experimente", "/api/produkte"]) {
     const r = await fetch(basis + p, { headers: { Cookie: c } });
@@ -55,7 +55,7 @@ test("pm.db fehlt: 503 mit verständlichem englischem Text, ohne Serverpfad; die
   assert.equal(b.ok, true); assert.equal(b.daten.daten.trafficBis, null);
 });
 
-test("Sitzung abgelaufen: Daten antworten 401 (die Oberfläche lädt dann die Anmeldeseite), das Cookie öffnet nichts mehr", async () => {
+test("Session expired: data answers 401 (the interface then loads the login page), the cookie opens nothing any more", async () => {
   const cookie = `${COOKIE}=${abgelaufen}`;
   const r = await fetch(basis + "/api/experimente", { headers: { Cookie: cookie } });
   assert.equal(r.status, 401);

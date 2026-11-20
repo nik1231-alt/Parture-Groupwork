@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { baueDemo } from "./demo.mjs";
 import { EINSTELLUNGEN } from "./regeln.mjs";
 
-test("Demo: die drei Beispiele ergeben mit den echten Regeln genau die drei gedachten Urteile und sind als Beispiel gekennzeichnet", () => {
+test("Demo: with the real rules the three examples give exactly the three intended verdicts and are marked as examples", () => {
   const d = baueDemo(EINSTELLUNGEN);
   assert.equal(d.beispiel, true);
   assert.match(d.hinweis, /Invented/);

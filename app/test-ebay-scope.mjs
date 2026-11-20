@@ -37,7 +37,7 @@ function fixture() {
   return db;
 }
 
-test('Analyse: nur eBay; fremde und unzugeordnete Traffic-IDs und fremde Produktzuordnung ausgeschlossen', () => {
+test('Analysis: eBay only; foreign and unassigned traffic ids and foreign product assignment excluded', () => {
   const db = fixture();
   try {
     const ps = ladeProdukte(db);
@@ -60,7 +60,7 @@ test('Analyse: nur eBay; fremde und unzugeordnete Traffic-IDs und fremde Produkt
   } finally { db.close(); }
 });
 
-test('Fehlende eBay-Zuordnung oder Kennzahlen: kein Rückfall auf Gesamtkatalog', () => {
+test('Missing eBay assignment or figures: no fallback to the whole catalogue', () => {
   const db = fixture();
   try {
     db.exec("UPDATE kanal SET units_90d=NULL WHERE channel='ebay'");
@@ -72,7 +72,7 @@ test('Fehlende eBay-Zuordnung oder Kennzahlen: kein Rückfall auf Gesamtkatalog'
   } finally { db.close(); }
 });
 
-test('Fehlende Traffic-Tabelle: unbekannt statt erfundener Performance', () => {
+test('Missing traffic table: unknown instead of invented performance', () => {
   const db = fixture();
   try {
     db.exec('DROP TABLE traffic; DROP TABLE traffic_tag');
@@ -81,7 +81,7 @@ test('Fehlende Traffic-Tabelle: unbekannt statt erfundener Performance', () => {
   } finally { db.close(); }
 });
 
-test('HTTP: Listen, Detail, Diagnose und Traffic sind eBay-only; Kanäle bleiben Referenz', async () => {
+test('HTTP: lists, detail, diagnosis and traffic are eBay-only; channels stay a reference', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'parture-scope-'));
   const pm = path.join(dir, 'pm.db'), app = path.join(dir, 'app.db');
   const db = fixture();

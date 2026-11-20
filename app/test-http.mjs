@@ -34,12 +34,12 @@ async function anmelden() {
   return r.headers.get("set-cookie").split(";")[0];
 }
 
-test("ohne Anmeldung: Daten und Schreibaktionen sind gesperrt (401)", async () => {
+test("without login: data and write actions are blocked (401)", async () => {
   for (const p of ["/api/bewertung", "/api/produkte", "/api/stand", "/api/einstellungen", "/api/experimente", "/api/live", "/index.html", "/app.js"]) assert.equal((await fetch(basis + p)).status, 401, p);
   for (const p of ["/api/einstellungen", "/api/einstellungen/zuruecksetzen", "/api/experiment", "/api/experiment/start", "/api/experiment/abschluss", "/api/experiment/titel"]) assert.equal((await post(p, {})).status, 401, p);
 });
 
-test("ohne Anmeldung: nur die Anmeldeseite ist sichtbar", async () => {
+test("without login: only the login page is visible", async () => {
   const wurzel = await fetch(basis + "/");
   assert.equal(wurzel.status, 200);
   assert.match(await wurzel.text(), /Sign in/);
@@ -49,12 +49,12 @@ test("ohne Anmeldung: nur die Anmeldeseite ist sichtbar", async () => {
   assert.equal(ich.daten.angemeldet, false);
 });
 
-test("ein falsches Cookie öffnet nichts", async () => {
+test("a wrong cookie opens nothing", async () => {
   const r = await fetch(basis + "/api/bewertung", { headers: { Cookie: "sitzung=" + "a".repeat(43) } });
   assert.equal(r.status, 401);
 });
 
-test("falsche Anmeldung: 401, kein Cookie; ungültige Eingaben: Fehler statt Absturz", async () => {
+test("wrong login: 401, no cookie; invalid input: an error instead of a crash", async () => {
   const r = await post("/api/login", { name: "anna", passwort: "falsch-falsch" });
   assert.equal(r.status, 401); assert.equal(r.headers.get("set-cookie"), null);
   assert.equal((await post("/api/login", {})).status, 401);
@@ -65,7 +65,7 @@ test("falsche Anmeldung: 401, kein Cookie; ungültige Eingaben: Fehler statt Abs
   assert.equal(fremd.status, 403, "Anmeldung von einer fremden Seite wird abgelehnt");
 });
 
-test("mit Anmeldung: Cookie ist HttpOnly und SameSite=Strict, Seiten und Daten sind erreichbar", async () => {
+test("with login: cookie is HttpOnly and SameSite=Strict, pages and data are reachable", async () => {
   const r = await post("/api/login", { name: "anna", passwort: "ein-langes-passwort" });
   const c = r.headers.get("set-cookie");
   assert.match(c, /HttpOnly/); assert.match(c, /SameSite=Strict/);
@@ -84,7 +84,7 @@ test("mit Anmeldung: Cookie ist HttpOnly und SameSite=Strict, Seiten und Daten s
   assert.deepEqual([ich.daten.angemeldet, ich.daten.name], [true, "anna"]);
 });
 
-test("Schreibaktion mit Anmeldung, aber von fremder Seite oder falschem Typ: abgelehnt", async () => {
+test("Write action with login, but from a foreign site or with the wrong type: rejected", async () => {
   const cookie = await anmelden();
   assert.equal((await post("/api/einstellungen/zuruecksetzen", {}, { Cookie: cookie, Origin: "http://boese.example" })).status, 403);
   const text = await fetch(basis + "/api/einstellungen/zuruecksetzen", { method: "POST", headers: { Cookie: cookie, "Content-Type": "text/plain" }, body: "{}" });
@@ -92,21 +92,21 @@ test("Schreibaktion mit Anmeldung, aber von fremder Seite oder falschem Typ: abg
   assert.equal((await post("/api/einstellungen/zuruecksetzen", {}, { Cookie: cookie })).status, 200);
 });
 
-test("Abmelden beendet die Sitzung serverseitig", async () => {
+test("Logging out ends the session on the server", async () => {
   const cookie = await anmelden();
   assert.equal((await fetch(basis + "/api/stand", { headers: { Cookie: cookie } })).status !== 401, true);
   assert.equal((await post("/api/logout", {}, { Cookie: cookie })).status, 200);
   assert.equal((await fetch(basis + "/api/stand", { headers: { Cookie: cookie } })).status, 401);
 });
 
-test("Schutz-Header sind gesetzt", async () => {
+test("Protective headers are set", async () => {
   const r = await fetch(basis + "/");
   assert.match(r.headers.get("content-security-policy"), /script-src 'self'/);
   assert.equal(r.headers.get("x-frame-options"), "DENY");
   assert.equal(r.headers.get("x-content-type-options"), "nosniff");
 });
 
-test("Pfade außerhalb von public/ sind auch angemeldet nicht lesbar", async () => {
+test("Paths outside public/ are not readable even when logged in", async () => {
   const cookie = await anmelden();
   for (const p of ["/../package.json", "/..%2fpackage.json", "/%2e%2e/app/server.mjs", "/..\\package.json"]) {
     const r = await fetch(basis + p, { headers: { Cookie: cookie } });

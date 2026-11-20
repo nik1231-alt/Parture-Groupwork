@@ -36,12 +36,12 @@ const post = (p, body, cookie) => fetch(basis + p, { method: "POST", headers: { 
 const get = (p, cookie) => fetch(basis + p, { headers: cookie ? { Cookie: cookie } : {} });
 async function anmelden(name) { const r = await post("/api/login", { name, passwort: "ein-langes-passwort" }); assert.equal(r.status, 200); return r.headers.get("set-cookie").split(";")[0]; }
 
-test("/api/ich nennt die Rolle", async () => {
+test("/api/ich reports the role", async () => {
   assert.equal((await (await get("/api/ich", await anmelden("niko"))).json()).daten.rolle, "admin");
   assert.equal((await (await get("/api/ich", await anmelden("anna"))).json()).daten.rolle, "builder");
 });
 
-test("Builder: Rollen, Freigabe, Ablehnen und direktes Starten sind gesperrt (403)", async () => {
+test("Builder: roles, approval, rejecting and starting directly are blocked (403)", async () => {
   const c = await anmelden("anna");
   assert.equal((await get("/api/rollen", c)).status, 403);
   assert.equal((await post("/api/rolle", { name: "anna", rolle: "admin" }, c)).status, 403, "ein Builder macht sich nicht selbst zum Admin");
@@ -52,7 +52,7 @@ test("Builder: Rollen, Freigabe, Ablehnen und direktes Starten sind gesperrt (40
   assert.equal(ich.daten.rolle, "builder", "auch nach den Versuchen ist anna noch Builder");
 });
 
-test("Builder darf lesen: Freigaben und Protokoll sind sichtbar, Einreichen ist erlaubt (Test existiert nur nicht)", async () => {
+test("Builder may read: approvals and log are visible, submitting is allowed (the test just does not exist)", async () => {
   const c = await anmelden("anna");
   const f = await (await get("/api/freigaben", c)).json();
   assert.equal(f.ok, true); assert.equal(f.daten.schreibenAn, false);
@@ -60,12 +60,12 @@ test("Builder darf lesen: Freigaben und Protokoll sind sichtbar, Einreichen ist 
   assert.equal((await post("/api/experiment/freigabe", { id: 999 }, c)).status, 404, "nicht 403: einreichen darf auch ein Builder");
 });
 
-test("ohne Anmeldung sind die neuen Adressen gesperrt", async () => {
+test("without login the new addresses are blocked", async () => {
   for (const p of ["/api/freigaben", "/api/protokoll", "/api/rollen"]) assert.equal((await get(p)).status, 401, p);
   for (const p of ["/api/rolle", "/api/freigabe/erteilen", "/api/freigabe/ablehnen", "/api/experiment/freigabe"]) assert.equal((await post(p, {})).status, 401, p);
 });
 
-test("Admin: sieht die Rollen, vergibt Rollen, und die Änderung steht im Protokoll", async () => {
+test("Admin: sees the roles, assigns roles, and the change is in the log", async () => {
   const c = await anmelden("niko");
   const t = await (await get("/api/rollen", c)).json();
   assert.deepEqual(t.daten.benutzer.map((b) => [b.name, b.rolle]), [["niko", "admin"], ["anna", "builder"]]);
@@ -77,14 +77,14 @@ test("Admin: sieht die Rollen, vergibt Rollen, und die Änderung steht im Protok
   assert.equal((await post("/api/rolle", { name: "anna", rolle: "builder" }, c)).status, 200);
 });
 
-test("Admin: Freigabe ohne Vorschlag liefert 409, nie einen Absturz, und ohne Zugangsdaten wird nichts geschrieben", async () => {
+test("Admin: approval without a proposal returns 409, never a crash, and without credentials nothing is written", async () => {
   const c = await anmelden("niko");
   assert.equal((await post("/api/freigabe/erteilen", { id: 1, art: "titel" }, c)).status, 409);
   assert.equal((await post("/api/freigabe/erteilen", { id: "x", art: "titel" }, c)).status, 400);
   assert.equal((await post("/api/freigabe/erteilen", { id: 1, art: "loeschen" }, c)).status, 400);
 });
 
-test("Betriebsstatus: für Angemeldete sichtbar, ohne Anmeldung gesperrt, ohne Zugangsdaten und Schalter keine Schreibrechte", async () => {
+test("Operating status: visible to logged-in users, blocked without login, no write rights without credentials and switch", async () => {
   assert.equal((await get("/api/betrieb")).status, 401);
   const b = (await (await get("/api/betrieb", await anmelden("anna"))).json()).daten;
   assert.equal(b.umgebung, "lokal");
@@ -94,7 +94,7 @@ test("Betriebsstatus: für Angemeldete sichtbar, ohne Anmeldung gesperrt, ohne Z
   assert.ok(!JSON.stringify(b).includes(verz), "keine Serverpfade in der Antwort");
 });
 
-test("Sicherung per Knopf: Builder 403, Admin sichert, das Protokoll hält es fest, die Sicherung ist lesbar", async () => {
+test("Backup by button: builder 403, admin backs up, the log records it, the backup is readable", async () => {
   assert.equal((await post("/api/sicherung", {}, await anmelden("anna"))).status, 403);
   const c = await anmelden("niko");
   const r = await post("/api/sicherung", {}, c);
@@ -108,7 +108,7 @@ test("Sicherung per Knopf: Builder 403, Admin sichert, das Protokoll hält es fe
   assert.equal((await (await get("/api/betrieb", c)).json()).daten.sicherung.anzahl, 1);
 });
 
-test("Passwort ändern über den Server: nur mit Anmeldung, altes Passwort nötig, alte Sitzung endet, neue gilt, Protokoll ohne Passwörter", async () => {
+test("Changing the password through the server: only with login, old password needed, old session ends, new one works, log without passwords", async () => {
   assert.equal((await post("/api/passwort", { altes: "x", neues: "y" })).status, 401);
   const c = await anmelden("anna");
   assert.equal((await post("/api/passwort", { altes: "falsch-falsch", neues: "ein-ganz-neues-passwort" }, c)).status, 403);

@@ -34,7 +34,7 @@ const ITEMS = [{ external_id: "123456789012", title: "Halter A", skus: '["A"]', 
 const titelVorschlag = { titel: "Wandhalter passend für A", alt: "Halter A", quelle: "ki", begruendung: "x", pruefung: { ok: true, verstoesse: [], hinweise: [] } };
 const zeile = (d, n) => d.prepare("SELECT * FROM leiter WHERE number = ?").get(n);
 
-test("Aufnahme: nur wenig Impressionen mit laufendem eBay-Angebot, bewährte zuerst, höchstens leiterMax", () => {
+test("Intake: only low impressions with a running eBay listing, proven ones first, at most leiterMax", () => {
   const d = neueDb();
   assert.deepEqual(leiter.nimmAuf(d, shop(), E, T0), ["A", "B", "C"]);
   assert.deepEqual(leiter.nimmAuf(d, shop(), E, T0), [], "die Leiter ist voll");
@@ -45,7 +45,7 @@ test("Aufnahme: nur wenig Impressionen mit laufendem eBay-Angebot, bewährte zue
   assert.deepEqual(leiter.nimmAuf(d2, shop(), E, T0, { imTest: new Map([["A", {}]]), gesperrt: new Set(["B"]) }), ["C", "D", "E"]);
 });
 
-test("ganzer Weg ohne Erholung: Titel -> Werbung -> Preis -> manuelle Prüfung -> Entscheidung", async () => {
+test("Whole path without recovery: title -> ads -> price -> manual review -> decision", async () => {
   const d = neueDb(), s = schreiber();
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
   assert.equal(leiter.setzeTitelVorschlag(d, BUILDER, "A", titelVorschlag, T0).ok, true);
@@ -77,7 +77,7 @@ test("ganzer Weg ohne Erholung: Titel -> Werbung -> Preis -> manuelle Prüfung -
   assert.deepEqual(ereignisse, ["aufgenommen", "vorschlag", "freigegeben", "gestartet", "ausgewertet", "vorschlag", "freigegeben", "gestartet", "ausgewertet", "vorschlag", "freigegeben", "gestartet", "ausgewertet", "pruefung", "entschieden"]);
 });
 
-test("Erholung: wieder genug Impressionen nach der Prüfzeit -> raus aus der Leiter, Platz für das nächste Angebot", async () => {
+test("Recovery: enough impressions again after the waiting time -> leaves the ladder, room for the next listing", async () => {
   const d = neueDb();
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
   leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
@@ -88,7 +88,7 @@ test("Erholung: wieder genug Impressionen nach der Prüfzeit -> raus aus der Lei
   assert.deepEqual(leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, tag(15)), ["B"], "A darf 90 Tage nicht wieder hinein, B rückt nach");
 });
 
-test("Probelauf: ohne Schreibschalter bleibt die Stufe offen und eBay unberührt; Admin kann von Hand starten", async () => {
+test("Dry run: without the write switch the step stays open and eBay untouched; an admin can start by hand", async () => {
   const d = neueDb(), s = schreiber({ schreiben: false });
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
   leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
@@ -105,7 +105,7 @@ test("Probelauf: ohne Schreibschalter bleibt die Stufe offen und eBay unberührt
   assert.equal(w.wert.ausgang, "probelauf"); assert.equal(s2.auf.length, 0);
 });
 
-test("nichts überschreiben: anderer Titel oder anderer Preis bei eBay -> fehlgeschlagen, nichts geändert", async () => {
+test("Do not overwrite: different title or price on eBay -> failed, nothing changed", async () => {
   const d = neueDb(), s = schreiber();
   s.lies = async () => ({ ok: true, titel: "Von Hand geändert", status: "Active", verkauft: 0, preis: 7.5, variationen: [] });
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
@@ -118,20 +118,20 @@ test("nichts überschreiben: anderer Titel oder anderer Preis bei eBay -> fehlge
   assert.equal(p.wert.ausgang, "fehlgeschlagen"); assert.match(p.wert.text, /7\.50/); assert.equal(s.auf.length, 0);
 });
 
-test("Preisvorschlag: Varianten mit verschiedenen Preisen werden nicht gesenkt", () => {
+test("Price suggestion: variants with different prices are not lowered", () => {
   const v = leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 8 }], varianten: [{ price: 8 }, { price: 14 }] });
   assert.match(v.nichtMoeglich, /different prices/);
   assert.deepEqual(leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 4.99 }], varianten: [{ price: 4.99 }] }), { alt: 4.99, neu: 4.49, schritt: 0.1 });
 });
 
-test("ein Titel, der den Regelprüfer nicht bestanden hat, kann nicht zur Freigabe", () => {
+test("A title that failed the rule checker cannot go to approval", () => {
   const d = neueDb();
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
   const r = leiter.setzeTitelVorschlag(d, BUILDER, "A", { ...titelVorschlag, pruefung: { ok: false, verstoesse: [{ text: "Original" }] } }, T0);
   assert.equal(r.status, 400);
 });
 
-test("Übersicht: Zahl je Stufe, Zwischenstand der Prüfzeit und Lebenslauf", async () => {
+test("Overview: count per step, interim state of the waiting time and history", async () => {
   const d = neueDb();
   leiter.nimmAuf(d, shop(), E, T0);
   leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
@@ -143,7 +143,7 @@ test("Übersicht: Zahl je Stufe, Zwischenstand der Prüfzeit und Lebenslauf", as
   assert.ok(a.verlauf.length >= 3);
 });
 
-test("von Hand aufnehmen (Auswahlliste): nur Admin, nur Kandidaten, auch über die Höchstzahl hinaus, steht im Protokoll", () => {
+test("Take in by hand (selection list): admin only, candidates only, also beyond the maximum, is in the log", () => {
   const d = neueDb();
   leiter.nimmAuf(d, shop(), E, T0); // A, B, C: die Leiter ist voll
   assert.equal(leiter.nimmVonHandAuf(d, BUILDER, "D", shop(), E, T0).status, 403);
@@ -160,7 +160,7 @@ test("von Hand aufnehmen (Auswahlliste): nur Admin, nur Kandidaten, auch über d
 // ---------- Kontrollgruppe ----------
 const EK = { ...E, leiterKontrolle: true, leiterMax: 2 };
 
-test("Kontrollgruppe: der Lauf zieht 2 × frei Kandidaten und lost sie je zur Hälfte auf Leiter und Kontrolle, gleicher seed = gleiche Ziehung", () => {
+test("Control group: the run draws 2 × free candidates and splits them half and half onto the ladder and control, same seed = same draw", () => {
   const d = neueDb();
   const neu = leiter.nimmAuf(d, shop(), EK, T0, { seed: 42 });
   assert.equal(neu.length, 2, "zwei Plätze frei -> zwei auf die Leiter");
@@ -178,7 +178,7 @@ test("Kontrollgruppe: der Lauf zieht 2 × frei Kandidaten und lost sie je zur H�
   assert.ok(!leiter.kandidaten(d, shop(), EK, T0).some((p) => kontrolle.some((k) => k.number === p.number)));
 });
 
-test("Auswertung mit Kontrollgruppe: steigt der ganze Shop, zeigt der Nettoeffekt 0; steigt nur das Angebot, den echten Effekt", () => {
+test("Evaluation with control group: if the whole shop rises the net effect shows 0; if only the listing rises, the real effect", () => {
   for (const [name, nurAngebot, erwartet] of [["Saison", false, 0], ["echter Effekt", true, 1]]) {
     const d = neueDb(), e = { ...EK, leiterMax: 1 };
     const [nr] = leiter.nimmAuf(d, shop(), e, T0, { seed: 7 });
@@ -196,7 +196,7 @@ test("Auswertung mit Kontrollgruppe: steigt der ganze Shop, zeigt der Nettoeffek
   }
 });
 
-test("Kontrollzeit vorbei (alle drei Prüfzeiten): das Kontrollangebot verlässt die Gruppe und macht 90 Tage Pause", () => {
+test("Control time over (all three waiting times): the control listing leaves the group and pauses for 90 days", () => {
   const d = neueDb();
   leiter.nimmAuf(d, shop(), { ...EK, leiterMax: 1 }, T0, { seed: 7 });
   const ktr = d.prepare("SELECT number FROM leiter WHERE stufe = 'kontrolle'").get().number;
@@ -209,7 +209,7 @@ test("Kontrollzeit vorbei (alle drei Prüfzeiten): das Kontrollangebot verlässt
   assert.equal(t.status, "raus"); assert.equal(t.art, "pause");
 });
 
-test("Funnel: jedes Produkt hat genau einen Status und einen Grund, in der Reihenfolge der Aufnahme", () => {
+test("Funnel: every product has exactly one status and one reason, in the order of intake", () => {
   const d = neueDb();
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0); // A auf die Leiter
   const produkte = [...shop(), { number: "N", title: "neu", created_at: "2026-11-01T10:00:00Z", units_total: 0, units_90d: 0, impressionen_90d: 5, ebay_aktiv: 1 }];
@@ -225,7 +225,7 @@ test("Funnel: jedes Produkt hat genau einen Status und einen Grund, in der Reihe
   assert.deepEqual(f.liste.filter((x) => x.status === "geeignet").map((x) => x.number).sort(), leiter.kandidaten(d, produkte, E, T0, { gesperrt: new Set(["D"]) }).map((p) => p.number).sort());
 });
 
-test("Freigabe prüft den Titel noch einmal: ein Vorschlag aus der Zeit vor einer schärferen Regel wird nicht geschrieben", async () => {
+test("Approval checks the title once more: a suggestion from before a stricter rule is not written", async () => {
   const d = neueDb(), s = schreiber();
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
   // so gespeichert, wie es die alte Regel durchgelassen hätte: Marke vor "passend"
@@ -239,7 +239,7 @@ test("Freigabe prüft den Titel noch einmal: ein Vorschlag aus der Zeit vor eine
 });
 
 // ---------- Bewegung von Hand (Niko 20.11.: Produkte wandern nur per Knopf) ----------
-test("von Hand weiterschieben: nur Admin, nur in laufender Prüfzeit, misst bis heute gegen die Kontrollgruppe", () => {
+test("Move on by hand: admin only, only during a running waiting time, measures up to today against the control group", () => {
   const d = neueDb(), e = { ...EK, leiterMax: 1 };
   const [nr] = leiter.nimmAuf(d, shop(), e, T0, { seed: 7 });
   const impTag = (n, von) => (von >= "2026-11-20" && n === nr ? 6 : 3);
@@ -257,7 +257,7 @@ test("von Hand weiterschieben: nur Admin, nur in laufender Prüfzeit, misst bis 
   assert.equal(leiter.wirkung(d).titel.mitKontrolle, 1, "die Messung von Hand zählt in der Wirkung je Phase");
 });
 
-test("von Hand als wieder gesehen beenden; der automatische Teil bewertet bei nurKontrolle keine Stufe", () => {
+test("End as seen again by hand; the automatic part evaluates no step when only the control is evaluated", () => {
   const d = neueDb(), e = { ...EK, leiterMax: 1 };
   const [nr] = leiter.nimmAuf(d, shop(), e, T0, { seed: 7 });
   leiter.setzeTitelVorschlag(d, BUILDER, nr, titelVorschlag, T0);
@@ -272,7 +272,7 @@ test("von Hand als wieder gesehen beenden; der automatische Teil bewertet bei nu
 });
 
 // ---------- Sauberer Start, Losen mit Anzahl, Werbung schon vorhanden (Niko 20.11.) ----------
-test("Take off ohne eBay-Änderung: sofort wieder Eligible (keine 90 Tage Pause); mit Änderung bleibt die Pause", async () => {
+test("Take off without eBay change: immediately eligible again (no 90-day pause); with a change the pause stays", async () => {
   const d = neueDb(), s = schreiber();
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 2 }, T0); // A, B
   assert.equal(leiter.brichAb(d, BUILDER, "A", "x", T0).status, 403);
@@ -287,7 +287,7 @@ test("Take off ohne eBay-Änderung: sofort wieder Eligible (keine 90 Tage Pause)
   assert.ok(!leiter.kandidaten(d, shop(), E, tag(10)).some((p) => p.number === "B"));
 });
 
-test("Start over: alles ohne eBay-Änderung zurück (auch Kontrolle), Angebote mit Änderung bleiben", async () => {
+test("Start over: everything without an eBay change goes back (control too), listings with a change stay", async () => {
   const d = neueDb(), s = schreiber();
   const [nr] = leiter.nimmAuf(d, shop(), { ...EK, leiterMax: 2 }, T0, { seed: 3 });
   leiter.setzeTitelVorschlag(d, BUILDER, nr, titelVorschlag, T0);
@@ -299,7 +299,7 @@ test("Start over: alles ohne eBay-Änderung zurück (auch Kontrolle), Angebote m
   assert.equal(zeile(d, nr).phase, "laeuft");
 });
 
-test("Losen von Hand: Anzahl ohne Obergrenze, Kontrollgruppe ja oder nein je Ziehung", () => {
+test("Draw by hand: number without upper limit, control group yes or no per draw", () => {
   const d = neueDb();
   assert.equal(leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0, { anzahl: 4, kontrolle: false }).length, 4, "4 trotz leiterMax 1");
   assert.equal(d.prepare("SELECT COUNT(*) n FROM leiter WHERE stufe = 'kontrolle'").get().n, 0);
@@ -308,7 +308,7 @@ test("Losen von Hand: Anzahl ohne Obergrenze, Kontrollgruppe ja oder nein je Zie
   assert.equal(d2.prepare("SELECT COUNT(*) n FROM leiter WHERE stufe = 'kontrolle'").get().n, 2);
 });
 
-test("schon beworben: aus Phase 2 direkt in die Preisstufe, mit Grund im Lebenslauf; nur aus Phase 2", () => {
+test("already advertised: from phase 2 straight to the price step, with the reason in the history; only from phase 2", () => {
   const d = neueDb();
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0); // A in Phase 1
   assert.equal(leiter.springeUeberWerbung(d, "A", { kampagnen: ["K"] }, E, {}, T0).status, 409, "aus Phase 1 nicht");
@@ -320,7 +320,7 @@ test("schon beworben: aus Phase 2 direkt in die Preisstufe, mit Grund im Lebensl
   assert.match(JSON.parse(v.details).grund, /Already advertised on eBay \(Kampagne 10\.10\.2025\)/);
 });
 
-test("nach einer Titeländerung liest die App bei eBay nach und nennt den neuen Titel", async () => {
+test("After a title change the app reads back from eBay and reports the new title", async () => {
   const d = neueDb();
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
   leiter.setzeTitelVorschlag(d, BUILDER, "A", titelVorschlag, T0);
@@ -332,7 +332,7 @@ test("nach einer Titeländerung liest die App bei eBay nach und nennt den neuen 
 });
 
 // Niko 20.11.: Angebote, die bei eBay schon verkauft haben, werden nicht angefasst (Standard), "nein" schaltet das ab
-test("schon bei eBay verkauft: nicht geeignet (eigener Grund), nie verkaufte bleiben; abschaltbar", () => {
+test("already sold on eBay: not eligible (own reason), never-sold ones stay; can be switched off", () => {
   const d = neueDb(), en = { ...E, leiterNurOhneVerkauf: "ja" };
   const produkte = [...shop(), { number: "N0", title: "nie verkauft", created_at: "2025-12-01T10:00:00Z", units_total: 0, units_90d: 0, impressionen_90d: 200, ebay_aktiv: 1 }];
   assert.deepEqual(leiter.kandidaten(d, produkte, en, T0).map((p) => p.number), ["N0"], "A–E haben verkauft, nur N0 bleibt");
@@ -344,7 +344,7 @@ test("schon bei eBay verkauft: nicht geeignet (eigener Grund), nie verkaufte ble
 });
 
 // Niko 20.11.: die vor der Regel gezogenen, schon verkauften Angebote gehen wieder runter, außer bei eBay wurde schon etwas geändert
-test("raeumeVerkaufteAb: verkaufte ohne eBay-Änderung runter (ohne Pause), geänderte bleiben, nie verkaufte bleiben", () => {
+test("raeumeVerkaufteAb: sold ones without eBay change go down (no pause), changed ones stay, never-sold ones stay", () => {
   const d = neueDb();
   assert.deepEqual(leiter.nimmAuf(d, shop(), E, T0), ["A", "B", "C"]);  // E: Regel aus, wie vor #49
   d.prepare("INSERT INTO leiter_verlauf (number, stufe, ereignis, details, benutzer, at) VALUES ('B', 'titel', 'freigegeben', '{}', 'anna', ?)").run(new Date(T0.getTime() + 1000).toISOString());

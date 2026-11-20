@@ -82,7 +82,7 @@ async function anmelden(name, kopf = {}) {
 }
 
 // ---------- Tests ----------
-test("Routenliste: aus server.mjs gelesen, vollständig klassifiziert, öffentliche Liste ohne Leichen", (t) => {
+test("Route list: read from server.mjs, completely classified, public list without dead entries", (t) => {
   const alle = ROUTEN.map(schluessel);
   t.diagnostic(`${alle.length} Routen (Methode + Pfad), davon ${alle.filter((s) => s.includes(" /api/")).length} unter /api, ${ADMIN.size} nur für Admins, ${OEFFENTLICH.size} öffentlich`);
   assert.ok(alle.length >= 30, "der Parser findet die Routen nicht mehr (server.mjs umgebaut?) — dann diesen Test anpassen, nicht abschalten");
@@ -94,7 +94,7 @@ test("Routenliste: aus server.mjs gelesen, vollständig klassifiziert, öffentli
   assert.ok(QUELLE.indexOf("if (!benutzer) {") < QUELLE.indexOf("POST_ROUTEN[url.pathname]"), "Anmeldeprüfung steht hinter der Routenauswahl");
 });
 
-test("jede nicht öffentliche Route: ohne Anmeldung 401", async () => {
+test("every non-public route: 401 without login", async () => {
   const geprueft = [];
   for (const r of ROUTEN.filter((x) => !OEFFENTLICH.has(schluessel(x)))) {
     const a = await anfrage(r);
@@ -105,13 +105,13 @@ test("jede nicht öffentliche Route: ohne Anmeldung 401", async () => {
   assert.ok(geprueft.length >= 26, `nur ${geprueft.length} Routen geprüft`);
 });
 
-test("jede nicht öffentliche Route: ein erfundenes oder abgelaufenes Cookie öffnet nichts", async () => {
+test("every non-public route: an invented or expired cookie opens nothing", async () => {
   for (const r of ROUTEN.filter((x) => !OEFFENTLICH.has(schluessel(x)))) {
     assert.equal((await anfrage(r, { cookie: "sitzung=" + "a".repeat(43) })).status, 401, schluessel(r));
   }
 });
 
-test("öffentliche Routen: ohne Anmeldung erreichbar, aber ohne Daten oder Wirkung", async () => {
+test("public routes: reachable without login, but without data or effect", async () => {
   const h = await (await fetch(basis + "/healthz")).json();
   assert.deepEqual(Object.keys(h).sort(), ["ok", "version"]);
   const ich = (await (await fetch(basis + "/api/ich")).json()).daten;
@@ -120,7 +120,7 @@ test("öffentliche Routen: ohne Anmeldung erreichbar, aber ohne Daten oder Wirku
   assert.equal((await anfrage({ methode: "POST", pfad: "/api/login" }, { body: JSON.stringify({ name: "anna", passwort: "falsch-falsch" }) })).status, 401);
 });
 
-test("jede Admin-Route: Builder bekommt 403, und danach ist er immer noch Builder", async () => {
+test("every admin route: a builder gets 403, and is still a builder afterwards", async () => {
   const { cookie } = await anmelden("anna");
   for (const s of ADMIN) {
     const [methode, pfad] = s.split(" ");
@@ -133,7 +133,7 @@ test("jede Admin-Route: Builder bekommt 403, und danach ist er immer noch Builde
   assert.equal((await fetch(basis + "/api/rollen", { headers: { Cookie: (await anmelden("niko")).cookie } })).status, 200);
 });
 
-test("eBay-Schreibschalter: keine Route und keine Einstellung kann EBAY_SCHREIBEN setzen, nur die .env des Servers", () => {
+test("eBay write switch: no route and no setting can set EBAY_SCHREIBEN, only the server's .env", () => {
   for (const f of fs.readdirSync(import.meta.dirname).filter((n) => n.endsWith(".mjs") && !n.startsWith("test"))) {
     const q = fs.readFileSync(path.join(import.meta.dirname, f), "utf8");
     assert.doesNotMatch(q, /(process\.)?env(\[["']EBAY_SCHREIBEN["']\]|\.EBAY_SCHREIBEN)\s*=[^=]/, `${f} setzt EBAY_SCHREIBEN`);
@@ -141,7 +141,7 @@ test("eBay-Schreibschalter: keine Route und keine Einstellung kann EBAY_SCHREIBE
   assert.ok(!SCHEMA.some((f) => /ebay|schreib/i.test(f.key)), "kein Einstellungsfeld für den Schreibschalter");
 });
 
-test("CSRF: jede POST-Route lehnt eine fremde Herkunft (403) und einen falschen Typ (415) ab, auch mit gültiger Admin-Sitzung", async () => {
+test("CSRF: every POST route rejects a foreign origin (403) and a wrong type (415), even with a valid admin session", async () => {
   const { cookie } = await anmelden("niko");
   const posts = ROUTEN.filter((r) => r.methode === "POST");
   for (const r of posts) {
@@ -157,7 +157,7 @@ test("CSRF: jede POST-Route lehnt eine fremde Herkunft (403) und einen falschen 
   assert.equal(fs.existsSync(path.join(verz, "sicherung")), false);
 });
 
-test("Formulare schicken nirgendwohin außer an die eigene App", () => {
+test("Forms send nowhere except to the app itself", () => {
   for (const f of fs.readdirSync(PUBLIC).filter((n) => n.endsWith(".html"))) {
     const html = fs.readFileSync(path.join(PUBLIC, f), "utf8");
     for (const m of html.matchAll(/<form\b[^>]*>/gi)) assert.doesNotMatch(m[0], /\baction\s*=\s*["']?(https?:)?\/\//i, `${f}: ${m[0]}`);
@@ -165,7 +165,7 @@ test("Formulare schicken nirgendwohin außer an die eigene App", () => {
   assert.match(QUELLE, /form-action 'self'/, "CSP verbietet fremde Formularziele");
 });
 
-test("statische Dateien: ohne Anmeldung nur die Anmeldeseite, alles andere 401", async () => {
+test("static files: without login only the login page, everything else 401", async () => {
   const offen = JSON.parse((QUELLE.match(/const offen = (\[[^\]]*\]);/) || [])[1] || "null");
   assert.deepEqual(offen, OFFENE_DATEIEN, "die Liste der offenen Dateien in server.mjs hat sich geändert");
   assert.equal((await fetch(basis + "/")).status, 200);
@@ -176,7 +176,7 @@ test("statische Dateien: ohne Anmeldung nur die Anmeldeseite, alles andere 401",
   }
 });
 
-test("Cookie: HttpOnly und SameSite=Strict immer, Secure nur über HTTPS (hinter Cloudflare), Laufzeit begrenzt", async () => {
+test("Cookie: HttpOnly and SameSite=Strict always, Secure only over HTTPS (behind Cloudflare), limited lifetime", async () => {
   const lokal = (await anmelden("anna")).kopfzeile;
   assert.match(lokal, /HttpOnly/); assert.match(lokal, /SameSite=Strict/); assert.match(lokal, /Path=\//);
   assert.doesNotMatch(lokal, /Secure/, "lokal über http://127.0.0.1 würde der Browser ein Secure-Cookie nicht zurückschicken");
@@ -190,7 +190,7 @@ test("Cookie: HttpOnly und SameSite=Strict immer, Secure nur über HTTPS (hinter
   assert.equal((await fetch(basis + "/api/stand", { headers: { Cookie: cookie } })).status, 401, "und die Sitzung ist serverseitig weg");
 });
 
-test("Cloudflare Access: mit gesetzter Aud nur mit gültigem JWT — fehlt, falsche Aud, abgelaufen, alg none, nicht prüfbare Signatur: 401", async () => {
+test("Cloudflare Access: with the aud set only with a valid JWT — missing, wrong aud, expired, alg none, unverifiable signature: 401", async () => {
   const port = PORT + 100, b = `http://127.0.0.1:${port}`;
   // Team-Domain zeigt auf eine Adresse ohne Dienst: die Schlüssel sind nicht abrufbar, die Signatur also nie prüfbar → muss ablehnen
   const s = spawn(process.execPath, [path.join(import.meta.dirname, "server.mjs")], { env: { ...process.env, PM_OHNE_ENV: "1", PM_PORT: String(port), PM_APPDB: path.join(verz, "access.db"), PM_DB: "", CF_ACCESS_TEAM_DOMAIN: "127.0.0.1:1", CF_ACCESS_AUD: "aud-test", SICHERUNG_AUTO: "aus", EBAY_SCHREIBEN: "", EBAY_APP_ID: "" }, stdio: "ignore" });

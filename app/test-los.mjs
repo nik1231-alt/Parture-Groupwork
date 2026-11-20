@@ -33,7 +33,7 @@ function pmDb(sperren) {
 }
 
 // ---------- 1. reproduzierbar ----------
-test("Los reproduzierbar: der seed steht in der Datenbank und in der Antwort, derselbe seed ergibt dieselben Gruppen", () => {
+test("Draw reproducible: the seed is in the database and in the answer, the same seed gives the same groups", () => {
   const a = appDb(), b = appDb();
   const ra = ex.legeAn(a, {}, shop(), E, JETZT, 4711), rb = ex.legeAn(b, {}, shop(), E, JETZT, 4711);
   assert.equal(ra.ok, true); assert.equal(ra.wert.seed, 4711);
@@ -48,7 +48,7 @@ test("Los reproduzierbar: der seed steht in der Datenbank und in der Antwort, de
   assert.notDeepEqual(gruppen(c, rc.wert.id), gruppen(a, ra.wert.id), "ein anderer seed ergibt eine andere Ziehung");
 });
 
-test("Los reproduzierbar: ohne vorgegebenen seed wird einer gezogen, gespeichert und zurückgegeben", () => {
+test("Draw reproducible: without a given seed one is drawn, stored and returned", () => {
   const d = appDb();
   const r = ex.legeAn(d, {}, shop(), E, JETZT);
   assert.ok(Number.isInteger(r.wert.seed) && r.wert.seed >= 1);
@@ -56,7 +56,7 @@ test("Los reproduzierbar: ohne vorgegebenen seed wird einer gezogen, gespeichert
 });
 
 // ---------- 2. gleich große Gruppen ----------
-test("Los: Gruppen gleich groß, bei ungerader Anzahl höchstens 1 Unterschied", () => {
+test("Draw: groups equally large, with an odd number at most 1 difference", () => {
   for (const n of [4, 10, 20, 30]) for (const seed of [1, 2, 99]) {
     const { test: t, kontrolle: k } = ex.ziehe(shop(), n, seed);
     assert.equal(t.length, n / 2); assert.equal(k.length, n / 2);
@@ -72,7 +72,7 @@ test("Los: Gruppen gleich groß, bei ungerader Anzahl höchstens 1 Unterschied",
 });
 
 // ---------- 3. kein Angebot doppelt ----------
-test("Los: kein Angebot doppelt, weder innerhalb eines Tests (auch bei doppelten Kandidaten) noch über zwei Tests", () => {
+test("Draw: no listing twice, neither within one test (even with duplicate candidates) nor across two tests", () => {
   const doppelt = [...shop(), ...shop().slice(0, 10)];
   for (const seed of [1, 7, 123, 99999]) {
     const { test: t, kontrolle: k } = ex.ziehe(doppelt, 30, seed);
@@ -88,14 +88,14 @@ test("Los: kein Angebot doppelt, weder innerhalb eines Tests (auch bei doppelten
 });
 
 // ---------- 4. Sperrliste ----------
-test("Sperrliste: fehlt die Tabelle sperre in pm.db, ist nichts gesperrt", () => {
+test("Block list: if the table sperre is missing in pm.db, nothing is blocked", () => {
   const pm = pmDb(null);
   assert.deepEqual(ladeSperre(pm), []);
   assert.equal(ex.gesperrteNummern(ladeSperre(pm), JETZT).size, 0);
   assert.equal(ex.kandidaten(appDb(), shop(), E, JETZT, ex.gesperrteNummern(ladeSperre(pm), JETZT)).length, 30);
 });
 
-test("Sperrliste: gesperrt über Produktnummer oder eBay-Artikelnummer; abgelaufen (bis vor heute) zählt nicht, heute noch gesperrt", () => {
+test("Block list: blocked by product number or eBay item number; expired (until before today) does not count, today still blocked", () => {
   const pm = pmDb([
     { number: "P01", external_id: "x-1", bis: "2026-11-24" },                    // über die Produktnummer
     { external_id: String(100000000000 + 2), bis: "2026-11-24" },               // über die eBay-Artikelnummer (kanal -> P02)
@@ -112,7 +112,7 @@ test("Sperrliste: gesperrt über Produktnummer oder eBay-Artikelnummer; abgelauf
   assert.equal(ex.gesperrteNummern(ladeSperre(pm), new Date("2026-11-25T12:00:00Z")).has("P01"), false, "nach dem bis-Datum wieder frei");
 });
 
-test("Sperrliste: ein gesperrtes Angebot wird nie gezogen (200 Lose), und reicht es ohne Gesperrte nicht, gibt es eine Absage statt eines gesperrten Angebots", () => {
+test("Block list: a blocked listing is never drawn (200 draws), and if there are not enough without blocked ones, there is a refusal instead of a blocked listing", () => {
   const gesperrt = new Set(["P00", "P03", "P10", "P29"]);
   for (let seed = 1; seed <= 200; seed++) {
     const d = appDb();
@@ -126,14 +126,14 @@ test("Sperrliste: ein gesperrtes Angebot wird nie gezogen (200 Lose), und reicht
 });
 
 // ---------- 4. nur Angebote, deren Titel sich ändern lässt ----------
-test("Los: ein Produkt ohne laufendes eBay-Angebot (ebay_aktiv 0) wird nie gezogen, unbekannt (null) zählt mit", () => {
+test("Draw: a product without a running eBay listing (ebay_aktiv 0) is never drawn, unknown (null) counts", () => {
   const p = shop(); p[0].ebay_aktiv = 0; p[1].ebay_aktiv = null; p[2].ebay_aktiv = 1;
   const k = ex.kandidaten(appDb(), p, E, JETZT).map((x) => x.number);
   assert.ok(!k.includes("P00"), "beendetes Angebot kein Kandidat");
   assert.ok(k.includes("P01") && k.includes("P02"));
 });
 
-test("ladeProdukte: ebay_aktiv aus kanal (laufend mit Nummer = 1, beendet ohne Nummer = 0)", async () => {
+test("ladeProdukte: ebay_aktiv from kanal (running with number = 1, ended without number = 0)", async () => {
   const { ladeProdukte } = await import("./bewertung.mjs");
   const d = new Database(":memory:");
   d.exec("CREATE TABLE produkt (number TEXT, title TEXT, image_url TEXT, avg_price REAL, units_total INTEGER, units_90d INTEGER, created_at TEXT, last_sold_at TEXT); CREATE TABLE kanal (number TEXT, channel TEXT, listed INTEGER, external_id TEXT, title TEXT)");
@@ -144,7 +144,7 @@ test("ladeProdukte: ebay_aktiv aus kanal (laufend mit Nummer = 1, beendet ohne N
 
 // Scope nur eBay (Niko 20.11.): Verkäufe, Preis und letzter Verkauf kommen aus der eBay-Zeile, nie aus der Summe aller Kanäle.
 // Am 20.11. summierte produkt.units_90d noch Amazon (3.889) und eBay (3.583); die Problem-Seite rechnete damit Amazon mit.
-test("ladeProdukte: Verkäufe nur von eBay, andere Plattformen zählen nicht", async () => {
+test("ladeProdukte: sales only from eBay, other platforms do not count", async () => {
   const { ladeProdukte } = await import("./bewertung.mjs");
   const d = new Database(":memory:");
   d.exec("CREATE TABLE produkt (number TEXT, title TEXT, image_url TEXT, avg_price REAL, units_total INTEGER, units_90d INTEGER, created_at TEXT, last_sold_at TEXT); CREATE TABLE kanal (number TEXT, channel TEXT, listed INTEGER, external_id TEXT, title TEXT, preis_aktuell REAL, units_total INTEGER, units_90d INTEGER, avg_price REAL, last_sold_at TEXT)");

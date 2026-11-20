@@ -32,13 +32,13 @@ const push = (nachricht) => { schreibe(werk, "verlauf.txt", String(++zaehler)); 
 const klone = (name, branch = "main") => { const d = path.join(wurzel, name); execFileSync("git", ["clone", "-q", "-b", branch, quelle, d], { stdio: "ignore" }); return d; };
 const TEST = [process.execPath, ["pruefung.mjs"]];
 
-test("unverändert: nichts zu tun, wenn der Stand gleich ist", async () => {
+test("unchanged: nothing to do when the version is the same", async () => {
   const prod = klone("prod1");
   const e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(e.status, "unveraendert");
 });
 
-test("neuer Stand mit bestandenen Tests wird ausgerollt und gemerkt", async () => {
+test("a new version with passing tests is rolled out and remembered", async () => {
   const prod = klone("prod2");
   const neu = push("gute Änderung");
   const e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
@@ -47,7 +47,7 @@ test("neuer Stand mit bestandenen Tests wird ausgerollt und gemerkt", async () =
   assert.equal(leseStatus(prod).commit, neu);
 });
 
-test("durchgefallene Tests: Rückfall auf den alten Stand, der schlechte Stand wird nicht erneut getestet, ein neuer schon", async () => {
+test("failed tests: fall back to the old version, the bad version is not tested again, a new one is", async () => {
   const prod = klone("prod3");
   const gut = gitIn(prod)("rev-parse", "HEAD");
   fs.rmSync(path.join(werk, "ok.txt")); const schlecht = push("kaputt");
@@ -67,7 +67,7 @@ test("durchgefallene Tests: Rückfall auf den alten Stand, der schlechte Stand w
   assert.equal(leseStatus(prod).abgelehnt, null, "Ablehnung ist aufgehoben");
 });
 
-test("geänderte package.json: die App wird VOR npm ci gestoppt, genau einmal; ohne Änderung an den Abhängigkeiten gar nicht", async () => {
+test("changed package.json: the app is stopped BEFORE npm ci, exactly once; not at all without a change to the dependencies", async () => {
   // Parture-Server 18.11.2026: npm ci scheiterte unter Windows, weil die laufende App better_sqlite3.node offen hielt (EPERM).
   const prod = klone("prod-install");
   // Ersatz für npm ci: schreibt eine Marke in den Ordner. Der Stopp-Haken merkt sich, ob die Marke da schon existierte.
@@ -99,7 +99,7 @@ test("geänderte package.json: die App wird VOR npm ci gestoppt, genau einmal; o
   schreibe(werk, "ok.txt", "1"); push("repariert");
 });
 
-test("lokale Änderungen am Code blockieren das Ausrollen, nichts wird überschrieben", async () => {
+test("local changes to the code block the rollout, nothing is overwritten", async () => {
   const prod = klone("prod4");
   const vorher = gitIn(prod)("rev-parse", "HEAD");
   push("noch eine");
@@ -110,7 +110,7 @@ test("lokale Änderungen am Code blockieren das Ausrollen, nichts wird überschr
   assert.equal(fs.readFileSync(path.join(prod, "ok.txt"), "utf8"), "von Hand geändert");
 });
 
-test("Geheimnisse aus der Umgebung des Wächters kommen nicht in den Testlauf", async () => {
+test("Secrets from the watcher's environment do not reach the test run", async () => {
   const prod = klone("prod5");
   push("wieder was");
   process.env.EBAY_APP_ID = "geheim"; process.env.PM_TOKEN = "geheim";
@@ -120,7 +120,7 @@ test("Geheimnisse aus der Umgebung des Wächters kommen nicht in den Testlauf", 
   } finally { delete process.env.EBAY_APP_ID; delete process.env.PM_TOKEN; }
 });
 
-test("kein Fast-Forward (lokaler Commit auf dem Server): PROD blockiert. Umgeschriebene Historie: VORSCHAU (hart) folgt", async () => {
+test("no fast-forward (local commit on the server): PROD blocks. Rewritten history: PREVIEW (hard) follows", async () => {
   const prod = klone("prod6"); const vorschau = klone("vorschau6");
   // PROD hat einen eigenen Commit, den es auf GitHub nicht gibt, und GitHub bekommt einen anderen
   schreibe(prod, "lokal.txt", "x"); gitIn(prod)("add", "-A"); gitIn(prod)("-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "-q", "-m", "lokaler Commit");
@@ -137,7 +137,7 @@ test("kein Fast-Forward (lokaler Commit auf dem Server): PROD blockiert. Umgesch
   assert.equal(gitIn(vorschau)("rev-parse", "HEAD"), w("rev-parse", "HEAD"));
 });
 
-test("kein Netz bzw. Quelle weg: Status fehler, nichts geht kaputt", async () => {
+test("no network or source gone: status error, nothing breaks", async () => {
   const prod = klone("prod7");
   const vorher = gitIn(prod)("rev-parse", "HEAD");
   gitIn(prod)("remote", "set-url", "origin", path.join(wurzel, "gibt-es-nicht.git"));
@@ -149,7 +149,7 @@ test("kein Netz bzw. Quelle weg: Status fehler, nichts geht kaputt", async () =>
 // ---------- ganzer Prozess ----------
 const warte = async (fn, ms = 20000, schritt = 150) => { const bis = Date.now() + ms; for (;;) { try { const r = await fn(); if (r) return r; } catch { /* noch nicht */ } if (Date.now() > bis) throw new Error("Zeitüberschreitung"); await new Promise((r) => setTimeout(r, schritt)); } };
 
-test("Wächter-Prozess: startet die App, rollt neuen Stand aus, startet nach Absturz und bei hängender App neu", async () => {
+test("Watcher process: starts the app, rolls out a new version, restarts after a crash and with a hanging app", async () => {
   // Ein kleines "Projekt": app/server.mjs ist eine Attrappe, app/waechter.mjs die echte Datei
   const port = 4300 + Math.floor(Math.random() * 90);
   schreibe(werk, "app/server.mjs", `import http from "node:http"; import fs from "node:fs"; import path from "node:path";

@@ -16,18 +16,18 @@ const bereich = (o, e = EINSTELLUNGEN) => bewerte(p(o), e, JETZT).gruppe;
 const db = () => { const d = new Database(":memory:"); einst.bereiteVor(d); ex.bereiteVor(d); return d; };
 
 // ---------- Diagnose: drei Bereiche ----------
-test("Diagnose: es gibt genau drei Bereiche mit klarer Empfehlung", () => {
+test("Diagnosis: there are exactly three areas with a clear recommendation", () => {
   assert.deepEqual(Object.keys(GRUPPEN), ["sichtbarkeit", "ok", "warten"]);
   for (const g of Object.values(GRUPPEN)) assert.ok(g.label && g.empfehlung && g.regel);
 });
 
-test("Diagnose: wenig Impressionen, Grenze bei genau 2.000 (Rückfallwert)", () => {
+test("Diagnosis: low impressions, limit at exactly 2,000 (fallback value)", () => {
   assert.equal(bereich({ impressionen_90d: 1999 }), "sichtbarkeit");
   assert.equal(bereich({ impressionen_90d: 2000 }), "ok");
   assert.equal(bewerte(p({ impressionen_90d: 100 }), EINSTELLUNGEN, JETZT).empfehlung, "Improve the title");
 });
 
-test("Diagnose: auch verkaufende Angebote mit wenig Impressionen gehören dazu, mit Hinweis", () => {
+test("Diagnosis: selling listings with low impressions belong too, with a note", () => {
   const r = bewerte(p({ units_90d: 5, impressionen_90d: 1500 }), EINSTELLUNGEN, JETZT);
   assert.equal(r.gruppe, "sichtbarkeit");
   assert.match(r.begruendung, /already sells \(5 sales/);
@@ -35,7 +35,7 @@ test("Diagnose: auch verkaufende Angebote mit wenig Impressionen gehören dazu, 
   assert.match(bewerte(p({ units_90d: 0, impressionen_90d: 1500 }), EINSTELLUNGEN, JETZT).begruendung, /Too few buyers see this listing/);
 });
 
-test("Diagnose: neue Angebote und Angebote ohne Zahlen bekommen 'Wait', nie eine Abwertung", () => {
+test("Diagnosis: new listings and listings without figures get 'Wait', never a downgrade", () => {
   assert.equal(bereich({ created_at: "2026-10-20T10:00:00.000Z", impressionen_90d: 5 }), "warten");
   assert.equal(bereich({ impressionen_90d: null }), "warten");
   const grenze = new Date(JETZT.getTime() - 90 * 86400000).toISOString();
@@ -43,21 +43,21 @@ test("Diagnose: neue Angebote und Angebote ohne Zahlen bekommen 'Wait', nie eine
   assert.equal(bereich({ created_at: "kein Datum", impressionen_90d: 5 }), "sichtbarkeit"); // kaputtes Datum stürzt nicht ab
 });
 
-test("Diagnose: null Impressionen teilt nicht durch 0 und bleibt Low impressions", () => {
+test("Diagnosis: zero impressions does not divide by 0 and stays Low impressions", () => {
   assert.equal(bereich({ impressionen_90d: 0, aufrufe_90d: 0, units_90d: 0 }), "sichtbarkeit");
   assert.equal(conversion({ units_90d: 3, aufrufe_90d: 0 }), null);
   assert.equal(klickrate({ aufrufe_90d: 5, impressionen_90d: 0 }), null);
   assert.equal(klickrate({ aufrufe_90d: 5, impressionen_90d: 1000 }), 0.005);
 });
 
-test("Grenze: unteres Viertel wird aus dem Shop berechnet, neue Angebote zählen nicht mit", () => {
+test("Limit: the lowest quarter is calculated from the shop, new listings do not count", () => {
   const viele = Array.from({ length: 100 }, (_, i) => ({ created_at: alt, impressionen_90d: (i + 1) * 100 }));
   const neu = Array.from({ length: 50 }, () => ({ created_at: "2026-11-01T00:00:00.000Z", impressionen_90d: 1 }));
   assert.equal(leiteSchwellenAb([...viele, ...neu], EINSTELLUNGEN, JETZT).wenigImpressionen90d, 2500);
   assert.equal(leiteSchwellenAb([...viele, ...neu], { ...EINSTELLUNGEN, anteilUnten: 0.1 }, JETZT).wenigImpressionen90d, 1000);
 });
 
-test("Grenze: Modus 'feste Zahl' nimmt die Zahl aus den Einstellungen, zu wenig Daten behalten den Rückfallwert", () => {
+test("Limit: mode 'fixed number' takes the number from the settings, too little data keeps the fallback value", () => {
   const viele = Array.from({ length: 100 }, (_, i) => ({ created_at: alt, impressionen_90d: (i + 1) * 100 }));
   assert.equal(leiteSchwellenAb(viele, { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 777 }, JETZT).wenigImpressionen90d, 777);
   assert.equal(leiteSchwellenAb([{ created_at: alt, impressionen_90d: 5 }], EINSTELLUNGEN, JETZT).wenigImpressionen90d, EINSTELLUNGEN.wenigImpressionen90d);
@@ -66,7 +66,7 @@ test("Grenze: Modus 'feste Zahl' nimmt die Zahl aus den Einstellungen, zu wenig 
   assert.match(bewerte(p({ impressionen_90d: 10 }), EINSTELLUNGEN, JETZT).begruendung, /lowest 25 % of the shop/);
 });
 
-test("Auswertung: Übersicht zählt alle Angebote genau einmal und kennzeichnet Angebote in Tests", () => {
+test("Evaluation: the overview counts all listings exactly once and marks listings in tests", () => {
   const ps = [{ number: "1", ...p({ impressionen_90d: 10000 }) }, { number: "2", ...p({ impressionen_90d: 10 }) }, { number: "3", ...p({ created_at: "2026-11-01T00:00:00.000Z" }) }];
   const b = baueBewertung(ps, EINSTELLUNGEN, JETZT, new Map([["2", { id: 7, gruppe: "test", status: "laeuft" }]]));
   assert.equal(Object.values(b.uebersicht).reduce((a, c) => a + c, 0), 3);
@@ -76,7 +76,7 @@ test("Auswertung: Übersicht zählt alle Angebote genau einmal und kennzeichnet 
 });
 
 // ---------- Einstellungen ----------
-test("Einstellungen: Startwerte, Speichern, Überschreiben, Zurücksetzen", () => {
+test("Settings: defaults, saving, overriding, resetting", () => {
   const d = db();
   assert.equal(einst.effektiv(d).anteilUnten, 0.25);
   assert.equal(einst.speichere(d, { anteilUnten: 0.1, schonfristTage: 60 }).ok, true);
@@ -91,7 +91,7 @@ test("Einstellungen: Startwerte, Speichern, Überschreiben, Zurücksetzen", () =
   assert.equal(d.prepare("SELECT COUNT(*) c FROM einstellung").get().c, 0);
 });
 
-test("Einstellungen: ungültige Werte werden abgelehnt und nichts wird gespeichert", () => {
+test("Settings: invalid values are rejected and nothing is saved", () => {
   const d = db();
   const abgelehnt = (e, muster) => { const r = einst.speichere(d, e); assert.equal(r.ok, false); assert.equal(r.status, 400); assert.match(r.fehler, muster); };
   abgelehnt({ anteilUnten: 0.9 }, /between 5 and 50/);        // zu groß
@@ -117,7 +117,7 @@ test("Einstellungen: ungültige Werte werden abgelehnt und nichts wird gespeiche
   assert.equal(d.prepare("SELECT COUNT(*) c FROM einstellung").get().c, 0);
 });
 
-test("Einstellungen: Grenzwerte sind erlaubt, Prozentwerte mit Rundungsfehlern auch", () => {
+test("Settings: limit values are allowed, percentages with rounding errors too", () => {
   const d = db();
   assert.equal(einst.speichere(d, { anteilUnten: 0.05 }).ok, true);
   assert.equal(einst.speichere(d, { anteilUnten: 0.5 }).ok, true);
@@ -126,7 +126,7 @@ test("Einstellungen: Grenzwerte sind erlaubt, Prozentwerte mit Rundungsfehlern a
   assert.equal(einst.speichere(d, { modus: "fest", festeGrenze: 1 }).ok, true);
 });
 
-test("Einstellungen: kaputte oder veraltete gespeicherte Einträge werden ignoriert", () => {
+test("Settings: broken or outdated saved entries are ignored", () => {
   const d = db();
   d.prepare("INSERT INTO einstellung VALUES ('anteilUnten', '99')").run();      // ungültig
   d.prepare("INSERT INTO einstellung VALUES ('schonfristTage', 'kaputt{')").run(); // kein JSON
@@ -137,7 +137,7 @@ test("Einstellungen: kaputte oder veraltete gespeicherte Einträge werden ignori
   assert.equal(Object.hasOwn(e, "alteRegel"), false);
 });
 
-test("Einstellungen: jedes Schema-Feld hat Beschriftung, Erklärung, einen gültigen Startwert und einen Abschnitt", () => {
+test("Settings: every schema field has a label, an explanation, a valid default and a section", () => {
   const abschnitte = new Set(einst.ABSCHNITTE.map((a) => a.id));
   for (const f of einst.SCHEMA) {
     assert.ok(f.label && f.hilfe, `Feld ${f.key} ohne Text`);
@@ -146,7 +146,7 @@ test("Einstellungen: jedes Schema-Feld hat Beschriftung, Erklärung, einen gült
   }
 });
 
-test("Einstellungen: der Modus steuert die Grenze der Diagnose", () => {
+test("Settings: the mode controls the diagnosis limit", () => {
   const d = db();
   einst.speichere(d, { modus: "fest", festeGrenze: 5000 });
   const e = leiteSchwellenAb([], einst.effektiv(d), JETZT);
@@ -164,14 +164,14 @@ const shop = () => [
 // feste Grenze, damit alle 60 "Niedrig"-Angebote in Frage kommen (im Standard gilt das untere Viertel des Shops)
 const E = { ...EINSTELLUNGEN, testGroesse: 40, modus: "fest", festeGrenze: 1000 };
 
-test("Los: gleicher Zufallswert gibt dieselbe Ziehung, ein anderer eine andere", () => {
+test("Draw: the same random value gives the same draw, another gives a different one", () => {
   const k = shop().filter((x) => x.number.startsWith("L"));
   const a = ex.ziehe(k, 20, 42), b = ex.ziehe(k, 20, 42), c = ex.ziehe(k, 20, 43);
   assert.deepEqual(a, b);
   assert.notDeepEqual(a.test.map((x) => x.number), c.test.map((x) => x.number));
 });
 
-test("Los: je zur Hälfte Test und Kontrolle, ohne Überschneidung und ohne Doppelte", () => {
+test("Draw: half test and half control, without overlap and without duplicates", () => {
   const k = shop().filter((x) => x.number.startsWith("L"));
   for (const seed of [1, 2, 3, 99, 12345]) {
     const { test: t, kontrolle: c } = ex.ziehe(k, 40, seed);
@@ -180,14 +180,14 @@ test("Los: je zur Hälfte Test und Kontrolle, ohne Überschneidung und ohne Dopp
   }
 });
 
-test("Los: es ist wirklich zufällig verteilt (kein Angebot wird immer in dieselbe Gruppe sortiert)", () => {
+test("Draw: it is really randomly distributed (no listing is always sorted into the same group)", () => {
   const k = shop().filter((x) => x.number.startsWith("L"));
   let ersteInTest = 0;
   for (let seed = 1; seed <= 200; seed++) if (ex.ziehe(k, 40, seed).test.some((x) => x.number === "L00")) ersteInTest++;
   assert.ok(ersteInTest > 40 && ersteInTest < 160, `L00 war ${ersteInTest} von 200 Mal in der Testgruppe`); // erwartet etwa 33 %
 });
 
-test("Test anlegen: zieht nur aus 'Low impressions', nie neue oder gut sichtbare Angebote", () => {
+test("Create test: draws only from 'Low impressions', never new or well-seen listings", () => {
   const d = db();
   const r = ex.legeAn(d, {}, shop(), E, JETZT, 7);
   assert.equal(r.ok, true);
@@ -199,7 +199,7 @@ test("Test anlegen: zieht nur aus 'Low impressions', nie neue oder gut sichtbare
   assert.equal(d.prepare("SELECT seed FROM experiment").get().seed, 7); // das Los ist nachvollziehbar
 });
 
-test("Test anlegen: zu wenig passende Angebote ergibt eine verständliche Absage", () => {
+test("Create test: too few matching listings gives an understandable refusal", () => {
   const d = db();
   const r = ex.legeAn(d, {}, shop().slice(0, 30), E, JETZT, 1);
   assert.equal(r.ok, false); assert.equal(r.status, 409);
@@ -207,7 +207,7 @@ test("Test anlegen: zu wenig passende Angebote ergibt eine verständliche Absage
   assert.equal(d.prepare("SELECT COUNT(*) c FROM experiment").get().c, 0);
 });
 
-test("Test anlegen: ein Angebot steckt immer nur in einem Test", () => {
+test("Create test: a listing is always in only one test", () => {
   const d = db();
   assert.equal(ex.legeAn(d, {}, shop(), { ...E, testGroesse: 40 }, JETZT, 1).ok, true);      // 40 von 60 belegt
   const zweiter = ex.legeAn(d, {}, shop(), { ...E, testGroesse: 40 }, JETZT, 2);             // nur noch 20 frei
@@ -222,7 +222,7 @@ test("Test anlegen: ein Angebot steckt immer nur in einem Test", () => {
   assert.equal(ex.kandidaten(d, shop(), E, JETZT).length, 40);
 });
 
-test("Test anlegen: Name wird geprüft, ohne Name gibt es einen Standardnamen", () => {
+test("Create test: the name is checked, without a name there is a default name", () => {
   const d = db();
   assert.equal(ex.legeAn(d, { name: "x".repeat(61) }, shop(), E, JETZT, 1).status, 400);
   assert.equal(ex.legeAn(d, { name: 5 }, shop(), E, JETZT, 1).status, 400);
@@ -243,7 +243,7 @@ function vorbereitet(e = E) {
 }
 const alleTitel = (v) => v.testNr.forEach((nr, i) => assert.equal(ex.setzeTitel(v.d, { id: v.id, number: nr, neu: `Besserer Titel ${i}` }, E).ok, true));
 
-test("Titel eintragen: nur für die Testgruppe, geprüft, überschreibbar", () => {
+test("Enter title: only for the test group, checked, overwritable", () => {
   const v = vorbereitet();
   const t = v.testNr[0];
   assert.deepEqual(ex.setzeTitel(v.d, { id: v.id, number: t, neu: "  Neuer   Titel  " }, E).wert, { id: v.id, number: t, neu: "Neuer Titel" }); // Leerzeichen bereinigt
@@ -265,7 +265,7 @@ test("Titel eintragen: nur für die Testgruppe, geprüft, überschreibbar", () =
   assert.equal(ex.setzeTitel(v.d, null, E).status, 400);
 });
 
-test("Starten: erst wenn alle Testangebote einen neuen Titel haben, dann werden die Ausgangszahlen beider Gruppen festgehalten", () => {
+test("Start: only when all test listings have a new title, then the starting figures of both groups are recorded", () => {
   const v = vorbereitet();
   v.testNr.slice(0, 19).forEach((nr) => ex.setzeTitel(v.d, { id: v.id, number: nr, neu: "Neu " + nr }, E));
   const zuFrueh = ex.starte(v.d, { id: v.id }, v.ps, JETZT);
@@ -282,7 +282,7 @@ test("Starten: erst wenn alle Testangebote einen neuen Titel haben, dann werden 
   assert.equal(ex.setzeTitel(v.d, { id: v.id, number: v.testNr[0], neu: "Spät" }, E).status, 409); // nach dem Start keine Titeländerung
 });
 
-test("Starten: verschwundene Angebote und unbekannte Tests werden abgelehnt", () => {
+test("Start: vanished listings and unknown tests are rejected", () => {
   const v = vorbereitet(); alleTitel(v);
   const r = ex.starte(v.d, { id: v.id }, v.ps.filter((x) => x.number !== v.kontrolleNr[0]), JETZT);
   assert.equal(r.status, 409); assert.match(r.fehler, /no longer in the data/);
@@ -295,45 +295,45 @@ test("Starten: verschwundene Angebote und unbekannte Tests werden abgelehnt", ()
 const G = (vorher, nachher) => ({ vorher, nachher });
 const S = (imp, auf = 0, trans = 0) => ({ imp, auf, trans });
 
-test("Urteil: Testgruppe verdoppelt sich, Kontrolle bleibt gleich -> besser", () => {
+test("Verdict: the test group doubles, control stays the same -> better", () => {
   const r = ex.urteile(G(S(1000, 50, 10), S(2000, 100, 10)), G(S(1000, 50, 10), S(1000, 50, 10)), E);
   assert.equal(r.urteil, "better"); assert.equal(r.empfehlung, "keep");
   assert.ok(Math.abs(r.primaer.netto - 1) < 1e-9);
 });
 
-test("Urteil: wächst die Kontrollgruppe genauso, ist es kein Unterschied (Saison und Zufall fallen heraus)", () => {
+test("Verdict: if the control group grows just as much, there is no difference (season and chance drop out)", () => {
   const r = ex.urteile(G(S(1000, 50, 10), S(2000, 100, 20)), G(S(1000, 50, 10), S(2000, 100, 20)), E);
   assert.equal(r.urteil, "no_difference"); assert.equal(r.empfehlung, "revert"); // zählt wie "nicht besser"
 });
 
-test("Urteil: Grenze bei genau der Zielmarke (besserAb, Standard +20 %), knapp darunter ist es kein Unterschied", () => {
+test("Verdict: limit at exactly the target mark (besserAb, default +20 %), just below it is no difference", () => {
   const k = G(S(1000, 50, 10), S(1000, 50, 10));
   const marke = Math.round(1000 * (1 + EINSTELLUNGEN.besserAb));   // 1200 bei +20 %
   assert.equal(ex.urteile(G(S(1000, 0, 10), S(marke, 0, 10)), k, E).urteil, "better");
   assert.equal(ex.urteile(G(S(1000, 0, 10), S(marke - 1, 0, 10)), k, E).urteil, "no_difference");
 });
 
-test("Urteil: weniger Impressionen oder zu viel weniger Verkäufe -> schlechter (Schutzkennzahl)", () => {
+test("Verdict: fewer impressions or too much fewer sales -> worse (protective figure)", () => {
   const k = G(S(1000, 50, 10), S(1000, 50, 10));
   assert.equal(ex.urteile(G(S(1000, 50, 10), S(500, 25, 5)), k, E).urteil, "worse");
   const r = ex.urteile(G(S(1000, 50, 100), S(3000, 150, 20)), k, E); // dreimal so viele Impressionen, aber Verkäufe um 80 % gefallen
   assert.equal(r.urteil, "worse"); assert.equal(r.schutz.ok, false);
 });
 
-test("Urteil: zu wenig Impressionen in der Testgruppe -> es wird nicht geurteilt", () => {
+test("Verdict: too few impressions in the test group -> no verdict is given", () => {
   const k = G(S(10, 1, 0), S(10, 1, 0));
   assert.equal(ex.urteile(G(S(10, 1, 0), S(149, 5, 0)), k, E).urteil, "not_enough_data");
   assert.notEqual(ex.urteile(G(S(10, 1, 0), S(150, 5, 0)), k, E).urteil, "not_enough_data");
 });
 
-test("Urteil: Ausgangswert 0 und leere Kontrolle teilen nicht durch 0, das Ergebnis ist JSON-tauglich", () => {
+test("Verdict: starting value 0 and empty control do not divide by 0, the result is JSON-safe", () => {
   const r = ex.urteile(G(S(0), S(500)), G(S(0), S(0)), E);
   assert.equal(r.urteil, "better");
   assert.equal(r.primaer.netto, null);
   assert.doesNotThrow(() => JSON.stringify(r));
 });
 
-test("Urteil: die Schwellen kommen aus den Einstellungen", () => {
+test("Verdict: the thresholds come from the settings", () => {
   const k = G(S(1000, 0, 10), S(1000, 0, 10)); const t = G(S(1000, 0, 10), S(1300, 0, 10));
   assert.equal(ex.urteile(t, k, { ...E, besserAb: 0.2 }).urteil, "better");
   assert.equal(ex.urteile(t, k, { ...E, besserAb: 0.5 }).urteil, "no_difference");
@@ -341,7 +341,7 @@ test("Urteil: die Schwellen kommen aus den Einstellungen", () => {
   assert.equal(ex.urteile(G(S(1000, 0, 10), S(1300, 0, 5)), k, { ...E, schutzGrenze: 0.2 }).urteil, "worse");
 });
 
-test("Ablauf: läuft, ist nach 30 Tagen bereit, Urteil über die ganze Gruppe, Abschluss", () => {
+test("Run: runs, is ready after 30 days, verdict over the whole group, closing", () => {
   const v = vorbereitet(); alleTitel(v);
   ex.starte(v.d, { id: v.id }, v.ps, JETZT);
   const liste = (jetzt, ps = v.ps) => ex.liste(v.d, ps, jetzt, E)[0];
@@ -366,14 +366,14 @@ test("Ablauf: läuft, ist nach 30 Tagen bereit, Urteil über die ganze Gruppe, A
   assert.equal(liste(TAGE(33), spaeter).abschluss, "behalten");
 });
 
-test("Ablauf: wächst der ganze Shop mit, ist es kein Unterschied (die Kontrollgruppe wirkt)", () => {
+test("Run: if the whole shop grows along, there is no difference (the control group works)", () => {
   const v = vorbereitet(); alleTitel(v);
   ex.starte(v.d, { id: v.id }, v.ps, JETZT);
   const sommer = v.ps.map((x) => ({ ...x, impressionen_30d: x.impressionen_30d * 2 }));
   assert.equal(ex.liste(v.d, sommer, TAGE(31), E)[0].urteil.urteil, "no_difference");
 });
 
-test("Ablauf: Test verwerfen, doppelt abschließen, ungültige Eingaben", () => {
+test("Run: discard a test, close twice, invalid input", () => {
   const v = vorbereitet();
   assert.equal(ex.schliesse(v.d, { id: v.id, abschluss: "zurueck" }, JETZT).ok, true);       // vorbereiteten Test verwerfen
   assert.equal(ex.liste(v.d, v.ps, JETZT, E)[0].urteil, null);                                 // nie gestartet: kein Urteil
@@ -387,7 +387,7 @@ test("Ablauf: Test verwerfen, doppelt abschließen, ungültige Eingaben", () => 
   assert.equal(ex.detail(v.d, NaN, v.ps, JETZT, E).status, 400);
 });
 
-test("Ablauf: verschwundene Angebote führen nicht zum Absturz, das Urteil rechnet mit den übrigen", () => {
+test("Run: vanished listings do not cause a crash, the verdict uses the rest", () => {
   const v = vorbereitet(); alleTitel(v);
   ex.starte(v.d, { id: v.id }, v.ps, JETZT);
   const ohne = v.ps.filter((x) => x.number !== v.testNr[0]);
@@ -397,7 +397,7 @@ test("Ablauf: verschwundene Angebote führen nicht zum Absturz, das Urteil rechn
   assert.doesNotThrow(() => JSON.stringify(ex.detail(v.d, v.id, ohne, TAGE(31), E)));
 });
 
-test("Ablauf: die Testdauer aus den Einstellungen gilt", () => {
+test("Run: the test duration from the settings applies", () => {
   const v = vorbereitet(); alleTitel(v);
   ex.starte(v.d, { id: v.id }, v.ps, JETZT);
   assert.equal(ex.liste(v.d, v.ps, TAGE(10), { ...E, pruefungNachTagen: 7 })[0].status, "ready");
@@ -409,7 +409,7 @@ import * as lg from "./login.mjs";
 const ldb = () => { const d = new Database(":memory:"); lg.bereiteVor(d); lg.leereVersuche(); return d; };
 const PW = "ein-langes-passwort";
 
-test("Login: Benutzer anlegen prüft Name und Passwort", () => {
+test("Login: creating a user checks name and password", () => {
   const d = ldb();
   for (const n of ["ab", "Ab c", "../x", "", null, 5, "x".repeat(41), "-abc"]) assert.equal(lg.legeBenutzerAn(d, n, PW).ok, false, String(n));
   assert.equal(lg.legeBenutzerAn(d, "anna", "kurz").ok, false);
@@ -420,7 +420,7 @@ test("Login: Benutzer anlegen prüft Name und Passwort", () => {
   assert.equal(lg.anzahlBenutzer(d), 1);
 });
 
-test("Login: das Passwort steht nie im Klartext in der Datenbank", () => {
+test("Login: the password is never in plain text in the database", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   const b = d.prepare("SELECT * FROM benutzer").get();
   assert.ok(!JSON.stringify(b).includes(PW));
@@ -430,7 +430,7 @@ test("Login: das Passwort steht nie im Klartext in der Datenbank", () => {
   assert.notEqual(hashes[0], hashes[1], "gleiches Passwort, anderes Salz, anderer Hash");
 });
 
-test("Login: richtige Anmeldung liefert Sitzung, das Token steht nur als Hash in der Datenbank", () => {
+test("Login: a correct login returns a session, the token is only in the database as a hash", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   const r = lg.anmelden(d, " ANNA ", PW, JETZT);
   assert.equal(r.ok, true);
@@ -438,7 +438,7 @@ test("Login: richtige Anmeldung liefert Sitzung, das Token steht nur als Hash in
   assert.ok(!JSON.stringify(d.prepare("SELECT * FROM sitzung").all()).includes(r.wert.token));
 });
 
-test("Login: falsches Passwort, unbekannter Name und seltsame Eingaben werden abgelehnt, mit gleicher Meldung", () => {
+test("Login: wrong password, unknown name and odd inputs are rejected, with the same message", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   const a = lg.anmelden(d, "anna", "falsch-falsch", JETZT), b = lg.anmelden(d, "niemand", PW, JETZT);
   assert.equal(a.status, 401); assert.equal(b.status, 401); assert.equal(a.fehler, b.fehler);
@@ -446,7 +446,7 @@ test("Login: falsches Passwort, unbekannter Name und seltsame Eingaben werden ab
   assert.equal(d.prepare("SELECT COUNT(*) n FROM sitzung").get().n, 0);
 });
 
-test("Login: nach MAX_FEHLVERSUCHE (5) Fehlversuchen ist der Name SPERRE_MINUTEN (15) gesperrt, auch mit richtigem Passwort, dann wieder frei", () => {
+test("Login: after MAX_FEHLVERSUCHE (5) failed attempts the name is locked for SPERRE_MINUTEN (15), even with the right password, then free again", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   for (let i = 0; i < lg.MAX_FEHLVERSUCHE; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
   const gesperrt = lg.anmelden(d, "anna", PW, JETZT);
@@ -455,14 +455,14 @@ test("Login: nach MAX_FEHLVERSUCHE (5) Fehlversuchen ist der Name SPERRE_MINUTEN
   assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + (lg.SPERRE_MINUTEN + 1) * 60000)).ok, true);
 });
 
-test("Login: ein erfolgreicher Versuch setzt den Fehlerzähler zurück", () => {
+test("Login: a successful attempt resets the failure counter", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   for (let i = 0; i < lg.MAX_FEHLVERSUCHE - 1; i++) lg.anmelden(d, "anna", "falsch-falsch", JETZT);
   assert.equal(lg.anmelden(d, "anna", PW, JETZT).ok, true);
   for (let i = 0; i < lg.MAX_FEHLVERSUCHE - 1; i++) assert.equal(lg.anmelden(d, "anna", "falsch-falsch", JETZT).status, 401);
 });
 
-test("Login: Sitzung läuft nach 12 Stunden ab, Abmelden beendet sie sofort, ein erfundenes Token gilt nicht", () => {
+test("Login: a session expires after 12 hours, logging out ends it at once, an invented token is not valid", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   const t = lg.anmelden(d, "anna", PW, JETZT).wert.token;
   assert.ok(lg.sitzungFuer(d, t, new Date(JETZT.getTime() + 11 * 3600e3)));
@@ -474,7 +474,7 @@ test("Login: Sitzung läuft nach 12 Stunden ab, Abmelden beendet sie sofort, ein
   assert.doesNotThrow(() => lg.abmelden(d, null));
 });
 
-test("Login: neues Passwort beendet alte Sitzungen, das alte Passwort gilt nicht mehr", () => {
+test("Login: a new password ends old sessions, the old password no longer works", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   const t = lg.anmelden(d, "anna", PW, JETZT).wert.token;
   assert.equal(lg.setzePasswort(d, "anna", "kurz").ok, false);
@@ -485,7 +485,7 @@ test("Login: neues Passwort beendet alte Sitzungen, das alte Passwort gilt nicht
   assert.equal(lg.anmelden(d, "anna", "ein-neues-passwort", JETZT).ok, true);
 });
 
-test("Login: Cookie wird gelesen und ist HttpOnly, SameSite=Strict, bei HTTPS Secure", () => {
+test("Login: the cookie is read and is HttpOnly, SameSite=Strict, Secure over HTTPS", () => {
   assert.equal(lg.tokenAusCookie("a=1; sitzung=abc123; b=2"), "abc123");
   assert.equal(lg.tokenAusCookie("xsitzung=zzz"), null);
   assert.equal(lg.tokenAusCookie(undefined), null);
@@ -495,7 +495,7 @@ test("Login: Cookie wird gelesen und ist HttpOnly, SameSite=Strict, bei HTTPS Se
 });
 
 // ---------- Sperre je Adresse und Passwort ändern ----------
-test("Login: Sperre je Adresse über alle Namen, andere Adressen und der richtige Name bleiben unberührt", () => {
+test("Login: lock per address across all names, other addresses and the right name stay untouched", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   for (let i = 0; i < lg.MAX_FEHLVERSUCHE_IP; i++) assert.equal(lg.anmelden(d, "name" + i, "falsch-falsch", JETZT, "1.2.3.4").status, 401, "jeder Name nur einmal falsch: keine Namenssperre");
   assert.equal(lg.anmelden(d, "anna", PW, JETZT, "1.2.3.4").status, 429, "die Adresse ist gesperrt, auch mit richtigem Passwort");
@@ -503,7 +503,7 @@ test("Login: Sperre je Adresse über alle Namen, andere Adressen und der richtig
   assert.equal(lg.anmelden(d, "anna", PW, new Date(JETZT.getTime() + (lg.SPERRE_MINUTEN + 1) * 60000), "1.2.3.4").ok, true, "nach der Sperrzeit wieder frei");
 });
 
-test("Login: Passwort ändern prüft das alte, verlangt ein neues, beendet andere Sitzungen und gibt eine neue", () => {
+test("Login: changing the password checks the old one, requires a new one, ends other sessions and issues a new one", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   const alt = lg.anmelden(d, "anna", PW, JETZT).wert.token;
   assert.equal(lg.aendernPasswort(d, "anna", "falsch-falsch", "ein-neues-passwort", JETZT).status, 403);
@@ -520,7 +520,7 @@ test("Login: Passwort ändern prüft das alte, verlangt ein neues, beendet ander
   assert.equal(d.prepare("SELECT COUNT(*) n FROM sitzung").get().n, 2, "keine liegengebliebenen Prüf-Sitzungen (neue + eine vom Test-Login)");
 });
 
-test("Login: falsche alte Passwörter beim Ändern zählen als Fehlversuche und sperren irgendwann", () => {
+test("Login: wrong old passwords when changing count as failed attempts and eventually lock", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   for (let i = 0; i < lg.MAX_FEHLVERSUCHE; i++) lg.aendernPasswort(d, "anna", "falsch-falsch", "ein-neues-passwort", JETZT);
   assert.equal(lg.aendernPasswort(d, "anna", PW, "ein-neues-passwort", JETZT).status, 429);
@@ -531,7 +531,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-test("Login: Hash ist scrypt (N=16384, r=8, p=1, 64 Byte) mit eigenem 16-Byte-Salz je Benutzer", () => {
+test("Login: the hash is scrypt (N=16384, r=8, p=1, 64 bytes) with its own 16-byte salt per user", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   const b = d.prepare("SELECT salz, hash FROM benutzer WHERE name = 'anna'").get();
   assert.match(b.salz, /^[0-9a-f]{32}$/, "16 Byte Zufallssalz, hex");
@@ -539,7 +539,7 @@ test("Login: Hash ist scrypt (N=16384, r=8, p=1, 64 Byte) mit eigenem 16-Byte-Sa
   assert.notEqual(b.hash, crypto.createHash("sha256").update(PW).digest("hex"));
 });
 
-test("Login: Mindestlänge genau 10 Zeichen, Sperre nach genau 5 Fehlversuchen je Name und 20 je Adresse, 15 Minuten", () => {
+test("Login: minimum length exactly 10 characters, lock after exactly 5 failed attempts per name and 20 per address, 15 minutes", () => {
   assert.deepEqual([lg.PASSWORT_MIN, lg.MAX_FEHLVERSUCHE, lg.MAX_FEHLVERSUCHE_IP, lg.SPERRE_MINUTEN, lg.SITZUNG_STUNDEN], [10, 5, 20, 15, 12]);
   const d = ldb();
   assert.equal(lg.legeBenutzerAn(d, "anna", "x".repeat(9)).status, 400, "9 Zeichen sind zu kurz");
@@ -551,7 +551,7 @@ test("Login: Mindestlänge genau 10 Zeichen, Sperre nach genau 5 Fehlversuchen j
   assert.equal(lg.anmelden(d, "anna", "x".repeat(10), JETZT).status, 429, "ab jetzt gesperrt");
 });
 
-test("Keine Kundendaten: pm.db hat keine Spalten für Käufer, und der Export liest aus Bestellungen nur Artikel, Menge, Preis, Datum", () => {
+test("No customer data: pm.db has no columns for buyers, and the export reads only item, quantity, price, date from orders", () => {
   const wurzel = path.join(import.meta.dirname, "..");
   const pm = new Database(path.join(wurzel, "daten-team", "pm.db"), { readonly: true });
   const spalten = pm.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()
@@ -571,7 +571,7 @@ test("Keine Kundendaten: pm.db hat keine Spalten für Käufer, und der Export li
 
 // Wer die README befolgt, kopiert .env.beispiel nach .env. Steht dort ein Wert, gilt er: am 20.11. zeigte PM_DB=daten/pm.db auf eine
 // Datei, die es im frischen Klon nicht gibt, und die App blieb leer statt die Team-Kopie zu nehmen (Blindtest der README, #20).
-test(".env.beispiel: nach dem Kopieren startet die App mit der Team-Kopie, ohne Zugangsdaten und ohne Schreibschalter", async () => {
+test(".env.beispiel: after copying, the app starts with the team copy, without credentials and without a write switch", async () => {
   const fs = await import("node:fs");
   const werte = Object.fromEntries(fs.readFileSync(new URL("../.env.beispiel", import.meta.url), "utf8").split(/\r?\n/)
     .map((z) => z.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
