@@ -206,6 +206,8 @@ function pruefeTrafficImport() {
 
 // Ausgerollter Stand (schreibt der Wächter, siehe waechter.mjs); lokal ohne Wächter leer
 const versionKurz = () => { try { return JSON.parse(fs.readFileSync(path.join(WURZEL, "daten", "waechter-status.json"), "utf8")).commit?.slice(0, 7) || null; } catch { return null; } };
+// Versionsangabe für Skripte und Styles: der ausgerollte Commit, ohne Wächter (lokal) der Startzeitpunkt des Servers
+const VERSION_ASSETS = versionKurz() || Date.now().toString(36);
 
 // ---- Tägliche Sicherung von app.db und traffic-tage.db (siehe sicherung.mjs) ----
 const SICH_AUTO = String(process.env.SICHERUNG_AUTO || "an").trim().toLowerCase() !== "aus";
@@ -316,7 +318,7 @@ const ROUTEN = {
     const nr = q.get("nr");
     const p = db.prepare("SELECT * FROM produkt WHERE number = ?").get(nr);
     if (!p) throw Object.assign(new Error("Product " + String(nr).slice(0, 40) + " not found."), { status: 404 });
-    p.kanaele = db.prepare("SELECT channel, listed, external_id, preis_aktuell, kanal_status, units_total, units_90d, last_sold_at FROM kanal WHERE number = ?").all(nr);
+    p.kanaele = db.prepare("SELECT channel, listed, external_id, preis_aktuell, kanal_status, units_total, units_90d, last_sold_at FROM kanal WHERE number = ? AND channel = 'ebay'").all(nr); // nur eBay (Scope)
     p.bilder = db.prepare("SELECT url, position, kind FROM bild WHERE number = ? ORDER BY position").all(nr);
     return p;
   }),
@@ -339,7 +341,7 @@ const ROUTEN = {
   },
   // Seite Problem: wie ungleich Sichtbarkeit und Verkäufe verteilt sind (problem.mjs), live aus derselben Produktliste
   "/api/problem": () => { const produkte = produkteLaden(); return problem.auswerten(produkte, leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d); },
-  "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal GROUP BY channel ORDER BY produkte DESC").all()),
+  "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal WHERE channel = 'ebay' GROUP BY channel ORDER BY produkte DESC").all()),
   // Live-Stand vom Hub (nur auf dem Server, lokal fehlt HUB_URL): dieselbe Whitelist, aber Stand jetzt statt 04:30.
   "/api/live": async () => {
     if (!HUB_URL || !PM_TOKEN) throw Object.assign(new Error("Live data is only available on the server (HUB_URL/PM_TOKEN)."), { status: 503 });
@@ -511,6 +513,9 @@ const server = http.createServer(async (req, res) => {
       // no-cache: der Browser (und Cloudflare) fragt bei jedem Laden nach, ob es eine neue Version gibt. Ohne die Angabe lieferte
       // Cloudflare nach einem Ausrollen bis zu 2 Stunden das alte app.js aus (20.11.: alte Karte "no AI key" trotz neuem Stand).
       res.writeHead(200, { "Content-Type": MIME[path.extname(datei)] || "application/octet-stream", "Cache-Control": "no-cache" });
+      // HTML-Seiten: die Versionsangabe der Skripte und Styles (?v=…) ist der ausgerollte Stand. Mit einer festen Angabe bekam
+      // ein Browser nach dem Ausrollen von #43 die neue Seite mit dem Menüpunkt Problem, aber das alte app.js ohne die Seite.
+      if (path.extname(datei) === ".html") return res.end(fs.readFileSync(datei, "utf8").replace(/(\/[\w.-]+\.(?:js|css))\?v=[\w.-]+/g, `$1?v=${VERSION_ASSETS}`));
       return fs.createReadStream(datei).pipe(res);
     }
     json(404, { ok: false, error: "Not found." });

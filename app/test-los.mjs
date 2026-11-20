@@ -141,3 +141,17 @@ test("ladeProdukte: ebay_aktiv aus kanal (laufend mit Nummer = 1, beendet ohne N
   const m = Object.fromEntries(ladeProdukte(d).map((r) => [r.number, r.ebay_aktiv]));
   assert.deepEqual(m, { A: 1, B: 0 });
 });
+
+// Scope nur eBay (Niko 20.11.): Verkäufe, Preis und letzter Verkauf kommen aus der eBay-Zeile, nie aus der Summe aller Kanäle.
+// Am 20.11. summierte produkt.units_90d noch Amazon (3.889) und eBay (3.583); die Problem-Seite rechnete damit Amazon mit.
+test("ladeProdukte: Verkäufe nur von eBay, andere Plattformen zählen nicht", async () => {
+  const { ladeProdukte } = await import("./bewertung.mjs");
+  const d = new Database(":memory:");
+  d.exec("CREATE TABLE produkt (number TEXT, title TEXT, image_url TEXT, avg_price REAL, units_total INTEGER, units_90d INTEGER, created_at TEXT, last_sold_at TEXT); CREATE TABLE kanal (number TEXT, channel TEXT, listed INTEGER, external_id TEXT, title TEXT, preis_aktuell REAL, units_total INTEGER, units_90d INTEGER, avg_price REAL, last_sold_at TEXT)");
+  d.exec(`INSERT INTO produkt VALUES ('A', 'a', NULL, 9.99, 500, 120, '2025-01-01', '2026-11-19'), ('B', 'b', NULL, 5, 40, 10, '2025-01-01', '2026-11-18');
+    INSERT INTO kanal VALUES ('A', 'ebay', 1, '406000000001', 'a', 8.49, 90, 30, 8.49, '2026-11-10'), ('A', 'amazon', 1, 'X', 'a', 12.99, 410, 90, 12.99, '2026-11-19'),
+      ('B', 'shopify', 1, 'y', 'b', 5, 40, 10, 5, '2026-11-18')`);
+  const m = Object.fromEntries(ladeProdukte(d).map((r) => [r.number, [r.units_90d, r.units_total, r.avg_price, r.last_sold_at]]));
+  assert.deepEqual(m.A, [30, 90, 8.49, "2026-11-10"], "nur die eBay-Zeile, nicht Amazon");
+  assert.deepEqual(m.B, [0, 0, null, null], "ohne eBay-Angebot: keine Verkäufe, kein Preis");
+});
