@@ -552,6 +552,9 @@ async function ladeErgebnisse() {
 
 const LAUF_TEXT = (l) => (l.schluessel === "alle" ? "All runs" : datum(l.schluessel + "T12:00:00Z")) + ` · ${zahl(l.angebote)} listing${l.angebote === 1 ? "" : "s"}` + (l.phasen.some((p) => p.ausgewertet) ? "" : " · no results yet");
 
+// Zweiter Teil der Seite Results (aus #48, Elias): jede Phase Tag für Tag gegen die Kontrollgruppe (public/dashboard.js, /api/dashboard)
+function tagFuerTag() { queueMicrotask(() => Dashboard.lade()); return el("div", { id: "ansicht-dashboard", class: "tag-fuer-tag" }); }
+
 function zeichneErgebnisse(d) {
   const root = $("#ansicht-ergebnisse"), beispiel = !!zustand.ergebnisBeispiel;
   const knopf = el("button", { class: "knopf knopf-klein", type: "button", text: beispiel ? "Show real data" : "Show example with invented figures", onclick: () => { zustand.ergebnisBeispiel = !zustand.ergebnisBeispiel; ladeErgebnisse(); } });
@@ -581,7 +584,8 @@ function zeichneErgebnisse(d) {
     fuelle(detail, laufAnsicht(d.laeufe[i], d.skala));
   };
   fuelle(root, kopf, beispiel ? el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. All figures are invented to show how the page works. They are not real results." }) : null,
-    el("div", { class: "lauf-waehler" }, el("label", { class: "leise klein", text: "Run" }), zurueck, auswahl, weiter, stand, el("span", { class: "abstand" }), knopf), detail);
+    el("div", { class: "lauf-waehler" }, el("label", { class: "leise klein", text: "Run" }), zurueck, auswahl, weiter, stand, el("span", { class: "abstand" }), knopf), detail,
+    beispiel ? null : tagFuerTag());
   zeige(aktuell);
 }
 

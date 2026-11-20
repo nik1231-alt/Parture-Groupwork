@@ -17,6 +17,7 @@ test touches `pm.db` or `app.db`: each one builds a throwaway database in memory
 | `regeln.mjs`, `einstellungen.mjs`, `bewertung.mjs` | `test.mjs` (51), `test-los.mjs` | diagnosis limits, settings out of range refused, block list, the lot is fair and repeatable |
 | `auswertung.mjs`, `demo.mjs` | `test-auswertung.mjs`, `test-demo.mjs` | net effect, outliers, the example verdicts |
 | `ergebnisse.mjs`, `ergebnisse-demo.mjs` | `test-ergebnisse.mjs` | runs are evaluated separately, clear increase / clear decrease / no clear effect / too early, same numbers as the Funnel page, the example view |
+| `dashboard.mjs` (Results, part “Day by day”) | `test-dashboard.mjs` | status planned / running / final per phase, net effect with the same windows as the ladder, only controls that cover the whole waiting time, aborted and reset starts ignored, daily curve indexed to 100 |
 | `traffic.mjs`, `sicherung.mjs`, `waechter.mjs` | `test-traffic.mjs`, `test-sicherung.mjs`, `test-waechter.mjs` | data lag, backup and restore, deploy only after green tests, rollback, restart of a hanging app (in temporary git repositories) |
 | `benachrichtigung.mjs`, `titelhilfe.mjs` | `test-benachrichtigung.mjs`, `test-titelhilfe.mjs` | messages only with a token; title help suggests only words that exist |
 | `public/` | `test-oberflaeche.mjs` | every visible text is English |

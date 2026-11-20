@@ -24,6 +24,7 @@ import * as benachrichtigung from "./benachrichtigung.mjs";
 import { laDatum, verzoegerungTage, NACHPRUEFEN_TAGE } from "./traffic.mjs";
 import * as leiter from "./leiter.mjs";
 import * as problem from "./problem.mjs";
+import * as dashboard from "./dashboard.mjs";
 import * as kiTitel from "./ki-titel.mjs";
 import { pruefeTitel } from "./titel-regeln.mjs";
 import { spawn } from "node:child_process";
@@ -130,6 +131,26 @@ async function titelVorschlag(nummer, produkte, wer) {
   const r = await ki.vorschlag({ alt, hinweisWoerter: h.ok ? h.hinweise.map((x) => x.wort) : [] });
   if (!r.ok) { leiter.merkeFehlschlag(appDb(), nummer, r.fehler, r.verworfen); return r; }
   return leiter.setzeTitelVorschlag(appDb(), { name: wer }, nummer, { ...r.wert, alt });
+}
+// Seite Dashboard (ergebnisse.mjs): Starts und Auswertungen der Leiter, die Kontrollgruppe und die Tageswerte dieser Angebote
+const leseDetails = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
+function dashboardDaten() {
+  const db = appDb();
+  const starts = db.prepare("SELECT number, stufe, at, details FROM leiter_verlauf WHERE ereignis = 'gestartet'").all()
+    .map((v) => ({ number: v.number, stufe: v.stufe, tag: v.at.slice(0, 10), at: v.at, vonHand: !!leseDetails(v.details)?.vonHand }));
+  const abbrueche = db.prepare("SELECT number, at FROM leiter_verlauf WHERE ereignis IN ('abgebrochen', 'zurueckgesetzt')").all();
+  const auswertungen = db.prepare("SELECT number, stufe, details FROM leiter_verlauf WHERE ereignis = 'ausgewertet'").all()
+    .map((v) => ({ number: v.number, stufe: v.stufe, erholt: !!leseDetails(v.details)?.erholt }));
+  const kontrolle = db.prepare("SELECT number, stufe_start FROM leiter WHERE (stufe = 'kontrolle' OR ergebnis = 'kontrolle') AND stufe_start IS NOT NULL").all()
+    .map((z) => ({ number: z.number, start: z.stufe_start }));
+  const { nummern, ab } = dashboard.benoetigt({ starts, kontrolle });
+  const tage = new Map();
+  if (ab && nummern.length) mitDb((pm) => {
+    if (!tabelleDa(pm, "traffic_tag")) return;
+    const zeilen = pm.prepare("SELECT number, datum, SUM(impressionen) imp, SUM(aufrufe) auf, SUM(transaktionen) trans FROM traffic_tag WHERE datum > ? AND number IN (SELECT value FROM json_each(?)) GROUP BY number, datum").all(ab, JSON.stringify(nummern));
+    for (const z of zeilen) { if (!tage.has(z.number)) tage.set(z.number, new Map()); tage.get(z.number).set(z.datum, { imp: z.imp || 0, auf: z.auf || 0, trans: z.trans || 0 }); }
+  });
+  return dashboard.baueDashboard({ starts, abbrueche, auswertungen, kontrolle, tage, trafficBis: trafficBis(), einst: einst() });
 }
 let leiterLaeuft = false;
 // Ein Lauf: Prüfzeiten auswerten, neue Angebote aufnehmen, für Stufe 1 Titel vorschlagen. Ändert nichts bei eBay.
@@ -393,6 +414,8 @@ const ROUTEN = {
   },
   // Seite Problem: wie ungleich Sichtbarkeit und Verkäufe verteilt sind (problem.mjs), live aus derselben Produktliste
   "/api/problem": () => { const produkte = produkteLaden(); return problem.auswerten(produkte, leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d); },
+  // Seite Results, Abschnitt "Day by day": Wirkung jeder Phase gegen die Kontrollgruppe, mit Tageskurve (dashboard.mjs)
+  "/api/dashboard": () => dashboardDaten(),
   // Seite Results: Wirkung jeder Phase der Leiter auf die Impressionen, je Lauf und gesamt (ergebnisse.mjs); das Beispiel hat erfundene Zahlen
   "/api/ergebnisse": () => {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);

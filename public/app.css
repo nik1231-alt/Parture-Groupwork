@@ -513,6 +513,54 @@ a.knopf { text-decoration: none; }
   .lzeile .bild { width: 48px; height: 48px; }
   .lzeile-aktion { grid-column: 3; }
   .reiterleiste { overflow-x: auto; }
+
+/* Seite Dashboard (public/ergebnisse.js): Antwort-Satz, Phasen-Reiter, Tageskurve, Gruppenvergleich, Hebel */
+.r-antwort { display: grid; gap: 8px; border-left: 0; }
+.r-antwort .r-satz { font-family: var(--anzeige); font-size: clamp(20px, 2.6vw, 26px); font-weight: 650; letter-spacing: -.015em; line-height: 1.25; margin: 0; text-wrap: balance; }
+.r-antwort .r-satz strong { color: var(--gut); }
+.r-antwort .r-satz.neutral strong { color: var(--text); }
+.r-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.r-fortschritt { height: 6px; border-radius: 99px; background: var(--karte-leise); overflow: hidden; max-width: 360px; }
+.r-fortschritt i { display: block; height: 100%; background: var(--akzent); border-radius: 99px; }
+.r-phasen .tab small { color: var(--leise); font-weight: 500; }
+.r-zwei { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.r-zwei > .panel { margin-bottom: 0; min-width: 0; }
+.r-legende { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--leise); }
+.r-legende span { display: inline-flex; align-items: center; gap: 6px; }
+.r-legende i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+.r-test { background: var(--akzent); } .r-ctrl { background: var(--s-kontrolle); }
+.r-svg { width: 100%; height: auto; display: block; }
+.r-linie-test { fill: none; stroke: var(--akzent); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.r-linie-ctrl { fill: none; stroke: var(--s-kontrolle); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.r-luecke { fill: var(--akzent-weich); }
+.r-vorher { fill: var(--karte-leise); }
+.r-start { stroke: var(--text); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.r-punkt-test { fill: var(--akzent); stroke: var(--karte); stroke-width: 2; }
+.r-punkt-ctrl { fill: var(--s-kontrolle); stroke: var(--karte); stroke-width: 2; }
+.r-reihe { display: grid; grid-template-columns: 110px 1fr 64px; gap: 10px; align-items: center; font-size: 14px; padding: 6px 0; }
+.r-reihe .r-balken { height: 10px; border-radius: 99px; background: var(--karte-leise); overflow: hidden; }
+.r-reihe .r-balken i { display: block; height: 100%; border-radius: 99px; }
+.r-reihe .zahl { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.r-block + .r-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--linie); }
+.r-block h3 { margin-bottom: 4px; }
+.r-punkte { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 6px; }
+.r-punkte span { width: 22px; height: 22px; border-radius: 6px; background: var(--karte-leise); border: 1px solid var(--linie); }
+.r-punkte span.besser { background: var(--gut-weich); border-color: var(--gut); }
+.r-punkte span.schlechter { background: var(--schlecht-weich); border-color: var(--schlecht); }
+.r-leer { border: 1px dashed var(--linie-stark); border-radius: var(--radius); padding: 28px 20px; text-align: center; display: grid; gap: 6px; justify-items: center; background: var(--karte); margin-bottom: 12px; }
+.r-leer h2 { font-size: 20px; }
+.r-hebel { display: grid; gap: 4px; }
+.r-hebel-zeile { display: grid; grid-template-columns: minmax(150px, 1.2fr) 2fr 90px minmax(120px, 1fr); gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--linie); font-size: 14px; }
+.r-hebel-zeile:last-child { border-bottom: 0; }
+.r-hebel-zeile .r-balken { height: 12px; border-radius: 99px; background: var(--karte-leise); position: relative; overflow: hidden; }
+.r-hebel-zeile .r-balken i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--gut); border-radius: 99px; }
+.r-hebel-zeile .r-balken i.grau { background: var(--linie-stark); }
+.r-hebel-zeile .zahl { text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; }
+.r-methodik p { margin: 8px 0 0; max-width: 75ch; }
+@media (max-width: 640px) {
+  .r-hebel-zeile { grid-template-columns: 1fr 70px; }
+  .r-hebel-zeile .r-balken, .r-hebel-zeile .r-aufwand { grid-column: 1 / -1; }
+  .r-reihe { grid-template-columns: 90px 1fr 56px; }
 }
 
 .sammel { flex-wrap: wrap; justify-content: flex-end; }
@@ -556,3 +604,4 @@ a.knopf { text-decoration: none; }
 .fluss-punkt.d-f-erholt, .fluss-punkt.d-f-behalten { background: var(--gut); } .fluss-punkt.d-f-weiter { background: var(--g-warten); } .fluss-punkt.d-f-uebersprungen { background: var(--linie-stark); }
 .fluss-punkt.d-f-laeuft { background: var(--akzent); } .fluss-punkt.d-f-wartet, .fluss-punkt.d-f-offen, .fluss-punkt.d-f-ueberarbeiten { background: var(--g-sichtbarkeit); } .fluss-punkt.d-f-entfernt, .fluss-punkt.d-f-offline { background: var(--schlecht); }
 @media (max-width: 800px) { .fluss-zeile { grid-template-columns: 1fr 1fr; gap: 4px 12px; } .fluss-balken { grid-column: 1 / -1; grid-row: 2; } .fluss-text { grid-column: 2; grid-row: 1; text-align: right; } }
+.tag-fuer-tag { margin-top: 28px; }

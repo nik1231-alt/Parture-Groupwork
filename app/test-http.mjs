@@ -78,6 +78,8 @@ test("mit Anmeldung: Cookie ist HttpOnly und SameSite=Strict, Seiten und Daten s
   const html = await (await fetch(basis + "/", { headers: { Cookie: cookie } })).text();
   assert.match(html, /\/app\.js\?v=[\w.-]+"/); assert.doesNotMatch(html, /\?v=2026-11-20/);
   assert.equal((await fetch(basis + "/api/einstellungen", { headers: { Cookie: cookie } })).status, 200);
+  // Seite Results: beide Teile (je Lauf aus #47, Tag für Tag aus #48) antworten auch ohne Traffic-Daten, das Skript wird ausgeliefert
+  for (const p of ["/api/ergebnisse", "/api/ergebnisse/beispiel", "/api/dashboard", "/dashboard.js"]) assert.equal((await fetch(basis + p, { headers: { Cookie: cookie } })).status, 200, p);
   const ich = await (await fetch(basis + "/api/ich", { headers: { Cookie: cookie } })).json();
   assert.deepEqual([ich.daten.angemeldet, ich.daten.name], [true, "anna"]);
 });
