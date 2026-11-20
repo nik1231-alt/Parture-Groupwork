@@ -32,7 +32,7 @@ const SEITENGROESSE = 40;
 // Breite Tabellen scrollen in ihrem eigenen Kasten, nie die ganze Seite (Telefon-Breite)
 const rollbar = (tabelle) => el("div", { class: "rollbar" }, tabelle);
 
-const zustand = { ich: { name: "", rolle: "builder" }, daten: null, tests: null, einst: null, tab: "sichtbarkeit", suche: "", sortierung: "potential", sichtbar: SEITENGROESSE };
+const zustand = { ich: { name: "", rolle: "builder" }, daten: null, tests: null, einst: null, tab: "alle", funnel: null, funnelFilter: "alle", funnelSuche: "", funnelSichtbar: 50, suche: "", sortierung: "potential", sichtbar: SEITENGROESSE };
 
 // Kleiner Zwischenspeicher im Tab (sessionStorage): ungespeicherte Titel überstehen so eine abgelaufene Sitzung und die neue Anmeldung.
 // Kann fehlen oder gesperrt sein (privates Fenster): dann geht es ohne.
@@ -85,8 +85,10 @@ function zweiStufig(knopf, frage, aktion) {
 async function laden() {
   $("#fehler").hidden = true;
   try {
-    const [daten, stand] = await Promise.all([api("/api/bewertung"), api("/api/stand").catch(() => null)]);
+    const [daten, stand, leiterDaten] = await Promise.all([api("/api/bewertung"), api("/api/stand").catch(() => null), api("/api/leiter").catch(() => null)]);
     zustand.daten = daten;
+    // Funnel-Status je Produkt für die Hinweiszeile auf der Seite Products
+    zustand.funnel = leiterDaten?.trichter ? new Map(leiterDaten.trichter.liste.map((x) => [x.number, x])) : null;
     $("#stand").textContent = stand ? `Data as of ${new Date(stand.exportiert_at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" })}${stand.traffic_bis ? ` · traffic up to ${datum(stand.traffic_bis + "T12:00:00Z")}` : ""}` : "";
     zeichneListings();
     ladeZaehler();
@@ -137,7 +139,7 @@ function route() {
   if (ansicht === "listings" && !ersterAufruf) laden();
   ersterAufruf = false;
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
-  if (ansicht === "ladder") ladeLeiter();
+  if (ansicht === "ladder") { if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; } ladeLeiter(); }
   if (ansicht === "settings") ladeEinstellungen();
   if (ansicht === "approvals") ladeFreigaben();
   if (ansicht === "team") ladeTeam();
@@ -189,13 +191,10 @@ const kennzahl = (name, wert) => el("div", {}, el("dt", { text: name }), el("dd"
 
 function zeile(p) {
   const bild = bildUrl(p.image_url);
-  const t = p.imTest;
-  const hinweis = t
-    ? el("div", { class: "hinweiszeile" }, el("span", { text: `In test #${t.id} as ${t.gruppe === "test" ? "test group (new title)" : "control group (stays unchanged)"} · ${t.status === "vorbereitet" ? "not started yet" : "running"}` }), el("a", { class: "knopf knopf-klein", href: `#tests/${t.id}`, text: "Open test" }))
-    : p.gruppe === "sichtbarkeit"
-      ? el("div", { class: "hinweiszeile" }, el("span", { text: "Next step: improve the title and search terms. Titles are changed in tests, so the effect can be measured." }), el("a", { class: "knopf knopf-klein", href: "#tests", text: "Go to Tests" }))
-      : null;
-  return el("details", { class: "zeile" },
+  const fu = zustand.funnel?.get(p.number);
+  const hinweis = fu ? el("div", { class: "hinweiszeile" }, el("span", {}, statusChip(fu.status), " ", fu.grund), el("a", { class: "knopf knopf-klein", href: `#ladder/${encodeURIComponent(p.number)}`, text: "Show in Funnel" })) : null;
+  const mehrInfo = el("div", { class: "produkt-mehr" }, el("p", { class: "leise klein", text: "Loading variants, channels and history …" }));
+  return el("details", { class: "zeile", ontoggle: (ev) => { if (ev.target.open && !mehrInfo.dataset.geladen) { mehrInfo.dataset.geladen = "1"; ladeProduktMehr(p.number, mehrInfo); } } },
     el("summary", { class: "zeilenkopf spalten" },
       bild ? el("img", { class: "bild", src: bild, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
       el("div", { class: "name" }, el("div", { class: "titel", text: p.title || "(untitled)" }), el("div", { class: "nummer", text: "No. " + p.number })),
@@ -210,7 +209,33 @@ function zeile(p) {
       el("dl", { class: "kennzahlen" },
         kennzahl("Views 90 d", zahl(p.aufrufe_90d)), kennzahl("Click rate", prozent(p.klickrate, 2)), kennzahl("Conversion", prozent(p.conversion)),
         kennzahl("Sales total", zahl(p.units_total ?? 0)), kennzahl("Last sold", datum(p.last_sold_at)), kennzahl("Listed since", datum(p.created_at))),
-      hinweis));
+      hinweis, mehrInfo));
+}
+
+// Details eines Produkts erst beim Aufklappen laden: Varianten (Ausprägungen), Kanäle und alles, was mit ihm geschehen ist
+async function ladeProduktMehr(nr, ziel) {
+  try {
+    const [p, v] = await Promise.all([api("/api/produkt?nr=" + encodeURIComponent(nr)), api("/api/produkt/verlauf?nr=" + encodeURIComponent(nr))]);
+    let varianten = null; try { varianten = JSON.parse(p.variant_meta || "null"); } catch { /* ohne Varianten */ }
+    const werte = varianten?.values || [];
+    const KANAL = { ebay: "eBay", shopify: "Shop", amazon: "Amazon", etsy: "Etsy", tiktok: "TikTok", "ebay-ali": "eBay (second account)" };
+    const geschichte = [
+      ...v.verlauf.map((e) => ({ at: e.at, text: `${STUFE_TEXT[e.stufe] || e.stufe} · ${EREIGNIS_TEXT[e.ereignis] || e.ereignis}`, wer: e.benutzer })),
+      ...v.protokoll.map((e) => ({ at: e.zeit, text: `${LOG_TEXT[e.aktion] || e.aktion}${e.ergebnis && e.ergebnis !== "ok" ? ` (${e.ergebnis})` : ""}`, wer: e.benutzer })),
+    ].sort((a, b) => (a.at < b.at ? 1 : -1));
+    fuelle(ziel,
+      el("div", { class: "produkt-raster" },
+        el("div", {}, el("h3", { text: werte.length ? `Variants · ${varianten.option || "option"}` : "Variants" }),
+          werte.length ? el("ul", { class: "varianten" }, werte.map((w) => el("li", {}, el("span", { text: w.value }), el("span", { class: "leise", text: `${w.sku} · ${eur(w.price)}` }))))
+            : el("p", { class: "leise klein", text: "One version only, no variants." })),
+        el("div", {}, el("h3", { text: "Channels" }),
+          p.kanaele.length ? el("ul", { class: "varianten" }, p.kanaele.map((k) => el("li", {}, el("span", { text: KANAL[k.channel] || k.channel }),
+            el("span", { class: "leise", text: `${k.listed ? "listed" : "not listed"}${k.preis_aktuell ? " · " + eur(k.preis_aktuell) : ""} · ${zahl(k.units_90d ?? 0)} sales in 90 days` }))))
+            : el("p", { class: "leise klein", text: "Not listed on any channel." }))),
+      el("h3", { text: "History" }),
+      geschichte.length ? el("ol", { class: "lebenslauf" }, geschichte.map((g) => el("li", { text: `${zeitpunkt(g.at)} · ${g.text}${g.wer && g.wer !== "system" ? ` (${g.wer})` : ""}` })))
+        : el("p", { class: "leise klein", text: "Nothing has happened with this product in the app yet." }));
+  } catch (e) { fuelle(ziel, el("p", { class: "hinweis hinweis-fehler klein", text: "Could not load the details: " + e.message })); }
 }
 
 // ======================================================= Tests
@@ -512,12 +537,13 @@ async function ladeFreigaben() {
 }
 
 // ======================================================= Leiter (Titel -> Werbung -> Preis -> manuelle Prüfung)
-const STUFE_TEXT = { titel: "1 · New title", werbung: "2 · Ads", preis: "3 · Lower price", pruefung: "4 · Manual check", raus: "Done" };
-const ERGEBNIS_LEITER = { erholt: "Seen again", ueberarbeiten: "Rework", offline: "Take offline", behalten: "Keep as is", abgebrochen: "Taken off" };
+const STUFE_TEXT = { titel: "1 · New title", werbung: "2 · Ads", preis: "3 · Lower price", pruefung: "4 · Manual check", kontrolle: "Control group", raus: "Done" };
+const ERGEBNIS_LEITER = { erholt: "Seen again", ueberarbeiten: "Rework", offline: "Take offline", behalten: "Keep as is", abgebrochen: "Taken off", kontrolle: "Control time over" };
 const QUELLE_TEXT = { ki: "AI suggestion", regel: "From the title help (no AI)", hand: "Entered by hand" };
 const EREIGNIS_TEXT = { aufgenommen: "Entered the ladder (low impressions)", vorschlag: "Suggestion ready", kein_vorschlag: "No suggestion possible", freigegeben: "Approved and changed on eBay",
   probelauf: "Dry run, nothing changed", fehlgeschlagen: "Change failed", gestartet: "Waiting time started", ausgewertet: "Checked after the waiting time", uebersprungen: "Step skipped",
-  pruefung: "Moved to the manual check", entschieden: "Decided", abgebrochen: "Taken off the ladder" };
+  pruefung: "Moved to the manual check", entschieden: "Decided", abgebrochen: "Taken off the ladder",
+  kontrolle: "Drawn into the control group (stays unchanged)", kontrolle_ende: "Control time over" };
 
 async function ladeLeiter() {
   const root = $("#ansicht-ladder");
@@ -529,35 +555,140 @@ async function leiterAktion(pfad, body, ok) {
   await ladeLeiter(); ladeZaehler();
 }
 
+// Status im Funnel (siehe leiter.trichter): Name, Farbe und Reihenfolge der Filter
+const STATUS_TEXT = { nicht_geeignet: "Not eligible", geeignet: "Eligible", kontrolle: "Control group", titel: "Phase 1 · New title", werbung: "Phase 2 · Ads",
+  preis: "Phase 3 · Lower price", pruefung: "Phase 4 · Manual check", erholt: "Seen again", raus: "Left, pausing" };
+const STATUS_KLASSE = { nicht_geeignet: "grau", geeignet: "offen", kontrolle: "kontrolle", titel: "phase", werbung: "phase", preis: "phase", pruefung: "warn", erholt: "gut", raus: "grau" };
+const STATUS_REIHE = ["nicht_geeignet", "geeignet", "kontrolle", "titel", "werbung", "preis", "pruefung", "erholt", "raus"];
+const GRUND_TEXT = { genug: "Enough impressions already", neu: "Too new or no data yet", kein_ebay: "No active eBay listing", gesperrt: "Blocked by a price test", im_test: "In a title test" };
+const statusChip = (s) => el("span", { class: "status " + (STATUS_KLASSE[s] || ""), text: STATUS_TEXT[s] || s });
+
 function zeichneLeiter(l) {
   const root = $("#ansicht-ladder");
-  const st = l.status;
+  const st = l.status, f = l.trichter;
   const warten = l.angebote.filter((a) => a.phase === "vorschlag" || a.phase === "offen");
   const laufen = l.angebote.filter((a) => a.phase === "laeuft");
-  const fertig = l.angebote.filter((a) => a.stufe === "raus");
+  const fertig = l.angebote.filter((a) => a.stufe === "raus" && a.ergebnis !== "kontrolle");
   const laufKnopf = istAdmin() ? el("button", { class: "knopf knopf-akzent", type: "button", disabled: st.laeuft, text: st.laeuft ? "Running …" : "Run the ladder now",
-    onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/lauf", {}, (r) => `Done: ${r.aufgenommen} entered, ${r.ausgewertet} checked (${r.erholt} seen again), ${r.titelVorschlaege} title suggestions.`); } }) : null;
+    onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/lauf", {}, (r) => `Done: ${r.aufgenommen} on the ladder, ${r.kontrolle ?? 0} in the control group, ${r.ausgewertet} checked (${r.erholt} seen again), ${r.titelVorschlaege} title suggestions.`); } }) : null;
   const schalter = (name, an, text) => el("li", {}, name + ":", el("span", { class: an ? "an" : "aus", text }));
   const abschnitt = (titel, n) => el("div", { class: "abschnitt-kopf" }, el("h2", {}, titel, el("span", { class: "zahl-pille", text: String(n) })));
   fuelle(root,
-    el("div", { class: "einstieg" }, el("h1", { text: "Ladder" }),
-      el("p", { class: "leise", text: `Listings with low impressions climb step by step: a new title, then ads, then a lower price. After each step the app waits and checks whether buyers see the listing again (at least ${zahl(l.grenze90)} impressions in 90 days). If yes, it leaves the ladder; if not, the next step follows. Nothing changes on eBay without an admin's approval.` })),
-    trichter(l),
-    el("div", { class: "panel kopf-zeile" },
+    el("div", { class: "einstieg" }, el("h1", { text: "Funnel" }),
+      el("p", { class: "leise", text: `Every product passes the same checks. Products that buyers rarely see (under ${zahl(f.kpi.grenze90)} impressions in 90 days) and that can be changed on eBay are eligible. The daily run draws them by lot: half climb the ladder (new title, then ads, then a lower price), half stay unchanged as the control group. After each phase the app compares the listing with the control group over the same days, so a busy season does not count as success. Nothing changes on eBay without an admin's approval.` })),
+    kpiLeiste(l),
+    trichterBild(l),
+    wirkungTabelle(l),
+    istAdmin() ? el("div", { class: "panel kopf-zeile" },
       el("ul", { class: "leiter-status", "aria-label": "Ladder status" },
         schalter("Titles", st.ki, st.ki ? `AI (${st.kiModell}) + rule check` : "title help, no AI key"),
+        schalter("Control group", l.kontrolleAn, l.kontrolleAn ? `on · ${l.tage.kontrolle} days` : "off"),
         schalter("Ads on eBay", st.werbungAn, st.werbungAn ? "on" : "dry run"),
         schalter("Prices on eBay", st.preisAn, st.preisAn ? "on" : "dry run"),
         schalter("Daily run", st.automatisch, st.automatisch ? `from ${st.uhrzeit}:00` : "off"),
-        el("li", { text: `Last run: ${st.letzterLauf ? zeitpunkt(st.letzterLauf) : "never"}${st.letzterFehler ? " (failed, see Log)" : ""}` }),
-        el("li", { text: `${zahl(l.kandidaten)} listings qualify · at most ${l.max} at a time` })),
-      laufKnopf),
+        el("li", { text: `Last run: ${st.letzterLauf ? zeitpunkt(st.letzterLauf) : "never"}${st.letzterFehler ? " (failed, see Log)" : ""}` })),
+      laufKnopf) : null,
     istAdmin() ? auswahlAufnehmen(l.kandidatenListe || []) : null,
     abschnitt("Waiting for a decision", warten.length),
-    warten.length ? warten.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "Nothing is waiting. New listings come with the daily run or through “Add a listing”." }),
+    warten.length ? ersteFuenf(warten, leiterKarte, "decisions") : el("p", { class: "leere-hinweis leise", text: "Nothing is waiting. New listings come with the daily run or through “Add a listing”." }),
     abschnitt("Waiting time running", laufen.length),
-    laufen.length ? laufen.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "No step is running. A step starts when an admin approves it." }),
-    fertig.length ? el("details", { class: "panel", style: "margin-top:22px" }, el("summary", { style: "cursor:pointer", text: `Left the ladder (${fertig.length})` }), fertig.map(leiterKarte)) : null);
+    laufen.length ? ersteFuenf(laufen, leiterKarte, "running steps") : el("p", { class: "leere-hinweis leise", text: "No step is running. A step starts when an admin approves it." }),
+    fertig.length ? el("details", { class: "panel", style: "margin-top:22px" }, el("summary", { style: "cursor:pointer", text: `Left the ladder (${fertig.length})` }), fertig.map(leiterKarte)) : null,
+    statusTabelle(f));
+}
+
+// Lange Kartenlisten: erst fünf zeigen, der Rest auf Klick (sonst rutscht die Produkttabelle weit nach unten)
+function ersteFuenf(liste, karte, name) {
+  if (liste.length <= 5) return liste.map(karte);
+  const rest = el("div", { hidden: true }, liste.slice(5).map(karte));
+  const knopf = el("button", { class: "knopf", type: "button", text: `Show all ${liste.length} ${name}`, onclick: () => { rest.hidden = false; knopf.remove(); } });
+  return [...liste.slice(0, 5).map(karte), rest, el("div", { class: "mehr" }, knopf)];
+}
+
+// Kennzahlen oben: wie groß der Shop ist, wie viele Impressionen er hat und wo die Produkte gerade stehen
+function kpiLeiste(l) {
+  const f = l.trichter, k = f.kpi;
+  const kachel = (titel, wert, unter, klasse = "") => el("div", { class: "kpi " + klasse }, el("div", { class: "kpi-titel", text: titel }), el("div", { class: "kpi-wert", text: wert }), unter ? el("div", { class: "kpi-unter", text: unter }) : null);
+  return el("div", { class: "kpis" },
+    kachel("Products", zahl(k.produkte), `${zahl(f.zahl.nicht_geeignet)} not eligible · ${zahl(f.zahl.geeignet)} eligible`),
+    kachel("Impressions, 90 days", zahl(k.impressionen90), "all products together"),
+    kachel("On the ladder", zahl(k.aufLeiter), `${zahl(k.impressionenLeiter90)} impressions in 90 days`, "phase"),
+    kachel("Control group", zahl(f.zahl.kontrolle), `${zahl(k.impressionenKontrolle90)} impressions in 90 days`, "kontrolle"),
+    kachel("Seen again", zahl(l.raus.erholt), "left the ladder with enough impressions", "gut"));
+}
+
+// Der Funnel als Bild: jede Zeile ist ein Status, die Länge des Balkens ist die Zahl der Produkte. Klick filtert die Tabelle unten.
+function trichterBild(l) {
+  const f = l.trichter, max = Math.max(1, f.kpi.produkte);
+  const zeile = (status, titel, n, unter, ebene = 0) => el("button", { class: "fz ebene-" + ebene, type: "button", title: "Show these products in the table below",
+    onclick: () => { zustand.funnelFilter = status; zustand.funnelSichtbar = 50; zeichneStatusTabelle(f); $("#funnel-tabelle").scrollIntoView({ behavior: "smooth", block: "start" }); } },
+    el("span", { class: "fz-name" }, el("strong", { text: titel }), unter ? el("small", { text: unter }) : null),
+    el("span", { class: "fz-balken" }, el("i", { class: STATUS_KLASSE[status] || "alle", style: `width:${n ? Math.max(1.5, 100 * n / max) : 0}%` })),
+    el("span", { class: "fz-zahl", text: zahl(n) }));
+  const gruende = Object.entries(f.gruende).filter(([, n]) => n).map(([a, n]) => `${GRUND_TEXT[a]} ${zahl(n)}`).join(" · ");
+  return el("section", { class: "panel trichter-bild", "aria-label": "Funnel" },
+    el("h2", { text: "Where every product stands" }),
+    zeile("alle", "All products", f.kpi.produkte, "every product in the catalogue"),
+    zeile("nicht_geeignet", "Not eligible", f.zahl.nicht_geeignet, gruende || "none", 1),
+    zeile("geeignet", "Eligible", f.zahl.geeignet, "low impressions, active on eBay, free: waiting for a place", 1),
+    zeile("kontrolle", "Control group", f.zahl.kontrolle, `drawn by lot, stays unchanged for ${l.tage.kontrolle} days`, 2),
+    zeile("titel", "Phase 1 · New title", f.zahl.titel, `AI title + rule check · ${l.tage.titel} days`, 2),
+    zeile("werbung", "Phase 2 · Ads", f.zahl.werbung, `Promoted Listings ${Math.round(l.werbesatz * 100)} % · ${l.tage.werbung} days`, 2),
+    zeile("preis", "Phase 3 · Lower price", f.zahl.preis, `−${Math.round(l.preisSchritt * 100)} % · ${l.tage.preis} days`, 2),
+    zeile("pruefung", "Phase 4 · Manual check", f.zahl.pruefung, "an admin decides: rework, take offline or keep", 2),
+    zeile("erholt", "Seen again", f.zahl.erholt, "enough impressions after a phase", 3),
+    zeile("raus", "Left, pausing", f.zahl.raus, "decided, taken off or control time over; 90 days pause", 3));
+}
+
+// Wirkung je Phase gegen die Kontrollgruppe (leiter.wirkung): erst wenn eine Prüfzeit vorbei ist, gibt es Zahlen
+function wirkungTabelle(l) {
+  const w = l.wirkung, phasen = [["titel", "Phase 1 · New title"], ["werbung", "Phase 2 · Ads"], ["preis", "Phase 3 · Lower price"]];
+  const ende = l.angebote.filter((a) => a.stand?.ende).map((a) => a.stand.ende).sort()[0];
+  const nettoZelle = (x) => x.netto == null ? el("td", { class: "zahl leise", text: x.ausgewertet ? "no control" : "–" })
+    : el("td", { class: "zahl" }, el("span", { class: "status " + (x.netto >= 0.2 ? "gut" : x.netto <= -0.2 ? "schlecht" : "grau"), text: aenderung(x.netto) }));
+  const tabelle = el("table", { class: "mini" },
+    el("thead", {}, el("tr", {}, ["Phase", "Checked", "Seen again", "Listings, impressions per 90 days", "Control group, same days", "Net effect"].map((t, i) => el("th", { class: i ? "zahl" : null, text: t })))),
+    el("tbody", {}, phasen.map(([s, name]) => { const x = w[s]; return el("tr", {},
+      el("td", { text: name }), el("td", { class: "zahl", text: zahl(x.ausgewertet) }), el("td", { class: "zahl", text: zahl(x.erholt) }),
+      el("td", { class: "zahl", text: x.mitKontrolle ? `${zahl(x.vorher90)} → ${zahl(x.nachher90)}` : "–" }),
+      el("td", { class: "zahl", text: x.mitKontrolle ? `${zahl(x.kontrolleVorher90)} → ${zahl(x.kontrolleNachher90)}` : "–" }), nettoZelle(x)); })));
+  const leer = !phasen.some(([s]) => w[s].ausgewertet);
+  return el("section", { class: "panel" },
+    el("h2", { text: "Effect of each phase, measured against the control group" }),
+    el("p", { class: "leise klein", text: "Net effect = (listings after ÷ before) ÷ (control group after ÷ before) − 1. If the whole shop gets busier, the control group rises too and the net effect stays near zero. From +20 % a phase counts as clearly better." }),
+    leer ? el("p", { class: "leere-hinweis leise", text: ende ? `No phase has finished its waiting time yet. The first result is due on ${datum(ende + "T12:00:00Z")} (when the traffic data for that day is complete).` : "No phase is running yet. The first result comes one waiting time after the first approval." }) : rollbar(tabelle));
+}
+
+// Alle Produkte mit Status und Grund; Filter über die Chips oder einen Klick im Funnel, Suche nach Nummer oder Wort
+function statusTabelle(f) {
+  return el("section", { id: "funnel-tabelle", class: "funnel-tabelle" },
+    el("div", { class: "abschnitt-kopf" }, el("h2", { text: "All products and why they are where they are" })),
+    el("div", { id: "funnel-inhalt" }, statusInhalt(f)));
+}
+function zeichneStatusTabelle(f) { const ziel = $("#funnel-inhalt"); if (ziel) fuelle(ziel, statusInhalt(f)); }
+function statusInhalt(f) {
+  const filter = zustand.funnelFilter || "alle";
+  const chip = (s, name, n) => el("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(filter === s), onclick: () => { zustand.funnelFilter = s; zustand.funnelSichtbar = 50; zeichneStatusTabelle(f); } },
+    s !== "alle" ? el("span", { class: "punkt status-punkt " + (STATUS_KLASSE[s] || "") }) : null, name, el("span", { class: "tab-zahl", text: zahl(n) }));
+  const suche = el("input", { type: "search", value: zustand.funnelSuche || "", placeholder: "Search by name or number", "aria-label": "Search products in the funnel", maxlength: 100,
+    oninput: () => { zustand.funnelSuche = suche.value; zustand.funnelSichtbar = 50; zeichneTreffer(); } });
+  const tabelle = el("div", { class: "tabelle" }), treffer = el("p", { class: "leise ergebnis-zeile" }), mehr = el("div", { class: "mehr" });
+  const zeile = (x) => { const b = bildUrl(x.image_url); return el("div", { class: "fzeile" },
+    b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
+    el("div", { class: "name" }, el("div", { class: "titel", text: x.title || "(untitled)" }), el("div", { class: "nummer", text: `No. ${x.number} · ${zahl(x.impressionen_90d)} impressions · ${zahl(x.units_90d ?? 0)} sales in 90 days` })),
+    el("div", {}, statusChip(x.status)), el("div", { class: "grund leise", text: x.grund })); };
+  // Nur Trefferliste neu zeichnen, damit das Suchfeld beim Tippen den Fokus behält
+  function zeichneTreffer() {
+    const q = (zustand.funnelSuche || "").trim().toLowerCase();
+    const liste = f.liste.filter((x) => (filter === "alle" || x.status === filter) && (!q || `${x.number} ${x.title || ""}`.toLowerCase().includes(q)));
+    const teil = liste.slice(0, zustand.funnelSichtbar || 50);
+    treffer.textContent = `${zahl(liste.length)} ${liste.length === 1 ? "product" : "products"}`;
+    fuelle(tabelle, liste.length ? teil.map(zeile) : el("div", { class: "leer", text: "No product matches. Change the filter or the search." }));
+    fuelle(mehr, liste.length > teil.length ? el("button", { class: "knopf", type: "button", text: `Show more (${zahl(liste.length - teil.length)} more)`, onclick: () => { zustand.funnelSichtbar = (zustand.funnelSichtbar || 50) + 100; zeichneTreffer(); } }) : null);
+  }
+  zeichneTreffer();
+  return [el("div", { class: "tabs", role: "tablist", "aria-label": "Filter by status" }, chip("alle", "All", f.liste.length), ...STATUS_REIHE.map((s) => chip(s, STATUS_TEXT[s], f.zahl[s] || 0))),
+    el("div", { class: "werkzeuge" }, el("label", { class: "suche" }, suche)), treffer, tabelle, mehr];
 }
 
 // Admin: ein bestimmtes Angebot aus allen Kandidaten wählen und sofort auf die Leiter setzen (der KI-Titel kommt gleich mit)
@@ -573,17 +704,6 @@ function auswahlAufnehmen(liste) {
     el("h2", { text: "Add a listing" }),
     el("p", { class: "leise klein", text: "Every listing that qualifies for the ladder: low impressions, active on eBay, not blocked, not in a test. Sorted by sales, best first. The listing starts at step 1; nothing changes on eBay until you approve the title." }),
     el("div", { class: "auswahl-zeile" }, suche, wahl, knopf));
-}
-
-// Der Trichter oben: wie viele Angebote auf welcher Stufe stehen und wie viele die Leiter wie verlassen haben
-function trichter(l) {
-  const kasten = (titel, n, unter, klasse = "") => el("div", { class: "stufe " + klasse }, el("div", { class: "stufe-zahl", text: zahl(n) }), el("div", { class: "stufe-titel", text: titel }), unter ? el("div", { class: "leise klein", text: unter }) : null);
-  return el("div", { class: "trichter", role: "list", "aria-label": "Ladder steps" },
-    kasten(STUFE_TEXT.titel, l.zahl.titel, `${l.tage.titel} days`),
-    kasten(STUFE_TEXT.werbung, l.zahl.werbung, `${Math.round(l.werbesatz * 100)} % · ${l.tage.werbung} days`),
-    kasten(STUFE_TEXT.preis, l.zahl.preis, `−${Math.round(l.preisSchritt * 100)} % · ${l.tage.preis} days`),
-    kasten(STUFE_TEXT.pruefung, l.zahl.pruefung, "a person decides"),
-    kasten("Seen again", l.raus.erholt, `${l.raus.offline} offline · ${l.raus.ueberarbeiten} rework · ${l.raus.behalten} kept`, "gut"));
 }
 
 function leiterKarte(a) {
@@ -666,7 +786,7 @@ function lebenslauf(a) {
   if (!a.verlauf.length) return null;
   const zeile = (e) => {
     const d = e.details || {};
-    const extra = e.ereignis === "ausgewertet" ? ` ${zahl(d.vorher90)} → ${zahl(d.nachher90)} impressions per 90 days (limit ${zahl(d.grenze90)}): ${d.erholt ? "seen again" : "still too few"}`
+    const extra = e.ereignis === "ausgewertet" ? ` ${zahl(d.vorher90)} → ${zahl(d.nachher90)} impressions per 90 days (limit ${zahl(d.grenze90)}): ${d.erholt ? "seen again" : "still too few"}${d.kontrolle ? `; control group ${zahl(d.kontrolle.vorher90)} → ${zahl(d.kontrolle.nachher90)}, net effect ${aenderung(d.netto)}` : ""}`
       : e.ereignis === "vorschlag" && d.titel ? ` “${d.titel}”` : d.text ? " " + d.text : d.grund ? " " + d.grund : d.notiz ? ` ${ERGEBNIS_LEITER[d.entscheidung] || ""}: ${d.notiz}` : "";
     return el("li", { text: `${zeitpunkt(e.at)} · ${STUFE_TEXT[e.stufe] || e.stufe} · ${EREIGNIS_TEXT[e.ereignis] || e.ereignis}${extra}${e.benutzer !== "system" ? ` (${e.benutzer})` : ""}` });
   };

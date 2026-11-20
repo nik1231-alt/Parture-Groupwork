@@ -33,6 +33,7 @@ export const EINSTELLUNGEN = {
   leiterTageWerbung: 14,     // Prüfzeit nach dem Einschalten der Werbung
   leiterTagePreis: 21,       // Prüfzeit nach der Preissenkung (Verkäufe reagieren langsamer)
   leiterMax: 20,             // höchstens so viele Angebote stehen gleichzeitig auf der Leiter
+  leiterKontrolle: true,     // der tägliche Lauf lost zu jedem aufgenommenen Angebot eines als Kontrollgruppe aus (bleibt unverändert, Vergleich je Stufe)
   werbesatz: 0.1,            // Werbesatz für eBay Promoted Listings (Anteil am Verkaufspreis, nur bei Verkauf fällig)
   preisSchritt: 0.1,         // um diesen Anteil wird der Preis in Stufe 3 gesenkt
 };
