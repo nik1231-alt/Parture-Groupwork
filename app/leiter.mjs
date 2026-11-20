@@ -20,6 +20,7 @@ import crypto from "node:crypto";
 import { bewerte, leiteSchwellenAb, EINSTELLUNGEN } from "./regeln.mjs";
 import { ziehe } from "./experimente.mjs";
 import { netto } from "./auswertung.mjs";
+import { pruefeTitel } from "./titel-regeln.mjs";
 import * as protokoll from "./protokoll.mjs";
 
 export const STUFEN = ["titel", "werbung", "preis", "pruefung"];
@@ -217,6 +218,12 @@ export async function gibFrei(db, nutzer, number, { items, schreiber, impTag }, 
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "vorschlag"); if (f) return f;
   const v = json(z.vorschlag);
   if (!v || v.nichtMoeglich) return fehler(409, v?.nichtMoeglich || "There is no suggestion to approve yet.");
+  // Den Titel unmittelbar vor dem Schreiben noch einmal prüfen: Regeln werden schärfer (20.11.: Marke vor "passend für"),
+  // ein früher gespeicherter Vorschlag darf dann nicht mehr durchrutschen.
+  if (z.stufe === "titel") {
+    const p = pruefeTitel(v.titel, v.alt);
+    if (!p.ok) return fehler(409, "This title breaks a rule that was tightened after it was suggested: " + p.verstoesse.map((x) => x.text).join(" ") + " Ask the AI again or enter a title by hand.");
+  }
   let r;
   try { r = await fuehreAus(z.stufe, v, items, schreiber); } catch (e) { r = { ausgang: "fehlgeschlagen", text: "Error while talking to eBay: " + e.message }; }
   const ereignis = r.ausgang === "angewendet" ? "freigegeben" : r.ausgang;

@@ -224,3 +224,16 @@ test("Funnel: jedes Produkt hat genau einen Status und einen Grund, in der Reihe
   // "geeignet" im Funnel = genau die Kandidaten des nächsten Laufs
   assert.deepEqual(f.liste.filter((x) => x.status === "geeignet").map((x) => x.number).sort(), leiter.kandidaten(d, produkte, E, T0, { gesperrt: new Set(["D"]) }).map((p) => p.number).sort());
 });
+
+test("Freigabe prüft den Titel noch einmal: ein Vorschlag aus der Zeit vor einer schärferen Regel wird nicht geschrieben", async () => {
+  const d = neueDb(), s = schreiber();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  // so gespeichert, wie es die alte Regel durchgelassen hätte: Marke vor "passend"
+  const alt = { titel: "BMW X3 Armlehne Box passend", alt: "Armlehne Box kompatibel mit BMW X3", quelle: "ki", begruendung: "x", pruefung: { ok: true, verstoesse: [], hinweise: [] } };
+  d.prepare("UPDATE leiter SET vorschlag = ? WHERE number = 'A'").run(JSON.stringify(alt));
+  const r = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
+  assert.equal(r.status, 409);
+  assert.match(r.fehler, /must come after/);
+  assert.equal(s.auf.length, 0, "bei eBay wurde nichts geschrieben");
+  assert.equal(zeile(d, "A").phase, "vorschlag", "die Stufe bleibt offen");
+});

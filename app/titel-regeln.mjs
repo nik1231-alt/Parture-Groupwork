@@ -43,6 +43,14 @@ const zahlen = (s) => klein(s).match(/\d+(?:[.,]\d+)?/g) || [];
 const zaehle = (liste) => liste.reduce((m, w) => m.set(w, (m.get(w) || 0) + 1), new Map());
 const enthaeltMarke = (text, m) => new RegExp(`(^|[^\\p{L}\\p{N}])${m.replace(/[+.*?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "iu").test(text);
 export const markenIn = (text) => MARKEN.filter((m) => enthaeltMarke(klein(entities(text)), m));
+// Steht die Marke vor dem ersten Bezugswort ("BMW X3 Armlehne passend")? Dann liest sie sich, als wären wir der Hersteller.
+// Gefunden am 20.11. an echten KI-Vorschlägen: die alte Regel verlangte nur IRGENDWO ein Bezugswort.
+const markeVorBezug = (text, m) => {
+  const t = klein(entities(text));
+  const stelle = t.search(new RegExp(`(^|[^\\p{L}\\p{N}])${m.replace(/[+.*?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "iu"));
+  const bezug = t.search(BEZUG);
+  return stelle >= 0 && (bezug < 0 || stelle < bezug);
+};
 
 // Prüft einen neuen Titel gegen den alten. Liefert { ok, verstoesse, hinweise }; ok nur ohne Verstoß.
 // verstoesse blockieren die Freigabe. hinweise blockieren nicht: sie markieren Riskantes, das schon im alten Titel stand
@@ -65,6 +73,10 @@ export function pruefeTitel(neu, alt) {
   const neueMarken = markenIn(n), alteMarken = markenIn(a);
   for (const m of neueMarken) if (!alteMarken.includes(m)) melde("marke", `“${m}” is a brand that was not in the old title. Brands must not be added.`);
   if (neueMarken.length && !BEZUG.test(n)) melde("marke", "A brand may only appear as a reference, e.g. “passend für …”, never as if we were the maker.");
+  else for (const m of neueMarken.filter((x) => markeVorBezug(n, x))) {
+    if (markeVorBezug(a, m)) h.push({ regel: "marke", text: `“${m}” stands before “passend für …”, as in the old title. Check it: a brand in front reads as if we were the maker.` });
+    else melde("marke", `“${m}” must come after “passend für …” or “kompatibel mit …”. A brand in front reads as if we were the maker.`);
+  }
   // Nichts erfinden: Zahlen und Farben müssen schon im alten Titel stehen
   const alteZahlen = new Set(zahlen(a));
   for (const z of zahlen(n)) if (!alteZahlen.has(z)) melde("erfunden", `The number “${z}” is not in the old title. Sizes and quantities must not be made up.`);
@@ -88,8 +100,8 @@ export function pruefeTitel(neu, alt) {
 // Der Teil des KI-Auftrags, der die Regeln beschreibt: dieselben Regeln wie oben, damit die meisten Vorschläge gleich durchgehen.
 export const REGELN_FUER_KI = [
   `At most ${TITEL_MAX_ZEICHEN} characters.`,
-  "German, like the old title. Keep the product type and what it fits; put the words buyers search for first.",
-  "Brands only as a reference (“passend für Bosch”), never as the maker. Use only brands that are already in the old title.",
+  "German, like the old title. Start with the product type (what it is), then what it fits; put the words buyers search for early.",
+  "Brands only AFTER “passend für” or “kompatibel mit” (“Armlehne Box passend für BMW X3”), never at the start and never before that phrase, so we never look like the maker. Use only brands that are already in the old title.",
   "Do not add numbers, sizes, quantities or colours that are not in the old title.",
   "No superlatives (beste, top, premium, perfekt), no test marks (TÜV, geprüft, zertifiziert, CE), no environmental claims (nachhaltig, öko, recycelt), no price or shipping promises (gratis, Rabatt, Angebot), no guarantees, never “Original” or “OEM”.",
   "No search word more often than in the old title, no emojis, no special characters like ! ? * # that are not in the old title, no words in capitals that are not in the old title.",
