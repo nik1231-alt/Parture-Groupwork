@@ -5,6 +5,17 @@ die Käufer kaum zu sehen bekommen. Diese App findet sie, testet neue Titel im *
 und sagt nach der Prüfzeit, ob die neuen Titel mehr **Impressionen** bringen, ohne dass die Verkäufe leiden.
 Bei eBay geändert wird nur, was ein Admin freigegeben hat, und jede Aktion steht in einem Protokoll, das sich nicht ändern lässt.
 
+**Live:** https://app.parture-team.com (PROD) · https://vorschau.parture-team.com (VORSCHAU)
+
+## Team
+
+| Name | Studierendennummer |
+|---|---|
+| Niko Bratzke | 81079 |
+| Alexander Florian Harder | 80896 |
+| Embleton Helmut Oscar Weitmann | 79945 |
+| Elias Luka Thiele | 73922 |
+
 ## Die Seiten
 
 | Seite | Wer | Was |
