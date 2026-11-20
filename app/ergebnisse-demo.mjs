@@ -7,7 +7,7 @@ import { netto } from "./auswertung.mjs";
 
 const TRAFFIC_BIS = "2026-11-10", START = "2026-08-03", GRENZE90 = 170, ANZAHL = 24, KONTROLLE = 20;
 // Wirkung je Phase (Faktor auf die Impressionen) und Streuung zwischen den Angeboten: Titel kaum, Werbung deutlich, Preis kaum
-const WIRKUNG = { titel: [0.99, 0.5], werbung: [1.4, 0.5], preis: [0.88, 0.5] };
+const WIRKUNG = { titel: [0.99, 0.5], werbung: [1.4, 0.5], preis: [0.8, 0.5] };
 
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const hash = (s) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
@@ -39,7 +39,11 @@ export function baueDemoErgebnisse(einst) {
   let aktiv = listings.map((l, i) => ({ l, start: plusTage(START, lauf(i) + (i % 3)) }));
   for (const [stufe] of PHASEN) {
     const naechste = [];
+    // Damit der Überblick auch laufende und wartende Angebote zeigt: in der Werbephase des ersten Starts laufen zwei noch, eines wartet auf Freigabe
+    const halt = new Map();
+    if (stufe === "werbung") aktiv.filter((x) => listings.indexOf(x.l) < 14).slice(-3).forEach((x, k) => halt.set(x.l.number, k < 2 ? "laeuft" : "vorschlag"));
     for (const { l, start } of aktiv) {
+      if (halt.has(l.number)) { l.stufe = "werbung"; l.phase = halt.get(l.number); if (l.phase === "laeuft") l.verlauf.push({ stufe, ereignis: "gestartet", at: start + "T06:00:00.000Z", details: { vonHand: false } }); else l.verlauf.push({ stufe, ereignis: "vorschlag", at: start + "T06:00:00.000Z", details: null }); continue; }
       const [mitte, streu] = WIRKUNG[stufe];
       l.schritte.push({ start, faktor: mitte + streu * (rng() - 0.5) });
       const ende = plusTage(start, tage[stufe]);
@@ -53,7 +57,7 @@ export function baueDemoErgebnisse(einst) {
     aktiv = naechste;
   }
   const angebote = [
-    ...listings.map((l, i) => ({ number: l.number, title: "Example listing " + l.number, stufe: l.stufe, phase: "fertig", ergebnis: l.ergebnis, eingestiegen_at: plusTage(START, lauf(i)) + "T06:00:00.000Z", verlauf: l.verlauf })),
+    ...listings.map((l, i) => ({ number: l.number, title: "Example listing " + l.number, stufe: l.stufe, phase: l.phase ?? (l.stufe === "pruefung" ? "offen" : "fertig"), ergebnis: l.ergebnis, eingestiegen_at: plusTage(START, lauf(i)) + "T06:00:00.000Z", verlauf: l.verlauf })),
     ...kontrolle.map((n) => ({ number: n, title: "Example control " + n, stufe: "kontrolle", phase: "laeuft", ergebnis: null, eingestiegen_at: START + "T06:00:00.000Z", verlauf: [] })),
   ];
   const u = { angebote, tage, trafficBis: TRAFFIC_BIS };

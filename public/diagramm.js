@@ -88,27 +88,47 @@ const Diagramm = (() => {
 
 
   // ================= Seite Results =================
-  // Effekt eines typischen Angebots je Phase gegen die Kontrollgruppe: Punkt = Effekt, Linie = 95-%-Bereich.
+  // Je Phase eine schmale Zeile: Punkt = Effekt eines typischen Angebots gegen die Kontrollgruppe, Linie = 95-%-Bereich.
+  // Alle Zeilen einer Ansicht haben dieselbe Skala (achse), unten steht die Beschriftung einmal (phasenAchse).
   // Liegt die ganze Linie rechts von der Nulllinie, ist der Anstieg klar; reicht sie über die Null, kann es Zufall sein.
-  function phasenBalken(phasen, minAngebote) {
-    const B = 560, links = 120, rechts = 28, zeile = 62, oben = 14;
-    const sichtbar = phasen.filter((p) => p.urteil !== "too_few" && p.schaetzung);
-    const werte = sichtbar.flatMap((p) => [p.schaetzung.von, p.schaetzung.bis]);
-    const lo = Math.min(-0.25, ...werte) - 0.05, hi = Math.max(0.5, ...werte) + 0.05;
-    const x = (v) => links + (B - links - rechts) * ((klemme(v, lo, hi) - lo) / (hi - lo));
-    const H = oben + phasen.length * zeile + 38, teile = [];
-    [-0.5, -0.25, 0, 0.25, 0.5, 0.75, 1].filter((t) => t >= lo && t <= hi).forEach((t) => teile.push(s("line", { x1: x(t), x2: x(t), y1: oben, y2: H - 34, class: t === 0 ? "d-null" : "d-gitter" }), text(x(t), H - 18, proz(t), "d-klein")));
-    teile.push(text(x(0), H - 4, "0 % = same as the control group", "d-klein"));
-    phasen.forEach((p, i) => {
-      const y = oben + i * zeile + 30;
-      teile.push(text(links - 12, y + 4, p.name, "d-gruppe", "end"));
-      if (p.urteil === "too_few" || !p.schaetzung) { teile.push(text(x(0.1), y + 4, `too early (${p.mitKontrolle} of ${minAngebote} listings)`, "d-klein", "start")); return; }
-      const e = p.schaetzung, k = "d-" + p.urteil;
-      teile.push(s("line", { x1: x(e.von), x2: x(e.bis), y1: y, y2: y, class: "d-bereich " + k }), s("line", { x1: x(e.von), x2: x(e.von), y1: y - 6, y2: y + 6, class: "d-bereich " + k }), s("line", { x1: x(e.bis), x2: x(e.bis), y1: y - 6, y2: y + 6, class: "d-bereich " + k }),
-        s("circle", { cx: x(e.effekt), cy: y, r: 7, class: "d-effekt " + k }), text(x(e.effekt), y - 14, proz(e.effekt), "d-wert"), text((x(e.von) + x(e.bis)) / 2, y + 24, `likely between ${proz(e.von)} and ${proz(e.bis)}`, "d-klein"));
-    });
-    return s("svg", { viewBox: `0 0 ${B} ${H}`, class: "diagramm", role: "img", "aria-label": "Effect on impressions compared with the control group, with 95 percent range: " + phasen.map((p) => `${p.name} ${p.urteil === "too_few" || !p.schaetzung ? "too early" : `${proz(p.schaetzung.effekt)}, between ${proz(p.schaetzung.von)} and ${proz(p.schaetzung.bis)}`}`).join("; ") + "." }, teile);
+  const ZB = 440, ZRAND = 12;
+  function achse(phasen) {
+    const werte = phasen.filter((p) => p.urteil !== "too_few" && p.schaetzung).flatMap((p) => [p.schaetzung.von, p.schaetzung.bis]);
+    const lo = Math.min(-0.5, ...werte) - 0.05, hi = Math.max(1, ...werte) + 0.05;
+    const schritte = hi - lo > 1.8 ? [-0.5, 0, 0.5, 1, 1.5, 2, 3] : [-0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
+    return { lo, hi, ticks: schritte.filter((t) => t >= lo && t <= hi) };
+  }
+  const zx = (a, v) => ZRAND + (ZB - 2 * ZRAND) * ((klemme(v, a.lo, a.hi) - a.lo) / (a.hi - a.lo));
+  function phasenZeile(p, a) {
+    const H = 38, teile = a.ticks.filter((t) => t !== 0).map((t) => s("line", { x1: zx(a, t), x2: zx(a, t), y1: 0, y2: H, class: "d-gitter" }));
+    teile.push(s("line", { x1: zx(a, 0), x2: zx(a, 0), y1: 0, y2: H, class: "d-null" }));
+    const e = p.schaetzung, offen = p.urteil === "too_few" || !e, y = H / 2;
+    if (offen) teile.push(text(ZB / 2 + 30, y + 4, "too early", "d-klein"));
+    else {
+      const k = "d-" + p.urteil;
+      teile.push(s("line", { x1: zx(a, e.von), x2: zx(a, e.bis), y1: y, y2: y, class: "d-bereich " + k }), s("circle", { cx: zx(a, e.effekt), cy: y, r: 6, class: "d-effekt " + k }));
+    }
+    return s("svg", { viewBox: `0 0 ${ZB} ${H}`, class: "diagramm d-zeile", role: "img", "aria-label": `${p.name}: ` + (offen ? "too early" : `effect ${proz(e.effekt)}, 95 percent range ${proz(e.von)} to ${proz(e.bis)}`) }, teile);
+  }
+  function phasenAchse(a) {
+    return s("svg", { viewBox: `0 0 ${ZB} 18`, class: "diagramm d-zeile", "aria-hidden": "true" }, a.ticks.map((t) => text(zx(a, t), 13, proz(t, false).replace(/^0 %$/, "0 %"), "d-klein")));
   }
 
-  return { saeulen, skala, punkte, proz, phasenBalken };
+  // Funnel-Überblick: ein Balken je Phase, Länge = Anteil an allen gestarteten Angeboten, unterteilt nach dem, was aus ihnen geworden ist.
+  const FLUSS_TEIL = [["erholt", "Seen again, left the funnel"], ["weiter", "Passed on"], ["uebersprungen", "Skipped"], ["laeuft", "Running"], ["wartet", "Waiting for approval"], ["entfernt", "Removed by hand"],
+    ["behalten", "Kept"], ["ueberarbeiten", "To rework"], ["offline", "Taken offline"], ["offen", "Waiting for a decision"]];
+  function flussBalken(zahlen, gesamt) {
+    const B = 360, H = 22, teile = [s("rect", { x: 0, y: 0, width: B, height: H, rx: 4, class: "d-f-spur" })];
+    let x = 0;
+    for (const [schluessel, beschr] of FLUSS_TEIL) {
+      const n = zahlen[schluessel] || 0;
+      if (!n || !gesamt) continue;
+      const w = (n / gesamt) * B, r = s("rect", { x, y: 0, width: Math.max(w, 1), height: H, class: "d-f d-f-" + schluessel });
+      r.append(Object.assign(s("title"), { textContent: `${beschr}: ${n}` }));
+      teile.push(r); x += w;
+    }
+    return s("svg", { viewBox: `0 0 ${B} ${H}`, class: "diagramm d-fluss", role: "img", "aria-label": FLUSS_TEIL.filter(([k]) => zahlen[k]).map(([k, b]) => `${b} ${zahlen[k]}`).join(", ") || "no listings" }, teile);
+  }
+
+  return { saeulen, skala, punkte, proz, achse, phasenZeile, phasenAchse, flussBalken, FLUSS_TEIL };
 })();

@@ -50,7 +50,7 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 | **Products** | everyone | every product with eBay price, eBay sales, impressions and diagnosis; open a row for its variants, channel reference details, funnel status and full history |
 | **Problem** | everyone | live analysis of why the app exists (eBay only): 80 % of eBay sales come from 17.8 % of the eBay listings, 80 % of eBay impressions from 35 % of the listings (20.11.2026); seen × sold for every listing; how impressions are spread |
 | **Funnel** | everyone (actions: admin) | KPIs, all products as one bar by status, why products are not eligible, the ladder as a flow, the effect of each phase against the control group, the work queue with the interim result, and a table of all products with their status and the reason for it |
-| **Results** | everyone | what each phase did to impressions, against the control group: net effect per phase, impressions over time as an index, before and after, every listing on its own, and a table; until a phase has a result it shows an example with invented figures (clearly marked) |
+| **Results** | everyone | pick a run (the listings started on one day) or all runs: how impressions changed in each phase compared with the control group, and whether the difference is clear or could be chance; until a phase has a result it shows an example with invented figures (clearly marked) |
 | **Team** | admin | assign roles |
 | **Log** | everyone | the append-only log and the operating status (environment, version, write switches, backup, data age) |
 | **Settings** | everyone (save: admin) | every rule value: limits, waiting times, ad rate, price step |

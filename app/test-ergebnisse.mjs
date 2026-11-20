@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { urteil, schaetze, tKritisch, baueErgebnisse, MIN_AUSGEWERTET, PHASEN, ALLE } from "./ergebnisse.mjs";
+import { urteil, schaetze, tKritisch, baueErgebnisse, fluss, MIN_AUSGEWERTET, PHASEN, ALLE } from "./ergebnisse.mjs";
 import { baueDemoErgebnisse } from "./ergebnisse-demo.mjs";
 import * as leiter from "./leiter.mjs";
 import { EINSTELLUNGEN } from "./regeln.mjs";
@@ -102,6 +102,33 @@ test("Die Zahlen auf Results und auf der Seite Funnel (leiter.wirkung) weichen n
   db.close();
 });
 
+test("Funnel-Überblick: wie viele sind in jeder Phase angekommen und was ist aus ihnen geworden", () => {
+  const ev = (stufe, ereignis, details = null) => ({ stufe, ereignis, details });
+  const aus = (stufe, erholt) => ev(stufe, "ausgewertet", { erholt });
+  const a = (stufe, phase, ergebnis, verlauf) => ({ stufe, phase, ergebnis, verlauf });
+  const f = fluss([
+    a("raus", "fertig", "erholt", [ev("titel", "aufgenommen"), ev("titel", "gestartet"), aus("titel", true)]),                                   // Titel: wieder gesehen
+    a("werbung", "laeuft", null, [ev("titel", "aufgenommen"), aus("titel", false), ev("werbung", "vorschlag"), ev("werbung", "gestartet")]),    // Titel weiter, Werbung läuft
+    a("preis", "vorschlag", null, [ev("titel", "aufgenommen"), aus("titel", false), ev("werbung", "uebersprungen"), ev("preis", "vorschlag")]), // Werbung übersprungen, Preis wartet
+    a("pruefung", "offen", null, [ev("titel", "aufgenommen"), aus("titel", false), aus("werbung", false), aus("preis", false), ev("pruefung", "pruefung")]), // alles durch, wartet auf Entscheidung
+    a("raus", "fertig", "behalten", [ev("titel", "aufgenommen"), aus("titel", false), aus("werbung", false), aus("preis", false), ev("pruefung", "pruefung"), ev("pruefung", "entschieden", { entscheidung: "behalten" })]),
+    a("werbung", "vorschlag", null, [ev("titel", "aufgenommen"), aus("titel", false), ev("werbung", "vorschlag")]),                             // Werbung wartet auf Freigabe
+  ]);
+  const [titel, werbung, preis] = f.stufen;
+  assert.deepEqual([titel.erreicht, titel.erholt, titel.weiter], [6, 1, 5], "alle sechs waren in Phase 1, eines wurde wieder gesehen");
+  assert.deepEqual([werbung.erreicht, werbung.weiter, werbung.laeuft, werbung.wartet, werbung.uebersprungen], [5, 2, 1, 1, 1], "Werbung: zwei weitergereicht, eines läuft, eines wartet, eines übersprungen");
+  assert.deepEqual([preis.erreicht, preis.weiter, preis.wartet], [3, 2, 1]);
+  assert.deepEqual(f.pruefung, { erreicht: 2, offen: 1, behalten: 1, ueberarbeiten: 0, offline: 0 });
+  for (const z of f.stufen) assert.equal(z.erholt + z.weiter + z.laeuft + z.wartet + z.uebersprungen + z.entfernt, z.erreicht, z.schluessel + ": jedes Angebot landet in genau einer Spalte");
+});
+
+test("Funnel-Überblick je Lauf: zählt nur die eigenen Angebote, die Kontrollgruppe zählt nicht mit", () => {
+  const e = baueErgebnisse(uebersicht([...viele("A", "titel", 3, 100, 110, "2026-10-01"), ...viele("B", "titel", 2, 100, 110, "2026-10-08"), kontrolleAngebot("K1")]));
+  assert.equal(e.laeufe[0].fluss.stufen[0].erreicht, 5, "alle Läufe");
+  assert.equal(e.laeufe[1].fluss.stufen[0].erreicht, 2, "neuer Lauf");
+  assert.equal(e.laeufe[2].fluss.stufen[0].erreicht, 3, "älterer Lauf");
+});
+
 test("Laufende Angebote: werden gezählt, das erste Ende wird genannt, sie sind noch kein Ergebnis", () => {
   const laeuft = (nr, ende) => ({ number: nr, stufe: "werbung", phase: "laeuft", eingestiegen_at: "2026-10-01T06:00:00.000Z", verlauf: [], stand: { ende } });
   const e = baueErgebnisse(uebersicht([laeuft("L1", "2026-11-30"), laeuft("L2", "2026-11-25")]));
@@ -120,4 +147,6 @@ test("Beispielansicht: erfundene Zahlen, immer dieselben, zwei Läufe plus alle,
     for (const p of l.phasen) for (const v of [p.netto, p.aenderung, p.kontrolleAenderung]) assert.ok(Number.isFinite(v), p.schluessel);
   }
   assert.ok(a.laeufe.some((l) => l.phasen.some((p) => p.urteil === "too_few")), "ein Lauf zeigt auch 'zu früh'");
+  const w = a.laeufe[0].fluss.stufen[1];
+  assert.deepEqual([w.laeuft, w.wartet], [2, 1], "das Beispiel zeigt auch laufende und wartende Angebote");
 });

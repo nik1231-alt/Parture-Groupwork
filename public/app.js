@@ -550,19 +550,12 @@ async function ladeErgebnisse() {
   } catch (e) { zeigeFehler(e, ladeErgebnisse); fuelle(root); }
 }
 
-// Ein Lauf in einem Satz: welche Phasen haben klar etwas bewirkt?
-function ergebnisSatz(lauf) {
-  const pz = Diagramm.proz, klar = lauf.phasen.filter((p) => p.urteil === "up" || p.urteil === "down");
-  if (klar.length) return klar.map((p) => `${p.name}: impressions are clearly ${p.urteil === "up" ? "higher" : "lower"} than in the control group (${pz(p.schaetzung.effekt)} for a typical listing).`).join(" ")
-    + (lauf.phasen.some((p) => p.urteil === "unclear") ? " The other phases show no clear difference yet." : "");
-  if (lauf.phasen.some((p) => p.urteil === "unclear")) return "No phase shows a clear effect: the differences to the control group could be chance.";
-  return "Too early to say anything: no phase has enough finished listings yet.";
-}
+const LAUF_TEXT = (l) => (l.schluessel === "alle" ? "All runs" : datum(l.schluessel + "T12:00:00Z")) + ` · ${zahl(l.angebote)} listing${l.angebote === 1 ? "" : "s"}` + (l.phasen.some((p) => p.ausgewertet) ? "" : " · no results yet");
 
 function zeichneErgebnisse(d) {
-  const root = $("#ansicht-ergebnisse"), beispiel = !!zustand.ergebnisBeispiel, pz = Diagramm.proz;
+  const root = $("#ansicht-ergebnisse"), beispiel = !!zustand.ergebnisBeispiel;
   const knopf = el("button", { class: "knopf knopf-klein", type: "button", text: beispiel ? "Show real data" : "Show example with invented figures", onclick: () => { zustand.ergebnisBeispiel = !zustand.ergebnisBeispiel; ladeErgebnisse(); } });
-  const kopf = el("div", { class: "einstieg" }, el("h1", { text: "Results" }), el("p", { class: "leise", text: "Pick a run (the listings you started on one day) to see how their impressions changed compared with the control group." }));
+  const kopf = el("div", { class: "einstieg" }, el("h1", { text: "Results" }), el("p", { class: "leise", text: "How did impressions change compared with the control group? Pick a run: the listings you started on one day." }));
   if (!beispiel && d.leer) {
     const enden = d.laeufe[0].phasen.map((p) => p.naechstesEnde).filter(Boolean).sort(), laeuft = d.laeufe[0].phasen.reduce((s, p) => s + p.laeuft, 0);
     fuelle(root, kopf, el("section", { class: "panel" },
@@ -570,39 +563,74 @@ function zeichneErgebnisse(d) {
       el("p", {}, knopf)));
     return;
   }
-  const echteLaeufe = d.laeufe.slice(1), mitErgebnis = echteLaeufe.find((l) => l.phasen.some((p) => p.ausgewertet));
-  const gewaehlt = d.laeufe.find((l) => l.schluessel === zustand.ergebnisLauf) || mitErgebnis || d.laeufe[0];
-  const tabs = el("div", { class: "tabs", role: "tablist", "aria-label": "Run" });
+  const mitErgebnis = d.laeufe.slice(1).find((l) => l.phasen.some((p) => p.ausgewertet));
+  let aktuell = d.laeufe.findIndex((l) => l.schluessel === zustand.ergebnisLauf);
+  if (aktuell < 0) aktuell = d.laeufe.indexOf(mitErgebnis || d.laeufe[0]);
+  // Auswahl als Liste mit Vor/Zurück: bleibt übersichtlich, auch wenn es 50 Läufe sind
+  const auswahl = el("select", { class: "lauf-liste", "aria-label": "Run", onchange: () => zeige(auswahl.selectedIndex) },
+    d.laeufe.map((l) => el("option", { value: l.schluessel, text: LAUF_TEXT(l) })));
+  const zurueck = el("button", { class: "knopf knopf-klein", type: "button", "aria-label": "Previous run in the list", text: "‹", onclick: () => zeige(auswahl.selectedIndex - 1) });
+  const weiter = el("button", { class: "knopf knopf-klein", type: "button", "aria-label": "Next run in the list", text: "›", onclick: () => zeige(auswahl.selectedIndex + 1) });
+  const stand = el("span", { class: "leise klein" });
   const detail = el("div", {});
-  const zeige = (l) => {
-    zustand.ergebnisLauf = l.schluessel;
-    for (const t of tabs.children) t.setAttribute("aria-selected", t.dataset.lauf === l.schluessel ? "true" : "false");
-    fuelle(detail, laufAnsicht(l, d.skala));
+  const zeige = (i) => {
+    i = Math.max(0, Math.min(d.laeufe.length - 1, i));
+    auswahl.selectedIndex = i; zustand.ergebnisLauf = d.laeufe[i].schluessel;
+    zurueck.disabled = i === 0; weiter.disabled = i === d.laeufe.length - 1;
+    stand.textContent = i === 0 ? `${d.laeufe.length - 1} run${d.laeufe.length === 2 ? "" : "s"}` : `run ${i} of ${d.laeufe.length - 1}, newest first`;
+    fuelle(detail, laufAnsicht(d.laeufe[i], d.skala));
   };
-  d.laeufe.forEach((l) => tabs.append(el("button", { class: "tab", type: "button", role: "tab", "data-lauf": l.schluessel, "aria-selected": "false", onclick: () => zeige(l) },
-    l.schluessel === "alle" ? "All runs" : `Run of ${datum(l.schluessel + "T12:00:00Z")}`, el("span", { class: "zaehler", text: String(l.angebote) }))));
   fuelle(root, kopf, beispiel ? el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. All figures are invented to show how the page works. They are not real results." }) : null,
-    tabs, detail, el("p", {}, knopf));
-  zeige(gewaehlt);
+    el("div", { class: "lauf-waehler" }, el("label", { class: "leise klein", text: "Run" }), zurueck, auswahl, weiter, stand, el("span", { class: "abstand" }), knopf), detail);
+  zeige(aktuell);
 }
 
+// Funnel-Überblick eines Laufs: wie viele Angebote sind in jeder Phase angekommen und was ist aus ihnen geworden
+function flussPanel(l) {
+  const f = l.fluss, gesamt = l.angebote;
+  if (!gesamt) return null;
+  const teil = (n, text) => (n ? `${zahl(n)} ${text}` : null);
+  const zeile = (name, balken, erreicht, teile, kopf = false) => el("div", { class: "fluss-zeile" + (kopf ? " fluss-kopf" : "") },
+    el("div", { class: "fluss-name" }, el("strong", { text: name }), el("span", { class: "leise klein", text: erreicht })),
+    el("div", { class: "fluss-balken" }, balken), el("div", { class: "fluss-text leise klein", text: teile.filter(Boolean).join(" · ") || "–" }));
+  const zeilen = [zeile("Started", Diagramm.flussBalken({ weiter: gesamt }, gesamt), `${zahl(gesamt)} listings`, [])];
+  f.stufen.forEach((z, i) => zeilen.push(zeile(`Phase ${i + 1} · ${z.name}`, Diagramm.flussBalken(z, gesamt), `${zahl(z.erreicht)} reached`,
+    [teil(z.erholt, "seen again"), teil(z.weiter, i === 2 ? "to manual review" : "passed on"), teil(z.uebersprungen, "skipped"), teil(z.laeuft, "running"), teil(z.wartet, "waiting for approval"), teil(z.entfernt, "removed by hand")])));
+  const p = f.pruefung;
+  zeilen.push(zeile("Manual review", Diagramm.flussBalken(p, gesamt), `${zahl(p.erreicht)} reached`, [teil(p.offen, "waiting for a decision"), teil(p.behalten, "kept"), teil(p.ueberarbeiten, "to rework"), teil(p.offline, "taken offline")]));
+  const benutzt = Diagramm.FLUSS_TEIL.filter(([k]) => zeilen.length && (f.stufen.some((z) => z[k]) || p[k]));
+  return el("section", { class: "panel" }, el("h2", { text: "Where did the listings go?" }), zeilen,
+    benutzt.length ? el("div", { class: "fluss-legende" }, benutzt.map(([k, b]) => el("span", { class: "leise klein" }, el("i", { class: "fluss-punkt d-f-" + k }), b))) : null);
+}
+
+// Oben je Phase eine Zeile mit der Grafik (alle Zeilen auf derselben Skala), darunter die Tabelle mit allen Zahlen.
 function laufAnsicht(l, skala) {
-  const pz = Diagramm.proz;
+  const pz = Diagramm.proz, a = Diagramm.achse(l.phasen);
   const zeile = (p) => {
-    const u = PHASE_URTEIL[p.urteil];
-    if (!p.ausgewertet) return el("tr", {}, el("td", { text: p.name }), el("td", { class: "zahl", text: "–" }), el("td", { colspan: "3", class: "leise", text: p.laeuft ? `${p.laeuft} running${p.naechstesEnde ? `, first result ${datum(p.naechstesEnde + "T12:00:00Z")}` : ""}` : "nothing finished yet" }));
-    const e = p.schaetzung;
-    return el("tr", {}, el("td", { text: p.name }), el("td", { class: "zahl", text: zahl(p.ausgewertet) }),
-      el("td", { class: "zahl", text: p.mitKontrolle ? `${zahl(p.vorher90)} → ${zahl(p.nachher90)} (${pz(p.aenderung)})` : "–" }),
-      el("td", { class: "zahl", text: p.mitKontrolle ? pz(p.kontrolleAenderung) : "–" }),
-      el("td", {}, el("span", { class: "status " + u[0], text: u[1] }), e && p.urteil !== "too_few" ? el("div", { class: "leise klein", text: `typical listing ${pz(e.effekt)}, likely ${pz(e.von)} to ${pz(e.bis)}` }) : null));
+    const u = PHASE_URTEIL[p.urteil], e = p.schaetzung, fertig = p.ausgewertet > 0;
+    return el("div", { class: "phase-zeile" },
+      el("div", { class: "phase-name" }, el("strong", { text: p.name }), el("span", { class: "leise klein", text: fertig ? `${zahl(p.ausgewertet)} listing${p.ausgewertet === 1 ? "" : "s"}` : p.laeuft ? `${p.laeuft} running${p.naechstesEnde ? `, due ${datum(p.naechstesEnde + "T12:00:00Z")}` : ""}` : "nothing finished" })),
+      el("div", { class: "phase-grafik" }, Diagramm.phasenZeile(p, a)),
+      el("div", { class: "phase-ergebnis" }, el("span", { class: "status " + u[0], text: u[1] }), e && p.urteil !== "too_few" ? el("span", { class: "leise klein", text: `${pz(e.effekt)} (${pz(e.von, false)} to ${pz(e.bis)})` }) : null));
+  };
+  const zahlenZeile = (p) => {
+    const e = p.schaetzung, mit = p.ausgewertet > 0 && p.mitKontrolle > 0, zeigen = e && p.urteil !== "too_few";
+    return el("tr", {}, el("td", { text: p.name }), el("td", { class: "zahl", text: p.ausgewertet ? zahl(p.ausgewertet) : "–" }),
+      el("td", { class: "zahl", text: mit ? zahl(p.vorher90) : "–" }), el("td", { class: "zahl", text: mit ? zahl(p.nachher90) : "–" }), el("td", { class: "zahl", text: mit ? pz(p.aenderung) : "–" }),
+      el("td", { class: "zahl", text: mit ? pz(p.kontrolleAenderung) : "–" }), el("td", { class: "zahl", text: zeigen ? pz(e.effekt) : "–" }), el("td", { class: "zahl", text: zeigen ? `${pz(e.von, false)} to ${pz(e.bis)}` : "–" }));
   };
   return [
-    el("section", { class: "panel" }, el("p", { class: "ergebnis-satz", text: ergebnisSatz(l) }),
-      el("div", { class: "d-rahmen" }, Diagramm.phasenBalken(l.phasen, skala.mindestAusgewertet))),
-    el("section", { class: "panel" }, el("h2", { text: "Impressions per phase" }),
-      rollbar(el("table", { class: "mini" }, el("thead", {}, el("tr", {}, ["Phase", "Listings", "Impressions per 90 days, before → after", "Control group", "Result"].map((t, i) => el("th", { class: i && i < 4 ? "zahl" : null, text: t })))), el("tbody", {}, l.phasen.map(zeile)))),
-      el("p", { class: "leise klein", text: `Before = the 30 days before the phase started, after = the waiting time of the phase, both scaled to 90 days. The control group is the shop's listings that got no change: it shows what happened in the shop meanwhile. “Clear” means the whole range around the effect lies on one side of 0 %, so chance is unlikely. A phase needs at least ${skala.mindestAusgewertet} finished listings before it gets a result.` }))];
+    flussPanel(l),
+    el("section", { class: "panel phasen" },
+      el("div", { class: "phase-zeile phase-kopfzeile" }, ["Phase", "Effect compared with control group", "Result"].map((t) => el("div", { text: t }))),
+      l.phasen.map(zeile),
+      el("div", { class: "phase-zeile phase-achse" }, el("div"), el("div", { class: "phase-grafik" }, Diagramm.phasenAchse(a)), el("div")),
+      el("p", { class: "leise klein phasen-hinweis", text: `Dot = effect for a typical listing, line = the range it most likely lies in (95 %). Clear = the whole line is on one side of 0 %, otherwise it could be chance. At least ${skala.mindestAusgewertet} finished listings are needed.` })),
+    el("section", { class: "panel" }, el("h2", { text: "The numbers" }),
+      rollbar(el("table", { class: "mini" },
+        el("thead", {}, el("tr", {}, ["Phase", "Listings", "Impressions before", "after", "Change", "Control group", "Effect", "Likely range"].map((t, i) => el("th", { class: i ? "zahl" : null, text: t })))),
+        el("tbody", {}, l.phasen.map(zahlenZeile)))),
+      el("p", { class: "leise klein", text: "Impressions are per 90 days: the 30 days before a phase against the waiting time of the phase, scaled up. The control group is the shop's listings that got no change; it shows what happened in the shop meanwhile. Effect and range are for a typical listing compared with the control group." }))];
 }
 
 // ======================================================= Problem (problem.mjs): wie ungleich Sichtbarkeit und Verkäufe verteilt sind

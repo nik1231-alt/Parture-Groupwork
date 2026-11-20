@@ -53,8 +53,37 @@ function phase(angebote, stufe, name) {
   };
 }
 
+// Wohin sind die Angebote gekommen? Je Phase: wie viele sind dort angekommen und was ist aus ihnen geworden: wieder gesehen (raus aus der Leiter),
+// weitergereicht, noch in der Prüfzeit, wartet auf Freigabe, ohne Messung übersprungen (z. B. schon beworben) oder von Hand herausgenommen.
+// Nach der letzten Phase folgt die manuelle Prüfung durch einen Admin (wartet oder entschieden).
+const ENTSCHEIDUNGEN = ["behalten", "ueberarbeiten", "offline"];
+export function fluss(angebote) {
+  const stufen = PHASEN.map(([schluessel, name]) => ({ schluessel, name, erreicht: 0, erholt: 0, weiter: 0, laeuft: 0, wartet: 0, uebersprungen: 0, entfernt: 0 }));
+  const pruefung = { erreicht: 0, offen: 0, behalten: 0, ueberarbeiten: 0, offline: 0 };
+  for (const a of angebote) {
+    const ev = (st) => (a.verlauf || []).filter((v) => v.stufe === st);
+    stufen.forEach((z) => {
+      const e = ev(z.schluessel), jetzt = a.stufe === z.schluessel;
+      if (!e.length && !jetzt) return;
+      z.erreicht++;
+      const aus = e.find((v) => v.ereignis === "ausgewertet");
+      if (aus) { if (aus.details?.erholt) z.erholt++; else z.weiter++; }
+      else if (e.some((v) => v.ereignis === "uebersprungen")) z.uebersprungen++;
+      else if (jetzt && a.phase === "laeuft") z.laeuft++;
+      else if (jetzt) z.wartet++;
+      else z.entfernt++;
+    });
+    if (ev("pruefung").length || a.stufe === "pruefung") {
+      pruefung.erreicht++;
+      if (ENTSCHEIDUNGEN.includes(a.ergebnis)) pruefung[a.ergebnis]++; else if (a.stufe === "pruefung") pruefung.offen++;
+    }
+  }
+  return { stufen, pruefung };
+}
+
 const lauf = (schluessel, name, angebote) => ({
   schluessel, name, angebote: angebote.filter((a) => !istKontrolle(a)).length,
+  fluss: fluss(angebote.filter((a) => !istKontrolle(a))),
   phasen: PHASEN.map(([s, n]) => phase(angebote, s, n)),
 });
 
