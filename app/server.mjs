@@ -95,10 +95,11 @@ async function leiterLauf(wer) {
   try {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
     const ausgewertet = leiter.werteAus(appDb(), daten);
+    const kontrolleVorher = leiter.anzahlKontrolle(appDb());
     const neu = leiter.nimmAuf(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() });
     let vorschlaege = 0, ohne = 0;
     for (const n of leiter.ohneTitelVorschlag(appDb())) { const r = await titelVorschlag(n, produkte, "system"); if (r.ok) vorschlaege++; else ohne++; }
-    const details = { ausgewertet: ausgewertet.length, erholt: ausgewertet.filter((a) => a.erholt).length, aufgenommen: neu.length, titelVorschlaege: vorschlaege, ohneVorschlag: ohne, ki: ki.konfiguriert() };
+    const details = { ausgewertet: ausgewertet.length, erholt: ausgewertet.filter((a) => a.erholt).length, aufgenommen: neu.length, kontrolle: leiter.anzahlKontrolle(appDb()) - kontrolleVorher, titelVorschlaege: vorschlaege, ohneVorschlag: ohne, ki: ki.konfiguriert() };
     protokoll.schreibe(appDb(), { benutzer: wer, rolle: wer === "system" ? null : "admin", aktion: "ladder_run", objekt: "ladder", details });
     return details;
   } catch (e) {
@@ -314,9 +315,19 @@ const ROUTEN = {
   // Leiter: jede Stufe mit ihren Angeboten, Zwischenständen und Lebensläufen, dazu Schalter und letzter Lauf
   "/api/leiter": () => {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
-    const k = leiter.kandidaten(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() });
+    const optionen = { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() };
+    const k = leiter.kandidaten(appDb(), produkte, daten.einst, new Date(), optionen);
     return { ...leiter.uebersicht(appDb(), produkte, daten), kandidaten: k.length, status: leiterStatus(),
-      kandidatenListe: k.map((p) => ({ number: p.number, title: p.title ?? null, impressionen_90d: p.impressionen_90d ?? null, units_90d: p.units_90d ?? null })) };
+      kandidatenListe: k.map((p) => ({ number: p.number, title: p.title ?? null, impressionen_90d: p.impressionen_90d ?? null, units_90d: p.units_90d ?? null })),
+      trichter: leiter.trichter(appDb(), produkte, daten.einst, new Date(), optionen) };
+  },
+  // Alles, was mit einem Produkt geschehen ist: Stand auf der Leiter, Lebenslauf und die Protokolleinträge (für die Seite Products)
+  "/api/produkt/verlauf": (q) => {
+    const nr = String(q.get("nr") ?? "").slice(0, 40), db = appDb();
+    const zeile = db.prepare("SELECT stufe, phase, ergebnis, eingestiegen_at, stufe_start FROM leiter WHERE number = ?").get(nr) || null;
+    const verlauf = db.prepare("SELECT stufe, ereignis, details, benutzer, at FROM leiter_verlauf WHERE number = ? ORDER BY id").all(nr).map((v) => ({ ...v, details: v.details ? JSON.parse(v.details) : null }));
+    const eintraege = db.prepare("SELECT zeit, benutzer, aktion, details, ergebnis FROM protokoll WHERE objekt = ? ORDER BY id DESC LIMIT 50").all("product " + nr);
+    return { number: nr, leiter: zeile, verlauf, protokoll: eintraege };
   },
   "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal GROUP BY channel ORDER BY produkte DESC").all()),
   // Live-Stand vom Hub (nur auf dem Server, lokal fehlt HUB_URL): dieselbe Whitelist, aber Stand jetzt statt 04:30.
