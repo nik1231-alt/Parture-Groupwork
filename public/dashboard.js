@@ -1,4 +1,4 @@
-// Seite Dashboard: was jede Phase der Leiter gebracht hat, gemessen an der Kontrollgruppe (Daten: /api/dashboard, ergebnisse.mjs).
+// Seite Results, Teil "Day by day": was jede Phase der Leiter gebracht hat, gemessen an der Kontrollgruppe (Daten: /api/dashboard, ergebnisse.mjs).
 // Eigene Datei, damit app.js (wird parallel umgebaut) nur den Menüpunkt und den Aufruf Dashboard.lade() braucht.
 // Nutzt die Hilfen aus app.js (el, fuelle, api, zeigeFehler, LOCALE). Texte aus Daten nur als Text, nie als HTML. Sichtbares englisch.
 const Dashboard = (() => {
@@ -33,7 +33,7 @@ const Dashboard = (() => {
     const tabs = [...daten.phasen.map((p) => ({ key: p.stufe, text: `${NAME[p.stufe]} · ${hebel(p.stufe)}`, klein: { fertig: "final", laeuft: "running", geplant: "planned" }[p.status] })), { key: "alle", text: "All phases", klein: "compare" }];
     const p = daten.phasen.find((x) => x.stufe === gewaehlt);
     fuelle(root,
-      el("div", { class: "einstieg" }, el("h1", { text: "Dashboard" }),
+      el("div", { class: "einstieg" }, el("h2", { text: "Day by day" }),
         el("p", { class: "leise", text: "What each phase of the ladder did, measured against the control group over the same days. Pick a phase to see its numbers. Results update every day while a phase runs and are marked preliminary until its waiting time is over." })),
       el("div", { class: "tabs r-phasen", role: "tablist", "aria-label": "Phase" }, tabs.map((t) => el("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(gewaehlt === t.key), onclick: () => { gewaehlt = t.key; zeichne(); } },
         el("span", { text: t.text }), el("small", { text: t.klein })))),

@@ -1,132 +1,152 @@
-// Tests für das Dashboard (ergebnisse.mjs): Status je Phase, Nettoeffekt gegen die Kontrollgruppe (gleich wie leiter.werteAus),
-// Zwischenstand während der Prüfzeit, Kurve, einzelne Angebote besser/schlechter, Sonderfälle ohne Daten oder ohne Kontrolle.
-// Reine Rechnung mit erfundenen Tageswerten; keine Datenbank, kein Netz.
+// Tests für die Seite Results (ergebnisse.mjs, ergebnisse-demo.mjs): Läufe getrennt auswerten, Urteil "klarer Anstieg / Rückgang / nicht von Zufall
+// zu unterscheiden / zu früh", die Zahlen stimmen mit der Seite Funnel (leiter.wirkung) überein, Randfälle und die Beispielansicht mit erfundenen Zahlen.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { baueDashboard, benoetigt, BASIS_TAGE } from "./ergebnisse.mjs";
+import Database from "better-sqlite3";
+import { urteil, schaetze, tKritisch, baueErgebnisse, fluss, MIN_AUSGEWERTET, PHASEN, ALLE } from "./ergebnisse.mjs";
+import { baueDemoErgebnisse } from "./ergebnisse-demo.mjs";
+import * as leiter from "./leiter.mjs";
 import { EINSTELLUNGEN } from "./regeln.mjs";
-import { netto } from "./auswertung.mjs";
 
-const E = { ...EINSTELLUNGEN, leiterTageTitel: 4, leiterTageWerbung: 4, leiterTagePreis: 4 };
-const plusTage = (t, n) => new Date(Date.parse(t + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
-const START = "2026-11-20";
-// Tageswerte: vor dem Start "vorher" Impressionen je Tag, danach "nachher"; Aufrufe und Verkäufe als Anteil
-function reihe(vorher, nachher, { aufVorher = 0.03, aufNachher = 0.03, trans = 0, start = START, von = -40, bis = 10 } = {}) {
-  const m = new Map();
-  for (let i = von; i <= bis; i++) { const imp = i <= 0 ? vorher : nachher; m.set(plusTage(start, i), { imp, auf: imp * (i <= 0 ? aufVorher : aufNachher), trans: i > 0 ? trans : 0 }); }
-  return m;
-}
-const grund = (extra = {}) => ({
-  starts: [{ number: "A", stufe: "titel", tag: START, vonHand: false }, { number: "B", stufe: "titel", tag: START, vonHand: false }],
-  auswertungen: [],
-  kontrolle: [{ number: "K1", start: START }, { number: "K2", start: START }],
-  tage: new Map([["A", reihe(3, 6, { aufNachher: 0.05 })], ["B", reihe(3, 6)], ["K1", reihe(3, 3.3)], ["K2", reihe(3, 3.3)]]),
-  trafficBis: plusTage(START, 4), einst: E, ...extra,
+const nahe = (a, b, msg, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${msg ?? ""} ${a} != ${b}`);
+const K = (v, n) => ({ anzahl: 20, vorher90: v, nachher90: n });
+// Ein Angebot mit einer Auswertung in einer Phase (details wie in leiter.werteAus); tag = Tag, an dem es auf die Leiter kam
+const angebot = (number, stufe, vorher90, nachher90, kontrolle, tag = "2026-10-01", erholt = false) => ({
+  number, title: "Listing " + number, stufe: "pruefung", phase: "fertig", ergebnis: null, eingestiegen_at: tag + "T06:00:00.000Z",
+  verlauf: [{ stufe, ereignis: "ausgewertet", at: "2026-10-20T06:00:00.000Z", details: { vorher90, nachher90, erholt, kontrolle, netto: kontrolle ? (nachher90 / vorher90) / (kontrolle.nachher90 / kontrolle.vorher90) - 1 : null } }],
+});
+const kontrolleAngebot = (nr) => ({ number: nr, stufe: "kontrolle", phase: "laeuft", ergebnis: null, eingestiegen_at: "2026-10-01T06:00:00.000Z", verlauf: [] });
+const uebersicht = (angebote) => ({ angebote, tage: { titel: 14, werbung: 14, preis: 21 }, trafficBis: "2026-11-10" });
+const viele = (prefix, stufe, n, vorher, nachher, tag) => Array.from({ length: n }, (_, i) => angebot(prefix + i, stufe, vorher, nachher, K(1000, 1000), tag));
+
+test("95-%-Bereich: bekannter Fall mit drei Angeboten, zu wenige Werte, gleiche Werte", () => {
+  // Logarithmen 0,1 / 0,2 / 0,3: Mittel 0,2, Streuung 0,1, Standardfehler 0,0577, t(2) = 4,303 → Abstand 0,2484
+  const s = schaetze([Math.exp(0.1) - 1, Math.exp(0.2) - 1, Math.exp(0.3) - 1]);
+  nahe(s.effekt, Math.exp(0.2) - 1); nahe(s.von, Math.exp(0.2 - 0.2484) - 1, "von", 1e-3); nahe(s.bis, Math.exp(0.2 + 0.2484) - 1, "bis", 1e-3); assert.equal(s.n, 3);
+  assert.equal(schaetze([0.3]), null, "ein einzelnes Angebot sagt nichts über die Streuung");
+  assert.equal(schaetze([]), null);
+  const gleich = schaetze([0.2, 0.2, 0.2, 0.2, 0.2]);
+  nahe(gleich.von, 0.2); nahe(gleich.bis, 0.2);
+  assert.equal(tKritisch(0), null); assert.equal(tKritisch(1), 12.706); assert.equal(tKritisch(30), 2.042); assert.equal(tKritisch(500), 1.96);
 });
 
-test("Phase fertig: Nettoeffekt wie in der Leiter, Status final, alle Zahlen je Angebot und Tag", () => {
-  const d = baueDashboard(grund());
-  const p = d.phasen.find((x) => x.stufe === "titel");
-  assert.equal(p.status, "fertig");
-  assert.equal(p.gelaufen, 4); assert.equal(p.angebote, 2); assert.equal(p.kontrolleAnzahl, 2);
-  assert.equal(p.test.vorher.imp, 3); assert.equal(p.test.nachher.imp, 6);
-  assert.ok(Math.abs(p.kontrolle.nachher.imp - 3.3) < 1e-9);
-  // dieselbe Formel wie leiter.werteAus / auswertung.netto: (6/3) / (3.3/3) − 1
-  assert.ok(Math.abs(p.netto.imp - netto({ vorher: 3, nachher: 6 }, { vorher: 3, nachher: 3.3 })) < 1e-9);
-  assert.ok(Math.abs(p.netto.imp - (2 / 1.1 - 1)) < 1e-9, "+82 %");
-  assert.equal(p.besser, 2); assert.equal(p.schlechter, 0); assert.equal(p.gleich, 0);
+test("Je mehr Angebote, desto enger der Bereich (gleiche Streuung)", () => {
+  const mix = (n) => Array.from({ length: n }, (_, i) => (i % 2 ? 0.1 : 0.3));
+  const a = schaetze(mix(6)), b = schaetze(mix(60));
+  assert.ok(b.bis - b.von < a.bis - a.von);
 });
 
-test("Phase läuft: Zwischenstand nur über die Tage mit fertigen Daten, Status preliminary", () => {
-  const d = baueDashboard(grund({ trafficBis: plusTage(START, 2) }));
-  const p = d.phasen[0];
-  assert.equal(p.status, "laeuft");
-  assert.equal(p.gelaufen, 2, "Tag 2 von 4");
-  assert.equal(p.test.nachher.imp, 6);
-  assert.ok(p.netto.imp > 0.2);
+test("Ein Angebot mit 0 Impressionen nachher (−100 %) bricht die Rechnung nicht", () => {
+  const s = schaetze([-1, 0.2, 0.1, 0.3, 0.2]);
+  for (const v of [s.effekt, s.von, s.bis]) assert.ok(Number.isFinite(v));
 });
 
-test("Kurve: 100 = Durchschnitt der 7 Tage vorher, je Angebot an seinem eigenen Starttag ausgerichtet, Starttag fehlt", () => {
-  // B startet einen Tag später als A: beide steigen am eigenen Tag 1 auf das Doppelte
-  const g = grund();
-  g.starts[1] = { number: "B", stufe: "titel", tag: plusTage(START, 1), vonHand: false };
-  g.tage.set("B", reihe(3, 6, { start: plusTage(START, 1) }));
-  g.trafficBis = plusTage(START, 5);
-  const p = baueDashboard(g).phasen[0];
-  const tage = p.kurve.map((k) => k.tag);
-  assert.deepEqual(tage, [-7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4], "kein Tag 0, höchstens so viele Tage wie die Prüfzeit");
-  assert.equal(p.kurve.find((k) => k.tag === -3).test, 100);
-  assert.equal(p.kurve.find((k) => k.tag === 1).test, 200, "beide Angebote am eigenen Tag 1 verdoppelt");
-  assert.ok(Math.abs(p.kurve.find((k) => k.tag === 1).kontrolle - 110) < 1e-9);
+test("Urteil: der ganze Bereich über null = klarer Anstieg, darunter = klarer Rückgang, sonst nicht von Zufall zu unterscheiden, zu wenige = zu früh", () => {
+  const sch = (von, bis) => ({ effekt: (von + bis) / 2, von, bis, n: 10 });
+  assert.equal(urteil(sch(0.05, 0.3), 10), "up");
+  assert.equal(urteil(sch(-0.3, -0.05), 10), "down");
+  assert.equal(urteil(sch(-0.02, 0.3), 10), "unclear", "der Bereich reicht über null");
+  assert.equal(urteil(sch(0.0, 0.3), 10), "unclear", "genau null zählt noch nicht als klar");
+  assert.equal(urteil(sch(0.05, 0.3), MIN_AUSGEWERTET - 1), "too_few", "ein schöner Wert aus zu wenigen Angeboten wird nicht beurteilt");
+  assert.equal(urteil(null, 50), "too_few");
 });
 
-test("Einzelne Angebote: ab ±10 % besser oder schlechter, dazwischen etwa gleich", () => {
-  const g = grund();
-  g.starts.push({ number: "C", stufe: "titel", tag: START }, { number: "D", stufe: "titel", tag: START });
-  g.tage.set("B", reihe(3, 2)); g.tage.set("C", reihe(3, 3.2)); g.tage.set("D", reihe(0, 1));
-  const p = baueDashboard(g).phasen[0];
-  assert.deepEqual([p.besser, p.schlechter, p.gleich], [2, 1, 1], "A +100 %, D von 0 auf 1 besser; B −33 % schlechter; C +7 % gleich");
+test("Nichts ausgewertet: leer, nur 'alle Läufe', drei Phasen ohne Zahlen", () => {
+  const e = baueErgebnisse(uebersicht([]));
+  assert.equal(e.leer, true);
+  assert.deepEqual(e.laeufe.map((l) => l.schluessel), [ALLE]);
+  assert.deepEqual(e.laeufe[0].phasen.map((p) => p.schluessel), PHASEN.map(([s]) => s));
+  for (const p of e.laeufe[0].phasen) { assert.equal(p.ausgewertet, 0); assert.equal(p.schaetzung, null); assert.equal(p.urteil, "too_few"); }
 });
 
-test("Klickrate und Verkäufe: je Gruppe, Kontrolle auf gleich viele Angebote umgerechnet", () => {
-  const g = grund();
-  g.tage.set("A", reihe(3, 6, { aufNachher: 0.05, trans: 1 }));
-  g.tage.set("K1", reihe(3, 3.3, { trans: 1 })); // K2 ohne Verkäufe → Durchschnitt 0,5 je Tag und Angebot
-  const p = baueDashboard(g).phasen[0];
-  assert.ok(Math.abs(p.test.nachher.auf / p.test.nachher.imp - 0.04) < 1e-9, "A 5 %, B 3 % → 4 %");
-  assert.equal(p.verkaeufe.test, 4, "A: 1 Verkauf an jedem der 4 Tage");
-  assert.equal(p.verkaeufe.kontrolle, 4, "je Phasenangebot der Durchschnitt der Kontrolle (2 × 4 × 0,5)");
-  assert.ok(p.netto.auf > p.netto.imp, "Aufrufe stiegen stärker als Impressionen");
+test("Läufe: ein Lauf je Starttag, neuester zuerst, jeder wertet nur seine eigenen Angebote aus, die Kontrollgruppe gehört zu keinem Lauf", () => {
+  const alt = viele("A", "werbung", 6, 100, 150, "2026-10-01"), neu = viele("N", "werbung", 5, 100, 80, "2026-10-08");
+  const e = baueErgebnisse(uebersicht([...alt, ...neu, kontrolleAngebot("K1"), kontrolleAngebot("K2")]));
+  assert.deepEqual(e.laeufe.map((l) => l.schluessel), [ALLE, "2026-10-08", "2026-10-01"]);
+  assert.deepEqual(e.laeufe.map((l) => l.angebote), [11, 5, 6], "ohne Kontrollgruppe gezählt");
+  assert.equal(e.kontrollgruppe, 2);
+  const w = (i) => e.laeufe[i].phasen.find((p) => p.schluessel === "werbung");
+  assert.equal(w(1).ausgewertet, 5); nahe(w(1).netto, -0.2); assert.equal(w(1).urteil, "down", "nur die schlechten Angebote");
+  assert.equal(w(2).ausgewertet, 6); nahe(w(2).netto, 0.5); assert.equal(w(2).urteil, "up", "nur die guten Angebote");
+  assert.equal(w(0).ausgewertet, 11, "alle zusammen");
 });
 
-test("Ohne Kontrollgruppe über dieselben Tage: kein Nettoeffekt, aber die Zahlen der Phase", () => {
-  const g = grund({ kontrolle: [{ number: "K1", start: plusTage(START, 1) }] }); // startet nach der Phase: deckt sie nicht ab
-  const p = baueDashboard(g).phasen[0];
-  assert.equal(p.kontrolle, null); assert.equal(p.netto.imp, null);
-  assert.equal(p.ohneKontrolle, 2); assert.equal(p.test.nachher.imp, 6);
+test("Nettoeffekt und Summen je Phase: Angebote gegen Kontrollgruppe, ohne Kontrollgruppe zählt ein Angebot als geprüft, aber nicht im Effekt", () => {
+  const mitK = viele("A", "titel", 5, 100, 130), ohne = angebot("Z", "titel", 100, 500, null);
+  const p = baueErgebnisse(uebersicht([...mitK, ohne])).laeufe[0].phasen[0];
+  assert.equal(p.ausgewertet, 6); assert.equal(p.mitKontrolle, 5);
+  assert.equal(p.vorher90, 500); assert.equal(p.nachher90, 650);
+  nahe(p.aenderung, 0.3); nahe(p.kontrolleAenderung, 0); nahe(p.netto, 0.3);
+  assert.equal(p.urteil, "up", "alle fünf +30 %, Streuung 0: Bereich fällt auf einen Punkt über null");
 });
 
-test("Geplant und wartend: keine Starts → geplant; Start ohne fertige Tage → läuft ohne Zahlen", () => {
-  const d = baueDashboard(grund());
-  assert.equal(d.phasen.find((x) => x.stufe === "werbung").status, "geplant");
-  assert.equal(d.phasen.find((x) => x.stufe === "preis").status, "geplant");
-  const w = baueDashboard(grund({ trafficBis: START })).phasen[0];
-  assert.equal(w.status, "laeuft"); assert.equal(w.mitDaten, 0); assert.equal(w.gelaufen, 0);
-  const ohne = baueDashboard(grund({ trafficBis: null })).phasen[0];
-  assert.equal(ohne.status, "laeuft"); assert.equal(ohne.mitDaten, 0);
-  const leer = baueDashboard();
-  assert.deepEqual(leer.phasen.map((p) => p.status), ["geplant", "geplant", "geplant"]);
-  assert.deepEqual(leer.summe, { aufLeiter: 0, kontrolle: 0, erholt: 0, aenderungenEbay: 0 });
+test("Die Zahlen auf Results und auf der Seite Funnel (leiter.wirkung) weichen nie voneinander ab", () => {
+  const db = new Database(":memory:");
+  leiter.bereiteVor(db);
+  const ein = db.prepare("INSERT INTO leiter (number, stufe, phase, eingestiegen_at, aktualisiert_at) VALUES (?, 'pruefung', 'offen', '2026-09-01', '2026-10-20')");
+  const ver = db.prepare("INSERT INTO leiter_verlauf (number, stufe, ereignis, details, benutzer, at) VALUES (?, ?, 'ausgewertet', ?, 'system', '2026-10-20T06:00:00.000Z')");
+  const faelle = [["a", "titel", 100, 130, K(900, 950)], ["b", "titel", 80, 70, K(900, 950)], ["c", "titel", 120, 200, null], ["d", "werbung", 90, 150, K(800, 780)], ["e", "preis", 50, 49, K(700, 720)]];
+  for (const [nr, stufe, v, n, k] of faelle) {
+    if (!db.prepare("SELECT 1 FROM leiter WHERE number = ?").get(nr)) ein.run(nr);
+    ver.run(nr, stufe, JSON.stringify({ tage: 14, vorher90: v, nachher90: n, grenze90: 170, erholt: n >= 170, kontrolle: k, netto: k ? (n / v) / (k.nachher90 / k.vorher90) - 1 : null }));
+  }
+  const u = leiter.uebersicht(db, [], { impTag: () => 0, trafficBis: "2026-11-10", grenze90: 170, einst: EINSTELLUNGEN });
+  const e = baueErgebnisse(u), w = leiter.wirkung(db);
+  for (const p of e.laeufe[0].phasen) {
+    const x = w[p.schluessel];
+    assert.equal(p.ausgewertet, x.ausgewertet, p.schluessel); assert.equal(p.erholt, x.erholt, p.schluessel); assert.equal(p.mitKontrolle, x.mitKontrolle, p.schluessel);
+    assert.equal(p.vorher90, x.vorher90); assert.equal(p.nachher90, x.nachher90);
+    if (x.netto == null) assert.equal(p.netto, null, p.schluessel); else nahe(p.netto, x.netto, p.schluessel);
+  }
+  assert.equal(e.laeufe.length, 2, "alle Angebote kamen am selben Tag: ein Lauf plus 'alle'");
+  db.close();
 });
 
-test("Summen und Neustart: der jüngste Start je Angebot zählt, Starts von Hand sind keine eBay-Änderung", () => {
-  const g = grund({ auswertungen: [{ number: "A", stufe: "titel", erholt: true }, { number: "B", stufe: "titel", erholt: false }] });
-  g.starts.push({ number: "A", stufe: "titel", tag: plusTage(START, -60), vonHand: true }, { number: "B", stufe: "werbung", tag: plusTage(START, 4), vonHand: true });
-  const d = baueDashboard(g);
-  assert.equal(d.phasen[0].angebote, 2, "A zählt einmal, mit dem jüngeren Start");
-  assert.equal(d.phasen[0].start, START);
-  assert.equal(d.phasen[0].erholt, 1);
-  assert.deepEqual(d.summe, { aufLeiter: 2, kontrolle: 2, erholt: 1, aenderungenEbay: 2 });
-  assert.equal(d.phasen.find((x) => x.stufe === "werbung").status, "laeuft");
+test("Funnel-Überblick: wie viele sind in jeder Phase angekommen und was ist aus ihnen geworden", () => {
+  const ev = (stufe, ereignis, details = null) => ({ stufe, ereignis, details });
+  const aus = (stufe, erholt) => ev(stufe, "ausgewertet", { erholt });
+  const a = (stufe, phase, ergebnis, verlauf) => ({ stufe, phase, ergebnis, verlauf });
+  const f = fluss([
+    a("raus", "fertig", "erholt", [ev("titel", "aufgenommen"), ev("titel", "gestartet"), aus("titel", true)]),                                   // Titel: wieder gesehen
+    a("werbung", "laeuft", null, [ev("titel", "aufgenommen"), aus("titel", false), ev("werbung", "vorschlag"), ev("werbung", "gestartet")]),    // Titel weiter, Werbung läuft
+    a("preis", "vorschlag", null, [ev("titel", "aufgenommen"), aus("titel", false), ev("werbung", "uebersprungen"), ev("preis", "vorschlag")]), // Werbung übersprungen, Preis wartet
+    a("pruefung", "offen", null, [ev("titel", "aufgenommen"), aus("titel", false), aus("werbung", false), aus("preis", false), ev("pruefung", "pruefung")]), // alles durch, wartet auf Entscheidung
+    a("raus", "fertig", "behalten", [ev("titel", "aufgenommen"), aus("titel", false), aus("werbung", false), aus("preis", false), ev("pruefung", "pruefung"), ev("pruefung", "entschieden", { entscheidung: "behalten" })]),
+    a("werbung", "vorschlag", null, [ev("titel", "aufgenommen"), aus("titel", false), ev("werbung", "vorschlag")]),                             // Werbung wartet auf Freigabe
+  ]);
+  const [titel, werbung, preis] = f.stufen;
+  assert.deepEqual([titel.erreicht, titel.erholt, titel.weiter], [6, 1, 5], "alle sechs waren in Phase 1, eines wurde wieder gesehen");
+  assert.deepEqual([werbung.erreicht, werbung.weiter, werbung.laeuft, werbung.wartet, werbung.uebersprungen], [5, 2, 1, 1, 1], "Werbung: zwei weitergereicht, eines läuft, eines wartet, eines übersprungen");
+  assert.deepEqual([preis.erreicht, preis.weiter, preis.wartet], [3, 2, 1]);
+  assert.deepEqual(f.pruefung, { erreicht: 2, offen: 1, behalten: 1, ueberarbeiten: 0, offline: 0 });
+  for (const z of f.stufen) assert.equal(z.erholt + z.weiter + z.laeuft + z.wartet + z.uebersprungen + z.entfernt, z.erreicht, z.schluessel + ": jedes Angebot landet in genau einer Spalte");
 });
 
-test("Take off / Start over: ein Start zählt nicht mehr, wenn das Angebot danach abgebrochen oder zurückgesetzt wurde", () => {
-  const g = grund();
-  g.starts = g.starts.map((s) => ({ ...s, at: s.tag + "T09:00:00Z" }));
-  g.abbrueche = [{ number: "B", at: plusTage(START, 2) + "T10:00:00Z" }, { number: "A", at: plusTage(START, -5) + "T10:00:00Z" }];
-  const d = baueDashboard(g);
-  assert.equal(d.phasen[0].angebote, 1, "B wurde nach dem Start abgebrochen; A nur vor dem Start, zählt also");
-  assert.equal(d.summe.aufLeiter, 1);
+test("Funnel-Überblick je Lauf: zählt nur die eigenen Angebote, die Kontrollgruppe zählt nicht mit", () => {
+  const e = baueErgebnisse(uebersicht([...viele("A", "titel", 3, 100, 110, "2026-10-01"), ...viele("B", "titel", 2, 100, 110, "2026-10-08"), kontrolleAngebot("K1")]));
+  assert.equal(e.laeufe[0].fluss.stufen[0].erreicht, 5, "alle Läufe");
+  assert.equal(e.laeufe[1].fluss.stufen[0].erreicht, 2, "neuer Lauf");
+  assert.equal(e.laeufe[2].fluss.stufen[0].erreicht, 3, "älterer Lauf");
 });
 
-test("Benötigte Daten: alle Angebote der Phasen und der Kontrolle, ab 31 Tage vor dem frühesten Start", () => {
-  const b = benoetigt(grund());
-  assert.deepEqual(b.nummern.sort(), ["A", "B", "K1", "K2"]);
-  assert.equal(b.ab, plusTage(START, -BASIS_TAGE - 1));
-  assert.deepEqual(benoetigt({}), { nummern: [], ab: null });
+test("Laufende Angebote: werden gezählt, das erste Ende wird genannt, sie sind noch kein Ergebnis", () => {
+  const laeuft = (nr, ende) => ({ number: nr, stufe: "werbung", phase: "laeuft", eingestiegen_at: "2026-10-01T06:00:00.000Z", verlauf: [], stand: { ende } });
+  const e = baueErgebnisse(uebersicht([laeuft("L1", "2026-11-30"), laeuft("L2", "2026-11-25")]));
+  assert.equal(e.leer, true);
+  assert.equal(e.laeufe[0].phasen[1].laeuft, 2); assert.equal(e.laeufe[0].phasen[1].naechstesEnde, "2026-11-25");
 });
 
-test("Keine Kosten, Gebühren oder Umsätze im Ergebnis (nur eBay-Mengen)", () => {
-  const text = JSON.stringify(baueDashboard(grund()));
-  assert.doesNotMatch(text, /preis_aktuell|umsatz|revenue|kosten|marge|avg_price/i);
+test("Beispielansicht: erfundene Zahlen, immer dieselben, zwei Läufe plus alle, Werbung klar besser, Titel nicht von Zufall zu unterscheiden, alles endlich", () => {
+  const a = baueDemoErgebnisse(EINSTELLUNGEN), b = baueDemoErgebnisse(EINSTELLUNGEN);
+  assert.equal(a.beispiel, true);
+  assert.equal(JSON.stringify(a), JSON.stringify(b), "feste Startwerte: jeder Aufruf gleich");
+  assert.equal(a.laeufe.length, 3); assert.equal(a.laeufe[0].angebote, 24); assert.equal(a.leer, false);
+  assert.deepEqual(a.laeufe[0].phasen.map((p) => p.urteil), ["unclear", "up", "unclear"]);
+  for (const l of a.laeufe) {
+    assert.equal(l.phasen[1].urteil, "up", "Werbung ist in jedem Lauf ein klarer Anstieg");
+    for (const p of l.phasen) for (const v of [p.netto, p.aenderung, p.kontrolleAenderung]) assert.ok(Number.isFinite(v), p.schluessel);
+  }
+  assert.ok(a.laeufe.some((l) => l.phasen.some((p) => p.urteil === "too_few")), "ein Lauf zeigt auch 'zu früh'");
+  const w = a.laeufe[0].fluss.stufen[1];
+  assert.deepEqual([w.laeuft, w.wartet], [2, 1], "das Beispiel zeigt auch laufende und wartende Angebote");
 });

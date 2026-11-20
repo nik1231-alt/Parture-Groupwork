@@ -562,3 +562,44 @@ a.knopf { text-decoration: none; }
   .r-hebel-zeile .r-balken, .r-hebel-zeile .r-aufwand { grid-column: 1 / -1; }
   .r-reihe { grid-template-columns: 90px 1fr 56px; }
 }
+
+/* Seite Results */
+.lauf-waehler { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.lauf-liste { flex: 0 1 340px; min-width: 0; padding: 7px 10px; cursor: pointer; }
+.lauf-waehler .abstand { flex: 1 1 0; }
+.lauf-waehler .knopf-klein { min-width: 30px; }
+.phasen { padding: 6px 20px 14px; }
+.phase-zeile { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(260px, 3fr) minmax(150px, 1.2fr); gap: 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--linie); }
+.phase-kopfzeile { font-size: 11.5px; font-weight: 600; color: var(--leise); text-transform: uppercase; letter-spacing: .05em; padding: 12px 0 8px; }
+.phase-name, .phase-ergebnis { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; font-variant-numeric: tabular-nums; }
+.phase-ergebnis .status { margin-bottom: 2px; }
+.phase-achse { border-bottom: 0; padding: 0; }
+.phase-grafik .diagramm { display: block; }
+.phasen-hinweis { margin: 10px 0 0; max-width: 90ch; }
+.d-bereich { stroke-width: 3; stroke-linecap: round; stroke: var(--leise); }
+.d-effekt { fill: var(--leise); stroke: var(--karte); stroke-width: 2; }
+.d-up { stroke: var(--gut); } .d-effekt.d-up { fill: var(--gut); stroke: var(--karte); }
+.d-down { stroke: var(--schlecht); } .d-effekt.d-down { fill: var(--schlecht); stroke: var(--karte); }
+@media (max-width: 800px) {
+  .phasen { padding: 0 14px 12px; }
+  .phase-kopfzeile, .phase-achse > div:not(.phase-grafik) { display: none; }
+  .phase-zeile { grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 14px 0; }
+  .phase-name { grid-column: 1; } .phase-ergebnis { grid-column: 2; align-items: flex-end; text-align: right; }
+  .phase-grafik { grid-column: 1 / -1; grid-row: 2; }
+  .phase-achse { grid-template-columns: 1fr; padding: 0; }
+}
+.fluss-zeile { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(200px, 2.4fr) minmax(150px, 1.6fr); gap: 14px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--linie); }
+.fluss-zeile:last-of-type { border-bottom: 0; }
+.fluss-name { display: flex; flex-direction: column; gap: 1px; }
+.fluss-balken .diagramm { display: block; width: 100%; height: 22px; }
+.d-f-spur { fill: var(--karte-leise); }
+.d-f { stroke: var(--karte); stroke-width: 1; }
+.d-f-erholt, .d-f-behalten { fill: var(--gut); } .d-f-weiter { fill: var(--g-warten); } .d-f-uebersprungen { fill: var(--linie-stark); }
+.d-f-laeuft { fill: var(--akzent); } .d-f-wartet, .d-f-offen, .d-f-ueberarbeiten { fill: var(--g-sichtbarkeit); } .d-f-entfernt, .d-f-offline { fill: var(--schlecht); }
+.fluss-legende { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; }
+.fluss-legende span { display: inline-flex; align-items: center; gap: 6px; }
+.fluss-punkt { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.fluss-punkt.d-f-erholt, .fluss-punkt.d-f-behalten { background: var(--gut); } .fluss-punkt.d-f-weiter { background: var(--g-warten); } .fluss-punkt.d-f-uebersprungen { background: var(--linie-stark); }
+.fluss-punkt.d-f-laeuft { background: var(--akzent); } .fluss-punkt.d-f-wartet, .fluss-punkt.d-f-offen, .fluss-punkt.d-f-ueberarbeiten { background: var(--g-sichtbarkeit); } .fluss-punkt.d-f-entfernt, .fluss-punkt.d-f-offline { background: var(--schlecht); }
+@media (max-width: 800px) { .fluss-zeile { grid-template-columns: 1fr 1fr; gap: 4px 12px; } .fluss-balken { grid-column: 1 / -1; grid-row: 2; } .fluss-text { grid-column: 2; grid-row: 1; text-align: right; } }
+.tag-fuer-tag { margin-top: 28px; }

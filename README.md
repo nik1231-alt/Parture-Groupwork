@@ -50,6 +50,7 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 | **Products** | everyone | every product with eBay price, eBay sales, impressions and diagnosis; open a row for its variants, channel reference details, funnel status and full history |
 | **Problem** | everyone | live analysis of why the app exists (eBay only): 80 % of eBay sales come from 17.8 % of the eBay listings, 80 % of eBay impressions from 35 % of the listings (20.11.2026); seen × sold for every listing; how impressions are spread |
 | **Funnel** | everyone (actions: admin) | KPIs, all products as one bar by status, why products are not eligible, the ladder as a flow, the effect of each phase against the control group, the work queue with the interim result, and a table of all products with their status and the reason for it |
+| **Results** | everyone | pick a run (the listings started on one day) or all runs: how impressions changed in each phase compared with the control group, and whether the difference is clear or could be chance; until a phase has a result it shows an example with invented figures (clearly marked). Below, **Day by day**: each phase against the control group as a daily curve, with click rate and sales as guard metrics |
 | **Team** | admin | assign roles |
 | **Log** | everyone | the append-only log and the operating status (environment, version, write switches, backup, data age) |
 | **Settings** | everyone (save: admin) | every rule value: limits, waiting times, ad rate, price step |
@@ -59,8 +60,8 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 
 ```
 All products
- ├─ Not eligible ── with the reason: enough impressions · too new or no data · no active eBay listing · blocked by a price test
- └─ Eligible ────── low impressions (bottom quarter of the shop), active on eBay, free
+ ├─ Not eligible ── with the reason: enough impressions · too new or no data · no active eBay listing · blocked by a price test · already sold on eBay
+ └─ Eligible ────── low impressions (bottom quarter of the shop), active on eBay, never sold on eBay, free
       │  "Draw listings by lot": 2 × free places, split in half
       ├─ Control group ── stays unchanged for 49 days (all three waiting times together)
       └─ Phase 1  new title (AI + rule check) ── 14 days ──► seen again? yes ─► leaves ("Seen again")
@@ -86,7 +87,7 @@ All products
 - **Already advertised listings skip Phase 2.** The app reads every running Promoted Listings campaign on eBay (every 6 hours
   for the display) and checks the single listing again right before Phase 2; an advertised listing moves straight to the price
   step, so no second ad is created. If eBay cannot be asked, Phase 2 is not approved.
-- **Approve** shows whether it writes LIVE to eBay or runs as a dry run; several titles can be ticked and approved at once.
+- **Approve** shows whether it writes LIVE to eBay or runs as a dry run. *Approve all N* approves a whole group (titles, or ads and price) at once; ticked rows can be approved as a selection.
   After a change the app reads the listing back and shows what is on eBay now.
 - **Take off the ladder / Start over:** a listing that was never changed on eBay is eligible again right away; one that was
   changed pauses 90 days. *Add one specific listing* puts any eligible product on step 1 (without a control partner).

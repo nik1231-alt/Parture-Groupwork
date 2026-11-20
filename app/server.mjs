@@ -15,6 +15,8 @@ import * as rollen from "./rollen.mjs";
 import * as protokoll from "./protokoll.mjs";
 import * as freigabe from "./freigabe.mjs";
 import * as ebaySchreiben from "./ebay-schreiben.mjs";
+import { baueErgebnisse } from "./ergebnisse.mjs";
+import { baueDemoErgebnisse } from "./ergebnisse-demo.mjs";
 import { baueDemo } from "./demo.mjs";
 import * as titelhilfe from "./titelhilfe.mjs";
 import * as sicherung from "./sicherung.mjs";
@@ -22,7 +24,7 @@ import * as benachrichtigung from "./benachrichtigung.mjs";
 import { laDatum, verzoegerungTage, NACHPRUEFEN_TAGE } from "./traffic.mjs";
 import * as leiter from "./leiter.mjs";
 import * as problem from "./problem.mjs";
-import * as dashboard from "./ergebnisse.mjs";
+import * as dashboard from "./dashboard.mjs";
 import * as kiTitel from "./ki-titel.mjs";
 import { pruefeTitel } from "./titel-regeln.mjs";
 import { spawn } from "node:child_process";
@@ -412,8 +414,14 @@ const ROUTEN = {
   },
   // Seite Problem: wie ungleich Sichtbarkeit und Verkäufe verteilt sind (problem.mjs), live aus derselben Produktliste
   "/api/problem": () => { const produkte = produkteLaden(); return problem.auswerten(produkte, leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d); },
-  // Seite Dashboard: Wirkung jeder Phase gegen die Kontrollgruppe, mit Tageskurve und Zwischenstand (ergebnisse.mjs)
+  // Seite Results, Abschnitt "Day by day": Wirkung jeder Phase gegen die Kontrollgruppe, mit Tageskurve (dashboard.mjs)
   "/api/dashboard": () => dashboardDaten(),
+  // Seite Results: Wirkung jeder Phase der Leiter auf die Impressionen, je Lauf und gesamt (ergebnisse.mjs); das Beispiel hat erfundene Zahlen
+  "/api/ergebnisse": () => {
+    const produkte = produkteLaden(), daten = leiterDaten(produkte);
+    return baueErgebnisse(leiter.uebersicht(appDb(), produkte, daten), { besserAb: daten.einst.besserAb });
+  },
+  "/api/ergebnisse/beispiel": () => baueDemoErgebnisse(einst()),
   "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal WHERE channel = 'ebay' GROUP BY channel ORDER BY produkte DESC").all()),
   // Live-Stand vom Hub (nur auf dem Server, lokal fehlt HUB_URL): dieselbe Whitelist, aber Stand jetzt statt 04:30.
   "/api/live": async () => {

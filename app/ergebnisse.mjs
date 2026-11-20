@@ -1,143 +1,100 @@
-// Das Dashboard (Seite Dashboard): was jede Phase der Leiter gebracht hat, gemessen an der Kontrollgruppe über dieselben Tage.
-// Reine Rechnung ohne Datenbank. Der Server liefert die Starts und Auswertungen aus leiter_verlauf, die Kontrollgruppe aus
-// leiter und die Tageswerte aus traffic_tag (pm.db); hier wird daraus für jede Phase gerechnet:
-//   - Status: geplant (noch kein Start) / läuft (Prüfzeit noch nicht ganz in den Daten) / fertig
-//   - Nettoeffekt auf Impressionen und Aufrufe, mit derselben Formel und denselben Fenstern wie leiter.werteAus:
-//     vorher = Durchschnitt je Tag in den 30 Tagen vor dem Start, nachher = Durchschnitt je Tag seit dem Start (ohne den
-//     Starttag selbst), Kontrolle = Kontrollangebote, deren Kontrollzeit die ganze Prüfzeit abdeckt (wie leiter.kontrollGruppe)
-//   - Klickrate (Aufrufe ÷ Impressionen) und Verkäufe als Schutzkennzahl, je Gruppe
-//   - wie viele Angebote einzeln besser / schlechter wurden (damit kein Ausreißer allein das Ergebnis trägt)
-//   - eine Tageskurve je Gruppe, auf 100 = Durchschnitt der 7 Tage vor dem Start indexiert, je Angebot an seinem eigenen
-//     Starttag ausgerichtet (Angebote starten an verschiedenen Tagen)
-// Nur eBay-Daten (Niko 20.11.2026), keine Kosten, Gebühren oder Umsätze.
+// Ergebnisse (Seite Results): wie haben sich die Impressionen verändert, und ist der Unterschied zur Kontrollgruppe klar oder Zufall?
+// Reine Rechnung ohne Datenbank: sie bekommt die Übersicht der Leiter (leiter.uebersicht) und liefert fertige Zahlen für die Seite.
+// Ein "Lauf" sind alle Angebote, die am selben Tag auf die Leiter kamen (ein Start mit ein paar Produkten). Jeder Lauf wird für sich
+// ausgewertet, dazu gibt es "alle Läufe". Je Phase (Titel, Werbung, Preis): Summe der Impressionen vorher und nachher, Veränderung der Kontrollgruppe
+// und ein Urteil. Das Urteil sagt, ob der Effekt eines typischen Angebots klar von null verschieden ist: ein 95-%-Bereich um den Effekt je Angebot.
+// Liegt der ganze Bereich über null, ist es ein klarer Anstieg; liegt er darunter, ein klarer Rückgang; sonst ist es nicht von Zufall zu unterscheiden.
 import { netto } from "./auswertung.mjs";
-import { EINSTELLUNGEN } from "./regeln.mjs";
 
-export const PHASEN = ["titel", "werbung", "preis"];
-export const BASIS_TAGE = 30;   // wie leiter.mjs: Vergleichswert sind die 30 Tage vor dem Start
-export const KURVE_VORHER = 7;  // so viele Tage vor dem Start zeigt die Kurve (und daraus die 100)
-export const SCHWELLE_EINZELN = 0.1; // ein einzelnes Angebot gilt ab ±10 % als besser / schlechter, dazwischen "etwa gleich"
+export const PHASEN = [["titel", "New title"], ["werbung", "Ads"], ["preis", "Lower price"]];
+export const MIN_AUSGEWERTET = 5;  // so viele Angebote mit Kontrollgruppe braucht eine Phase, bevor sie ein Urteil bekommt (sonst "too_few")
+export const ALLE = "alle";
 
-const plusTage = (t, n) => new Date(Date.parse(t + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
-const tageZwischen = (von, bis) => Math.round((Date.parse(bis + "T12:00:00Z") - Date.parse(von + "T12:00:00Z")) / 864e5);
-const pruefTage = (stufe, einst) => ({ titel: einst.leiterTageTitel, werbung: einst.leiterTageWerbung, preis: einst.leiterTagePreis })[stufe];
-const kontrollTage = (einst) => einst.leiterTageTitel + einst.leiterTageWerbung + einst.leiterTagePreis;
-const leer = () => ({ imp: 0, auf: 0, trans: 0 });
-const plus = (a, b) => ({ imp: a.imp + b.imp, auf: a.auf + b.auf, trans: a.trans + b.trans });
-const mal = (a, f) => ({ imp: a.imp * f, auf: a.auf * f, trans: a.trans * f });
+const endlich = (x) => (Number.isFinite(x) ? x : null);
+const aenderung = (vorher, nachher) => (vorher > 0 ? endlich(nachher / vorher - 1) : null);
+const istKontrolle = (a) => a.stufe === "kontrolle" || a.ergebnis === "kontrolle";
 
-// Summe der Tageswerte eines Angebots für die Tage nach "von" bis einschließlich "bis" (wie impTag im Server)
-function summe(tage, nummer, von, bis) {
-  const je = tage.get(nummer), aus = leer();
-  if (!je || bis <= von) return aus;
-  for (let d = plusTage(von, 1); d <= bis; d = plusTage(d, 1)) { const w = je.get(d); if (w) { aus.imp += w.imp || 0; aus.auf += w.auf || 0; aus.trans += w.trans || 0; } }
-  return aus;
+// Kritischer Wert der t-Verteilung (zweiseitig, 95 %) nach Freiheitsgraden; ab 30 gilt die Normalverteilung (1,96)
+const T95 = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042];
+export const tKritisch = (freiheitsgrade) => (freiheitsgrade < 1 ? null : freiheitsgrade <= 30 ? T95[freiheitsgrade - 1] : 1.96);
+
+// Typischer Effekt je Angebot gegen die Kontrollgruppe mit 95-%-Bereich. Gerechnet wird mit dem Logarithmus des Verhältnisses (+50 % und −33 %
+// heben sich so auf, wie man es erwartet); ein Angebot mit 0 Impressionen nachher zählt mit −99 %.
+export function schaetze(nettos) {
+  const w = nettos.filter((x) => Number.isFinite(x)).map((x) => Math.log(1 + Math.max(x, -0.99)));
+  if (w.length < 2) return null;
+  const m = w.reduce((a, b) => a + b, 0) / w.length;
+  const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) ** 2, 0) / (w.length - 1));
+  const abstand = tKritisch(w.length - 1) * (sd / Math.sqrt(w.length));
+  return { effekt: Math.exp(m) - 1, von: Math.exp(m - abstand) - 1, bis: Math.exp(m + abstand) - 1, n: w.length };
 }
-const tagWert = (tage, nummer, d) => tage.get(nummer)?.get(d) ?? null;
 
-// Eine Phase: alle Angebote mit einem Start dieser Stufe (der jüngste je Angebot zählt)
-function phase(stufe, { starts, auswertungen, kontrolle, tage, trafficBis, einst }) {
-  const n = pruefTage(stufe, einst);
-  const jeAngebot = new Map();
-  for (const s of starts.filter((x) => x.stufe === stufe)) if (!jeAngebot.has(s.number) || jeAngebot.get(s.number).tag < s.tag) jeAngebot.set(s.number, s);
-  const liste = [...jeAngebot.values()];
-  const basis = { stufe, tage: n, angebote: liste.length };
-  if (!liste.length) return { ...basis, status: "geplant" };
+// "up" und "down": der ganze 95-%-Bereich liegt über bzw. unter null. Sonst "unclear". Zu wenige Angebote: "too_few".
+export function urteil(schaetzung, anzahl) {
+  if (!schaetzung || anzahl < MIN_AUSGEWERTET) return "too_few";
+  if (schaetzung.von > 0) return "up";
+  if (schaetzung.bis < 0) return "down";
+  return "unclear";
+}
 
-  let test = { vorher: leer(), nachher: leer() }, ctrl = { vorher: leer(), nachher: leer() };
-  let mitDaten = 0, mitKontrolle = 0, besser = 0, schlechter = 0, gelaufenMax = 0, alleFertig = true;
-  const kontrollNummern = new Set();
-  const kurve = new Map(); // relativer Tag → { t, k, nt, nk }
-  for (const a of liste) {
-    const ende = plusTage(a.tag, n);
-    if (!trafficBis || trafficBis < ende) alleFertig = false;
-    const bis = trafficBis && trafficBis < ende ? trafficBis : ende;
-    const gelaufen = trafficBis ? Math.max(0, tageZwischen(a.tag, bis)) : 0;
-    gelaufenMax = Math.max(gelaufenMax, gelaufen);
-    const gruppe = kontrolle.filter((k) => k.start <= a.tag && plusTage(k.start, kontrollTage(einst)) >= ende).map((k) => k.number);
-    gruppe.forEach((k) => kontrollNummern.add(k));
-    // Kurve: 7 Tage vor dem Start und jeder Tag seit dem Start, soweit Daten da sind
-    for (let r = -KURVE_VORHER; r <= gelaufen; r++) {
-      if (r === 0) continue; // der Starttag zählt nirgends mit (wie in den Fenstern)
-      const d = plusTage(a.tag, r);
-      if (trafficBis && d > trafficBis) continue;
-      const p = kurve.get(r) || { t: 0, k: 0, nt: 0, nk: 0 };
-      p.t += tagWert(tage, a.number, d)?.imp || 0; p.nt++;
-      if (gruppe.length) { p.k += gruppe.reduce((x, k) => x + (tagWert(tage, k, d)?.imp || 0), 0) / gruppe.length; p.nk++; }
-      kurve.set(r, p);
+function phase(angebote, stufe, name) {
+  const aus = [];
+  for (const a of angebote) for (const v of a.verlauf || []) if (v.ereignis === "ausgewertet" && v.stufe === stufe && v.details) aus.push(v.details);
+  const mit = aus.filter((d) => d.kontrolle);
+  const s = mit.reduce((t, d) => ({ v: t.v + d.vorher90, n: t.n + d.nachher90, kv: t.kv + d.kontrolle.vorher90, kn: t.kn + d.kontrolle.nachher90 }), { v: 0, n: 0, kv: 0, kn: 0 });
+  const schaetzung = schaetze(mit.map((d) => d.netto));
+  const laufend = angebote.filter((a) => a.phase === "laeuft" && a.stufe === stufe);
+  return {
+    schluessel: stufe, name, ausgewertet: aus.length, mitKontrolle: mit.length, erholt: aus.filter((d) => d.erholt).length,
+    vorher90: s.v, nachher90: s.n, aenderung: mit.length ? aenderung(s.v, s.n) : null, kontrolleAenderung: mit.length ? aenderung(s.kv, s.kn) : null,
+    netto: mit.length ? netto({ vorher: s.v, nachher: s.n }, { vorher: s.kv, nachher: s.kn }) : null,
+    schaetzung, urteil: urteil(schaetzung, mit.length),
+    laeuft: laufend.length, naechstesEnde: laufend.map((a) => a.stand?.ende).filter(Boolean).sort()[0] ?? null,
+  };
+}
+
+// Wohin sind die Angebote gekommen? Je Phase: wie viele sind dort angekommen und was ist aus ihnen geworden: wieder gesehen (raus aus der Leiter),
+// weitergereicht, noch in der Prüfzeit, wartet auf Freigabe, ohne Messung übersprungen (z. B. schon beworben) oder von Hand herausgenommen.
+// Nach der letzten Phase folgt die manuelle Prüfung durch einen Admin (wartet oder entschieden).
+const ENTSCHEIDUNGEN = ["behalten", "ueberarbeiten", "offline"];
+export function fluss(angebote) {
+  const stufen = PHASEN.map(([schluessel, name]) => ({ schluessel, name, erreicht: 0, erholt: 0, weiter: 0, laeuft: 0, wartet: 0, uebersprungen: 0, entfernt: 0 }));
+  const pruefung = { erreicht: 0, offen: 0, behalten: 0, ueberarbeiten: 0, offline: 0 };
+  for (const a of angebote) {
+    const ev = (st) => (a.verlauf || []).filter((v) => v.stufe === st);
+    stufen.forEach((z) => {
+      const e = ev(z.schluessel), jetzt = a.stufe === z.schluessel;
+      if (!e.length && !jetzt) return;
+      z.erreicht++;
+      const aus = e.find((v) => v.ereignis === "ausgewertet");
+      if (aus) { if (aus.details?.erholt) z.erholt++; else z.weiter++; }
+      else if (e.some((v) => v.ereignis === "uebersprungen")) z.uebersprungen++;
+      else if (jetzt && a.phase === "laeuft") z.laeuft++;
+      else if (jetzt) z.wartet++;
+      else z.entfernt++;
+    });
+    if (ev("pruefung").length || a.stufe === "pruefung") {
+      pruefung.erreicht++;
+      if (ENTSCHEIDUNGEN.includes(a.ergebnis)) pruefung[a.ergebnis]++; else if (a.stufe === "pruefung") pruefung.offen++;
     }
-    if (gelaufen <= 0) continue;
-    mitDaten++;
-    const v = mal(summe(tage, a.number, plusTage(a.tag, -BASIS_TAGE - 1), plusTage(a.tag, -1)), 1 / BASIS_TAGE);
-    const w = mal(summe(tage, a.number, a.tag, bis), 1 / gelaufen);
-    test = { vorher: plus(test.vorher, v), nachher: plus(test.nachher, w) };
-    if (v.imp > 0) { const x = w.imp / v.imp - 1; if (x >= SCHWELLE_EINZELN) besser++; else if (x <= -SCHWELLE_EINZELN) schlechter++; }
-    else if (w.imp > 0) besser++;
-    if (!gruppe.length) continue;
-    // Kontrolle: Durchschnitt je Kontrollangebot über genau dieselben Tage, so groß gewichtet wie ein Angebot der Phase
-    mitKontrolle++;
-    const kv = gruppe.reduce((s, k) => plus(s, summe(tage, k, plusTage(a.tag, -BASIS_TAGE - 1), plusTage(a.tag, -1))), leer());
-    const kw = gruppe.reduce((s, k) => plus(s, summe(tage, k, a.tag, bis)), leer());
-    ctrl = { vorher: plus(ctrl.vorher, mal(kv, 1 / (BASIS_TAGE * gruppe.length))), nachher: plus(ctrl.nachher, mal(kw, 1 / (gelaufen * gruppe.length))) };
   }
-  const nettoVon = (feld) => (mitKontrolle === mitDaten && mitDaten && ctrl.vorher[feld] > 0 ? netto({ vorher: test.vorher[feld], nachher: test.nachher[feld] }, { vorher: ctrl.vorher[feld], nachher: ctrl.nachher[feld] }) : null);
-  // Je Angebot und Tag (so liest sich die Kachel "Impressions per listing / day")
-  const jeTag = (g) => (mitDaten ? mal(g, 1 / mitDaten) : leer());
-  const tageReihe = [...kurve.keys()].sort((a, b) => a - b);
-  const mittel = (r, f) => { const p = kurve.get(r); return p && p[f === "t" ? "nt" : "nk"] ? p[f] / p[f === "t" ? "nt" : "nk"] : null; };
-  const basisVon = (f) => { const w = tageReihe.filter((r) => r < 0).map((r) => mittel(r, f)).filter((x) => x != null); return w.length ? w.reduce((a, b) => a + b, 0) / w.length : 0; };
-  const bt = basisVon("t"), bk = basisVon("k");
-  const verkaeufe = { test: 0, kontrolle: 0 };
-  // Verkäufe während der Phase als Summe (Schutzkennzahl): Testgruppe gezählt, Kontrolle auf gleich viele Angebote hochgerechnet
-  for (const a of liste) {
-    const ende = plusTage(a.tag, n), bis = trafficBis && trafficBis < ende ? trafficBis : ende;
-    if (!trafficBis || bis <= a.tag) continue;
-    verkaeufe.test += summe(tage, a.number, a.tag, bis).trans;
-    const gruppe = kontrolle.filter((k) => k.start <= a.tag && plusTage(k.start, kontrollTage(einst)) >= ende).map((k) => k.number);
-    if (gruppe.length) verkaeufe.kontrolle += gruppe.reduce((s, k) => s + summe(tage, k, a.tag, bis).trans, 0) / gruppe.length;
-  }
-  return {
-    ...basis,
-    status: alleFertig ? "fertig" : "laeuft",
-    start: liste.map((a) => a.tag).sort()[0],
-    gelaufen: Math.min(n, gelaufenMax),
-    mitDaten, kontrolleAnzahl: kontrollNummern.size, ohneKontrolle: mitDaten - mitKontrolle,
-    test: { vorher: jeTag(test.vorher), nachher: jeTag(test.nachher) },
-    kontrolle: mitKontrolle ? { vorher: jeTag(ctrl.vorher), nachher: jeTag(ctrl.nachher) } : null,
-    netto: { imp: nettoVon("imp"), auf: nettoVon("auf") },
-    verkaeufe,
-    besser, schlechter, gleich: mitDaten - besser - schlechter,
-    erholt: auswertungen.filter((x) => x.stufe === stufe && x.erholt).length,
-    kurve: tageReihe.map((r) => ({ tag: r, test: bt > 0 && mittel(r, "t") != null ? (100 * mittel(r, "t")) / bt : null, kontrolle: bk > 0 && mittel(r, "k") != null ? (100 * mittel(r, "k")) / bk : null })),
-  };
+  return { stufen, pruefung };
 }
 
-// starts: [{ number, stufe, tag: "JJJJ-MM-TT", at, vonHand }] (leiter_verlauf, ereignis "gestartet")
-// abbrueche: [{ number, at }]                                (leiter_verlauf, "abgebrochen" / "zurueckgesetzt": Take off, Start over)
-// auswertungen: [{ number, stufe, erholt }]                  (leiter_verlauf, ereignis "ausgewertet")
-// kontrolle: [{ number, start: "JJJJ-MM-TT" }]               (leiter: Kontrollgruppe, auch wenn ihre Zeit schon vorbei ist)
-// tage: Map(nummer → Map(datum → { imp, auf, trans }))       (traffic_tag aus pm.db)
-export function baueDashboard({ starts: alleStarts = [], abbrueche = [], auswertungen = [], kontrolle = [], tage = new Map(), trafficBis = null, einst = EINSTELLUNGEN } = {}) {
-  // Ein Start zählt nicht mehr, wenn das Angebot danach von der Leiter genommen oder zurückgesetzt wurde
-  const starts = alleStarts.filter((s) => !abbrueche.some((a) => a.number === s.number && (a.at ?? "") >= (s.at ?? s.tag)));
-  const daten = { starts, auswertungen, kontrolle, tage, trafficBis, einst };
-  const phasen = PHASEN.map((s) => phase(s, daten));
-  return {
-    trafficBis,
-    einst: { besserAb: einst.besserAb, werbesatz: einst.werbesatz, preisSchritt: einst.preisSchritt },
-    summe: {
-      aufLeiter: new Set(starts.map((s) => s.number)).size,
-      kontrolle: new Set(kontrolle.map((k) => k.number)).size,
-      erholt: auswertungen.filter((x) => x.erholt).length,
-      aenderungenEbay: starts.filter((s) => !s.vonHand).length,
-    },
-    phasen,
-  };
-}
+const lauf = (schluessel, name, angebote) => ({
+  schluessel, name, angebote: angebote.filter((a) => !istKontrolle(a)).length,
+  fluss: fluss(angebote.filter((a) => !istKontrolle(a))),
+  phasen: PHASEN.map(([s, n]) => phase(angebote, s, n)),
+});
 
-// Welche Tage und Angebote der Server aus traffic_tag laden muss: vom frühesten Vergleichsfenster bis heute
-export function benoetigt({ starts = [], kontrolle = [] }) {
-  const nummern = new Set([...starts.map((s) => s.number), ...kontrolle.map((k) => k.number)]);
-  const erster = starts.map((s) => s.tag).sort()[0];
-  return { nummern: [...nummern], ab: erster ? plusTage(erster, -BASIS_TAGE - 1) : null };
+// u = Ergebnis von leiter.uebersicht. Ein Lauf je Tag, an dem Angebote auf die Leiter kamen (neueste zuerst), davor "alle Läufe".
+export function baueErgebnisse(u, { besserAb = 0.2 } = {}) {
+  const getestet = u.angebote.filter((a) => !istKontrolle(a));
+  const tage = [...new Set(getestet.map((a) => String(a.eingestiegen_at).slice(0, 10)))].sort().reverse();
+  const laeufe = [lauf(ALLE, "All runs", u.angebote), ...tage.map((t) => lauf(t, t, getestet.filter((a) => String(a.eingestiegen_at).slice(0, 10) === t)))];
+  // Die Kontrollgruppe gehört zu keinem Lauf, ihre Zahlen stecken in den Auswertungen der Angebote
+  return {
+    laeufe, kontrollgruppe: u.angebote.length - getestet.length, trafficBis: u.trafficBis ?? null,
+    skala: { besserAb, mindestAusgewertet: MIN_AUSGEWERTET }, leer: laeufe[0].phasen.every((p) => p.ausgewertet === 0),
+  };
 }
