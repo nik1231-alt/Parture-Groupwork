@@ -90,10 +90,13 @@ export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date
 // Nimmt neue Angebote auf, bis höchstens einst.leiterMax gleichzeitig auf der Leiter stehen. Gibt die neuen Nummern zurück.
 // Mit Kontrollgruppe (einst.leiterKontrolle): die nächsten 2 × frei Kandidaten werden per Los geteilt (ziehe aus experimente.mjs,
 // gleicher seed = gleiche Ziehung, der seed steht im Lebenslauf). Gibt die Nummern zurück, die auf die Leiter kamen.
+// Von Hand (Knopf "Draw listings by lot", Niko 20.11.): optionen.anzahl = so viele auf die Leiter, ohne Obergrenze;
+// optionen.kontrolle = true/false entscheidet je Ziehung, ob genauso viele in die Kontrollgruppe gelost werden.
 export function nimmAuf(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), optionen = {}) {
-  const frei = Math.max(0, einst.leiterMax - aufLeiter(db));
+  const frei = optionen.anzahl != null ? Math.max(0, Math.floor(optionen.anzahl)) : Math.max(0, einst.leiterMax - aufLeiter(db));
+  const mitKontrolle = optionen.kontrolle ?? einst.leiterKontrolle;
   const k = kandidaten(db, produkte, einst, jetzt, optionen);
-  if (!einst.leiterKontrolle) {
+  if (!mitKontrolle) {
     const neu = k.slice(0, frei).map((p) => p.number);
     db.transaction(() => { for (const n of neu) trageEin(db, n, null, "system", jetzt); })();
     return neu;
@@ -206,7 +209,13 @@ export async function fuehreAus(stufe, v, items, schreiber) {
       : stufe === "werbung" ? await schreiber.setzeWerbung(String(it.external_id), v.satz)
       : await schreiber.setzePreis(String(it.external_id), g.variationen?.map((x) => x.sku) || [], v.neu);
     if (!r.ok) return { ausgang: "fehlgeschlagen", text: "eBay refused the change: " + r.meldung };
-    texte.push(`Listing ${it.external_id} changed on eBay.` + (r.meldung ? " eBay note: " + r.meldung : ""));
+    // Nachlesen: steht bei eBay jetzt wirklich der neue Titel / Preis? (Beleg für die Vorführung und den Lebenslauf)
+    let nachher = "";
+    if (stufe !== "werbung" && typeof schreiber.lies === "function") {
+      const n = await schreiber.lies(String(it.external_id));
+      if (n?.ok) nachher = stufe === "titel" ? ` Now on eBay: “${n.titel}”.` : ` Now on eBay: ${(n.variationen?.length ? n.variationen.map((x) => x.preis) : [n.preis]).map((p) => Number(p).toFixed(2)).join(" / ")} €.`;
+    }
+    texte.push(`Listing ${it.external_id} changed on eBay.` + (r.meldung ? " eBay note: " + r.meldung : "") + nachher);
   }
   return { ausgang: schalter ? "angewendet" : "probelauf", text: texte.join(" ") };
 }
@@ -397,16 +406,48 @@ export function entscheide(db, nutzer, number, entscheidung, notiz, jetzt = new 
   return ok({ number: z.number, entscheidung });
 }
 
-// Admin nimmt ein Angebot von der Leiter (z. B. weil es ausläuft). Bereits gemachte Änderungen bei eBay bleiben.
+// Wurde für dieses Angebot seit dem Einstieg bei eBay etwas geändert (freigegeben oder "Done by hand")?
+const geaendert = (db, z) => !!db.prepare("SELECT 1 FROM leiter_verlauf WHERE number = ? AND at >= ? AND ereignis IN ('freigegeben', 'gestartet') LIMIT 1").get(z.number, z.eingestiegen_at);
+
+// Admin nimmt ein Angebot von der Leiter. Wurde bei eBay noch nichts geändert, ist es sofort wieder "Eligible" (keine 90 Tage
+// Pause: es gibt nichts abzuwarten; Niko 20.11.). Sonst bleiben die Änderungen bei eBay, und die Pause gilt wie bisher.
 export function brichAb(db, nutzer, number, grund, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can take a listing off the ladder.");
   const z = lade(db, String(number ?? ""));
   if (!z || z.stufe === "raus") return fehler(404, "This listing is not on the ladder.");
   const g = String(grund ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
-  setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "abgebrochen" }, jetzt);
-  verlauf(db, z.number, z.stufe, "abgebrochen", { grund: g }, nutzer.name, jetzt);
-  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_removed", objekt: "product " + z.number, details: { stufe: z.stufe, grund: g } }, jetzt);
-  return ok({ number: z.number });
+  const ohnePause = !geaendert(db, z);
+  db.transaction(() => {
+    if (ohnePause) db.prepare("DELETE FROM leiter WHERE number = ?").run(z.number);
+    else setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "abgebrochen" }, jetzt);
+    verlauf(db, z.number, z.stufe, ohnePause ? "zurueckgesetzt" : "abgebrochen", { grund: g }, nutzer.name, jetzt);
+  })();
+  protokoll.schreibe(db, { ...wer(nutzer), aktion: ohnePause ? "ladder_reset" : "ladder_removed", objekt: "product " + z.number, details: { stufe: z.stufe, grund: g } }, jetzt);
+  return ok({ number: z.number, pause: !ohnePause });
+}
+
+// "Start over": alles, was bei eBay noch nicht geändert wurde, zurück zu "Eligible" (auch die Kontrollgruppe). Angebote mit
+// einer Änderung bei eBay bleiben, weil ihre Messung läuft.
+export function setzeZurueck(db, nutzer, grund, jetzt = new Date()) {
+  if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can start the ladder over.");
+  const g = String(grund ?? "").replace(/\s+/g, " ").trim().slice(0, 200) || "Start over";
+  const zeilen = db.prepare("SELECT * FROM leiter WHERE stufe != 'raus'").all();
+  const weg = zeilen.filter((z) => !geaendert(db, z));
+  db.transaction(() => {
+    for (const z of weg) { db.prepare("DELETE FROM leiter WHERE number = ?").run(z.number); verlauf(db, z.number, z.stufe, "zurueckgesetzt", { grund: g }, nutzer.name, jetzt); }
+  })();
+  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_start_over", objekt: "ladder", details: { zurueckgesetzt: weg.length, behalten: zeilen.length - weg.length, grund: g } }, jetzt);
+  return ok({ zurueckgesetzt: weg.length, behalten: zeilen.length - weg.length });
+}
+
+// Angebote, die bei eBay schon beworben werden, sind für Phase 2 nicht berechtigt (Niko 20.11.) und springen direkt in die
+// Preisstufe. info: { kampagnen: [Name] } aus ebay-schreiben.istBeworben. Ändert nichts bei eBay.
+export function springeUeberWerbung(db, number, info, einst = EINSTELLUNGEN, kontext = {}, jetzt = new Date()) {
+  const { z, f } = inPhase(db, number, ["werbung"], "vorschlag"); if (f) return f;
+  const kampagnen = (info?.kampagnen || []).slice(0, 5);
+  verlauf(db, z.number, "werbung", "uebersprungen", { grund: `Already advertised on eBay (${kampagnen.join(", ") || "running campaign"}), so not eligible for the ads phase.`, automatisch: true, kampagnen }, "system", jetzt);
+  weiter(db, z, einst, kontext, jetzt);
+  return ok({ number: z.number, stufe: "preis" });
 }
 
 // Alles für die Oberfläche: Zahl je Stufe, jedes Angebot mit Stand, Zwischenstand der Prüfzeit und Lebenslauf.

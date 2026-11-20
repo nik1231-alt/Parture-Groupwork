@@ -64,7 +64,7 @@ All products
       │  "Draw listings by lot": 2 × free places, split in half
       ├─ Control group ── stays unchanged for 49 days (all three waiting times together)
       └─ Phase 1  new title (AI + rule check) ── 14 days ──► seen again? yes ─► leaves ("Seen again")
-         Phase 2  eBay ads 10 %             ── 14 days ──► seen again? yes ─► leaves
+         Phase 2  eBay ads 10 %             ── 14 days ──► seen again? yes ─► leaves   (skipped if already advertised)
          Phase 3  price −10 %               ── 21 days ──► seen again? yes ─► leaves
          Phase 4  manual check: an admin decides to rework, take offline or keep (with a reason)
 ```
@@ -79,8 +79,17 @@ All products
 - **Automatic movement** (optional): the daily run also evaluates finished waiting times, releases controls and draws new
   listings. Neither mode ever changes eBay without an approval.
 - **Data:** the company hub exports the catalogue and eBay traffic to the app every hour (whitelist only, see *Data*).
-- **Add a listing** (admin): pick any eligible product from a list and put it on step 1 right away, e.g. for a demo.
-- After leaving, a product pauses 90 days before it can enter again.
+- **Funnel page:** a step bar (Choose → Approve → Wait → Decide → Results) and three tabs: *Work* (draw, approve, decide),
+  *Overview* (KPIs, the funnel as a picture, effect per phase) and *All products* (every product with its status and reason).
+- **Draw by lot** (admin): you choose how many listings and whether a control group of the same size is drawn. There is no
+  upper limit; the preview lists exactly the listings that go into the lot.
+- **Already advertised listings skip Phase 2.** The app reads every running Promoted Listings campaign on eBay (every 6 hours
+  for the display) and checks the single listing again right before Phase 2; an advertised listing moves straight to the price
+  step, so no second ad is created. If eBay cannot be asked, Phase 2 is not approved.
+- **Approve** shows whether it writes LIVE to eBay or runs as a dry run; several titles can be ticked and approved at once.
+  After a change the app reads the listing back and shows what is on eBay now.
+- **Take off the ladder / Start over:** a listing that was never changed on eBay is eligible again right away; one that was
+  changed pauses 90 days. *Add one specific listing* puts any eligible product on step 1 (without a control partner).
 
 ## Changes on eBay
 
