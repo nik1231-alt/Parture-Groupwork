@@ -49,7 +49,7 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 |---|---|---|
 | **Products** | everyone | every product with eBay price, eBay sales, impressions and diagnosis; open a row for its variants, channel reference details, funnel status and full history |
 | **Problem** | everyone | live analysis of why the app exists (eBay only): 80 % of eBay sales come from 17.8 % of the eBay listings, 80 % of eBay impressions from 35 % of the listings (20.11.2026); seen × sold for every listing; how impressions are spread |
-| **Funnel** | everyone (actions: admin) | KPIs, all products as one bar by status, why products are not eligible, the ladder as a flow, the effect of each phase against the control group, the work queue with the interim result, and a table of all products with their status and the reason for it |
+| **Funnel** | everyone (actions: admin) | KPIs, all products as one bar by status, why products are not eligible, the ladder as circles; click a circle to work on that step (draw, approve, decide); the effect of each phase against the control group, and a table of all products with their status and the reason for it |
 | **Results** | everyone | pick a run (the listings started on one day) or all runs: how impressions changed in each phase compared with the control group, and whether the difference is clear or could be chance; until a phase has a result it shows an example with invented figures (clearly marked). Below, **Day by day**: each phase against the control group as a daily curve, with click rate and sales as guard metrics |
 | **Team** | admin | assign roles |
 | **Log** | everyone | the append-only log and the operating status (environment, version, write switches, backup, data age) |
@@ -80,8 +80,10 @@ All products
 - **Automatic movement** (optional): the daily run also evaluates finished waiting times, releases controls and draws new
   listings. Neither mode ever changes eBay without an approval.
 - **Data:** the company hub exports the catalogue and eBay traffic to the app every hour (whitelist only, see *Data*).
-- **Funnel page:** a step bar (Choose → Approve → Wait → Decide → Results) and three tabs: *Work* (draw, approve, decide),
-  *Overview* (KPIs, the funnel as a picture, effect per phase) and *All products* (every product with its status and reason).
+- **Funnel page:** one view built around the picture *Where every product stands*: KPIs, all products as one bar by status,
+  the reasons for not eligible, and the ladder as circles. Each circle shows what waits there (*8 to approve*, *2 to decide*);
+  clicking it opens just that step below the picture with its buttons (draw, approve all, decide). Below: the effect of each
+  phase. Second tab: *All products* (every product with its status and reason).
 - **Draw by lot** (admin): you choose how many listings and whether a control group of the same size is drawn. There is no
   upper limit; the preview lists exactly the listings that go into the lot.
 - **Already advertised listings skip Phase 2.** The app reads every running Promoted Listings campaign on eBay (every 6 hours
