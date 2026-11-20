@@ -2,7 +2,7 @@
 // pm.db is not backed up: it can be rebuilt from eBay at any time (npm run export).
 //
 //   npm run sicherung                 back up now (also into a second folder if SICHERUNG_ZIEL2 is set)
-//   npm run sicherung -- liste        vorhandene Sicherungen
+//   npm run sicherung -- liste        existing backups
 //   npm run sicherung -- wiederherstellen <file>   restore a backup (stop the app first!)
 //
 // The backup uses SQLite's online backup: during operation, without half-written files. Every backup is afterwards

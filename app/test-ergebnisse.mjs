@@ -20,7 +20,7 @@ const uebersicht = (angebote) => ({ angebote, tage: { titel: 14, werbung: 14, pr
 const viele = (prefix, stufe, n, vorher, nachher, tag) => Array.from({ length: n }, (_, i) => angebot(prefix + i, stufe, vorher, nachher, K(1000, 1000), tag));
 
 test("95 % range: known case with three listings, too few values, equal values", () => {
-  // Logarithmen 0,1 / 0,2 / 0,3: Mittel 0,2, Streuung 0,1, Standardfehler 0,0577, t(2) = 4,303 → Abstand 0,2484
+  // Logarithms 0.1 / 0.2 / 0.3: mean 0.2, spread 0.1, standard error 0.0577, t(2) = 4.303 → distance 0.2484
   const s = schaetze([Math.exp(0.1) - 1, Math.exp(0.2) - 1, Math.exp(0.3) - 1]);
   nahe(s.effekt, Math.exp(0.2) - 1); nahe(s.von, Math.exp(0.2 - 0.2484) - 1, "von", 1e-3); nahe(s.bis, Math.exp(0.2 + 0.2484) - 1, "bis", 1e-3); assert.equal(s.n, 3);
   assert.equal(schaetze([0.3]), null, "a single listing says nothing about the spread");

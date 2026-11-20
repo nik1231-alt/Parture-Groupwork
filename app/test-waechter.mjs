@@ -146,7 +146,7 @@ test("no network or source gone: status error, nothing breaks", async () => {
   assert.equal(gitIn(prod)("rev-parse", "HEAD"), vorher);
 });
 
-// ---------- ganzer Prozess ----------
+// ---------- whole process ----------
 const warte = async (fn, ms = 20000, schritt = 150) => { const bis = Date.now() + ms; for (;;) { try { const r = await fn(); if (r) return r; } catch { /* noch nicht */ } if (Date.now() > bis) throw new Error("Zeitüberschreitung"); await new Promise((r) => setTimeout(r, schritt)); } };
 
 test("Watcher process: starts the app, rolls out a new version, restarts after a crash and with a hanging app", async () => {

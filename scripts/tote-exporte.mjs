@@ -16,7 +16,7 @@ const AUSNAHMEN = {
 const dateien = ORDNER.flatMap((o) => fs.existsSync(path.join(WURZEL, o)) ? fs.readdirSync(path.join(WURZEL, o)).filter((f) => /\.(m?js|html)$/.test(f)).map((f) => path.join(o, f)) : []);
 const inhalt = new Map(dateien.map((d) => [d, fs.readFileSync(path.join(WURZEL, d), "utf8")]));
 
-// Exportierte Funktionen: export (async) function x, export class X, export const x = (…) => / async (…) => / function
+// Exported functions: export (async) function x, export class X, export const x = (…) =>
 const MUSTER = /^export\s+(?:async\s+function\*?|function\*?|class)\s+([A-Za-z_$][\w$]*)|^export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>|^export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function/gm;
 
 function toteExporte() {
