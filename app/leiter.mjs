@@ -83,9 +83,12 @@ export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date
   const grenze = tag(new Date(jetzt.getTime() - WIEDER_NACH_TAGEN * 864e5));
   const belegt = new Set(db.prepare("SELECT number FROM leiter WHERE stufe != 'raus' OR substr(aktualisiert_at, 1, 10) > ?").all(grenze).map((r) => r.number));
   return produkte
-    .filter((p) => p.ebay_aktiv !== 0 && !belegt.has(p.number) && !imTest.has(p.number) && !gesperrt.has(p.number) && bewerte(p, abgeleitet, jetzt).gruppe === "sichtbarkeit")
-    .sort((a, b) => (Number(b.units_total) || 0) - (Number(a.units_total) || 0) || (a.number < b.number ? -1 : a.number > b.number ? 1 : 0));
+    .filter((p) => p.ebay_aktiv !== 0 && !belegt.has(p.number) && !imTest.has(p.number) && !gesperrt.has(p.number) && bewerte(p, abgeleitet, jetzt).gruppe === "sichtbarkeit" && !schonVerkauft(p, einst))
+    .sort((a, b) => (Number(b.units_total) || 0) - (Number(a.units_total) || 0) || (Number(b.impressionen_90d) || 0) - (Number(a.impressionen_90d) || 0) || (a.number < b.number ? -1 : a.number > b.number ? 1 : 0));
 }
+// Niko 20.11.: Angebote, die bei eBay schon verkauft haben, werden nicht angefasst; es gibt genug, die nie verkauft haben.
+// Einstellung leiterNurOhneVerkauf ("ja" Standard / "nein"). units_total ist seit #44/#45 nur eBay.
+export const schonVerkauft = (p, einst = EINSTELLUNGEN) => einst.leiterNurOhneVerkauf !== "nein" && (Number(p.units_total) || 0) > 0;
 
 // Nimmt neue Angebote auf, bis höchstens einst.leiterMax gleichzeitig auf der Leiter stehen. Gibt die neuen Nummern zurück.
 // Mit Kontrollgruppe (einst.leiterKontrolle): die nächsten 2 × frei Kandidaten werden per Los geteilt (ziehe aus experimente.mjs,
@@ -332,7 +335,7 @@ export function wirkung(db) {
 // Der Funnel: wo steht jedes Produkt und warum. Die Prüfung läuft in derselben Reihenfolge wie die Aufnahme (kandidaten oben),
 // so dass "eligible" hier genau die Angebote sind, die der nächste Lauf nehmen würde.
 //   status: nicht_geeignet | geeignet | kontrolle | titel | werbung | preis | pruefung | erholt | raus
-//   art (nur bei nicht_geeignet): kein_ebay | gesperrt | im_test | pause | genug | neu
+//   art (nur bei nicht_geeignet): kein_ebay | gesperrt | im_test | pause | genug | neu | verkauft
 export const STATUS = ["nicht_geeignet", "geeignet", KONTROLLE, ...STUFEN, "erholt", "raus"];
 export function trichter(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), { imTest = new Map(), gesperrt = new Set() } = {}) {
   const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt);
@@ -353,10 +356,11 @@ export function trichter(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date()
     if (imTest.has(p.number)) return zeile("nicht_geeignet", "In a running title test.", "im_test");
     if (b.gruppe === "warten") return zeile("nicht_geeignet", b.begruendung, "neu");
     if (b.gruppe !== "sichtbarkeit") return zeile("nicht_geeignet", b.begruendung, "genug");
+    if (schonVerkauft(p, einst)) return zeile("nicht_geeignet", `Already sold on eBay (${Number(p.units_total)} in total), so it is left alone on purpose. Only listings that never sold enter the funnel.`, "verkauft");
     return zeile("geeignet", b.begruendung + " Waiting for a place on the ladder.");
   });
   const zahl = Object.fromEntries(STATUS.map((s) => [s, liste.filter((x) => x.status === s).length]));
-  const gruende = Object.fromEntries(["kein_ebay", "gesperrt", "im_test", "neu", "genug"].map((a) => [a, liste.filter((x) => x.status === "nicht_geeignet" && x.art === a).length]));
+  const gruende = Object.fromEntries(["kein_ebay", "gesperrt", "im_test", "neu", "genug", "verkauft"].map((a) => [a, liste.filter((x) => x.status === "nicht_geeignet" && x.art === a).length]));
   const summe = (f) => liste.filter(f).reduce((s, x) => s + (Number(x.impressionen_90d) || 0), 0);
   const kpi = {
     produkte: liste.length, impressionen90: summe(() => true),

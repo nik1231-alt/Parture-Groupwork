@@ -33,6 +33,7 @@ export const EINSTELLUNGEN = {
   leiterTageWerbung: 14,     // Prüfzeit nach dem Einschalten der Werbung
   leiterTagePreis: 21,       // Prüfzeit nach der Preissenkung (Verkäufe reagieren langsamer)
   leiterMax: 20,             // höchstens so viele Angebote stehen gleichzeitig auf der Leiter
+  leiterNurOhneVerkauf: "ja", // Niko 20.11.: Angebote, die bei eBay schon verkauft haben, nicht anfassen ("nein" = auch verkaufte)
   leiterBewegung: "hand",    // Niko 20.11.: erst einmal nur per Knopf; "automatisch" = der Tageslauf zieht und bewertet selbst
   leiterKontrolle: true,     // der tägliche Lauf lost zu jedem aufgenommenen Angebot eines als Kontrollgruppe aus (bleibt unverändert, Vergleich je Stufe)
   werbesatz: 0.1,            // Werbesatz für eBay Promoted Listings (Anteil am Verkaufspreis, nur bei Verkauf fällig)

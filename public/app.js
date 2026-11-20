@@ -658,7 +658,7 @@ const STATUS_TEXT = { nicht_geeignet: "Not eligible", geeignet: "Eligible", kont
   preis: "Phase 3 · Lower price", pruefung: "Phase 4 · Manual check", erholt: "Seen again", raus: "Left, pausing" };
 const STATUS_KLASSE = { nicht_geeignet: "grau", geeignet: "offen", kontrolle: "kontrolle", titel: "phase", werbung: "phase", preis: "phase", pruefung: "warn", erholt: "gut", raus: "grau" };
 const STATUS_REIHE = ["nicht_geeignet", "geeignet", "kontrolle", "titel", "werbung", "preis", "pruefung", "erholt", "raus"];
-const GRUND_TEXT = { genug: "Enough impressions already", neu: "Too new or no data yet", kein_ebay: "No active eBay listing", gesperrt: "Blocked by a price test", im_test: "In a title test" };
+const GRUND_TEXT = { genug: "Enough impressions already", neu: "Too new or no data yet", kein_ebay: "No active eBay listing", gesperrt: "Blocked by a price test", im_test: "In a title test", verkauft: "Already sold on eBay" };
 const statusChip = (s) => el("span", { class: "status " + (STATUS_KLASSE[s] || ""), text: STATUS_TEXT[s] || s });
 
 // Funnel-Seite (Niko 20.11.: "sehr intuitiv durchbewegen, leicht verständlich, übersichtlich, anwendungsbezogen"):
@@ -683,13 +683,20 @@ function zeichneLeiter(l) {
           el("li", { text: "Phase 1 new title (AI + rule check) → Phase 2 ads (only if the listing is not advertised yet; otherwise it skips to the price) → Phase 3 lower price → Phase 4 manual check." }),
           el("li", { text: `After each waiting time you decide: “Seen again” (at least ${zahl(f.kpi.grenze90)} impressions per 90 days) or the next phase. The app shows the numbers and a recommendation.` }),
           el("li", { text: "Nothing changes on eBay until an admin approves it. Every step is in the history and the Log." })))),
-    datenBand(l),
+    vorschauBand(),  datenBand(l),
     schrittLeiste(l),
     el("div", { class: "reiterleiste", role: "tablist", "aria-label": "Funnel views" },
       reiter("work", "Work", offen), reiter("overview", "Overview"), reiter("all", "All products", f.kpi.produkte)),
     tab === "overview" ? [kpiLeiste(l), trichterBild(l), wirkungTabelle(l)]
       : tab === "all" ? statusTabelle(f)
       : arbeitsBereich(l));
+}
+
+// Auf VORSCHAU deutlich sagen, dass hier nichts bei eBay passiert (20.11.: die erste Tranche wurde dort statt auf PROD gestartet)
+function vorschauBand() {
+  if (zustand.betrieb?.umgebung !== "vorschau") return null;
+  return el("div", { class: "hinweis hinweis-warnung band" }, el("strong", { text: "Preview: nothing here changes eBay. " }), "This copy has its own data and only does dry runs. Real changes happen on ",
+    el("a", { href: "https://app.parture-team.com/#ladder/work", text: "app.parture-team.com" }), ".");
 }
 
 // Band oben, solange die eBay-Daten alt sind: dann bewegen sich Prüfzeiten und Messungen nicht
@@ -730,8 +737,8 @@ function arbeitsBereich(l) {
   const fertig = A.filter((a) => a.stufe === "raus" && a.ergebnis !== "kontrolle");
   return [
     istAdmin() ? ziehenPanel(l) : null,
-    gruppe("freigeben", "Approve new titles", "Old title on the left, new one on the right; added words are highlighted. Tick several to approve them at once.", titelOffen, istAdmin() && titelOffen.length ? sammelFreigabe(titelOffen, l) : null),
-    sonstOffen.length ? gruppe("freigeben-2", "Approve ads or price", "Ads only for listings that are not advertised yet; the app checks eBay right before and otherwise moves the listing to the price step.", sonstOffen) : null,
+    gruppe("freigeben", "Approve new titles", "Old title on the left, new one on the right; added words are highlighted. “Approve all” approves the whole list; tick rows to approve only some.", titelOffen, istAdmin() && titelOffen.length ? sammelFreigabe(titelOffen, l, "titel") : null),
+    sonstOffen.length ? gruppe("freigeben-2", "Approve ads or price", "Ads only for listings that are not advertised yet; the app checks eBay right before and otherwise moves the listing to the price step.", sonstOffen, istAdmin() ? sammelFreigabe(sonstOffen, l, "sonst") : null) : null,
     gruppe("warten", "Waiting time running", "The change is live. The bars compare this listing with the control group over the same days.", warten),
     gruppe("entscheiden", "Decide", "The waiting time is over (or title, ads and price did not help). The app recommends a step; you decide.", entscheiden),
     el("details", { id: "ergebnis", class: "panel", style: "margin-top:18px" }, el("summary", { text: `Left the ladder (${fertig.length})` }), fertig.length ? el("div", { class: "tabelle" }, fertig.map((a) => leiterZeile(a, l))) : el("p", { class: "leise klein", text: "Nothing yet." })),
@@ -752,7 +759,7 @@ function ziehenPanel(l) {
     knopf.textContent = mit ? `Draw ${zahl(Math.min(n, Math.floor(gezogen.length / 2)))} + ${zahl(Math.ceil(gezogen.length / 2))} control` : `Put ${zahl(gezogen.length)} on the ladder`;
     knopf.disabled = !liste.length;
     fuelle(vorschau,
-      el("p", { class: "leise klein", text: mit ? `These ${zahl(gezogen.length)} listings go into the lot (best eBay sellers first). Half go on the ladder, half stay unchanged as the control group, decided by chance.` : `These ${zahl(gezogen.length)} listings go on the ladder (best eBay sellers first), without a control group: their effect cannot be told apart from the season.` }),
+      el("p", { class: "leise klein", text: mit ? `These ${zahl(gezogen.length)} listings go into the lot (in a fixed order, most impressions first). Half go on the ladder, half stay unchanged as the control group, decided by chance.` : `These ${zahl(gezogen.length)} listings go on the ladder (most impressions first), without a control group: their effect cannot be told apart from the season.` }),
       beworben ? el("p", { class: "leise klein", text: `${zahl(beworben)} of them are already advertised on eBay and will skip Phase 2 (ads).` }) : null,
       el("ol", { class: "zieh-liste" }, gezogen.slice(0, 40).map((p) => el("li", {}, el("span", { class: "titel-kurz", text: p.title || "(untitled)" }),
         el("span", { class: "leise klein", text: `No. ${p.number} · ${zahl(p.impressionen_90d)} imp. · ${zahl(p.units_90d)} sales` }), p.beworben ? el("span", { class: "status grau", text: "advertised" }) : null))),
@@ -771,19 +778,32 @@ function ziehenPanel(l) {
     vorschau);
 }
 
-// Mehrere Titel auf einmal freigeben: die Häkchen in den Zeilen, ein Knopf
-function sammelFreigabe(liste, l) {
-  const zaehler = el("span", { class: "leise klein" }), knopf = el("button", { class: "knopf knopf-akzent knopf-klein", type: "button", disabled: true });
-  const alle = el("input", { type: "checkbox", "aria-label": "Tick all", onchange: () => { for (const c of document.querySelectorAll(".zeile-haken")) c.checked = alle.checked; aktualisiere(); } });
-  const gewaehlt = () => [...document.querySelectorAll(".zeile-haken:checked")].map((c) => c.value);
-  const aktualisiere = () => { const n = gewaehlt().length; knopf.disabled = !n; knopf.textContent = n ? `Approve ${n} title${n === 1 ? "" : "s"}${l.schreiben?.titel ? " · LIVE" : " · dry run"}` : "Approve ticked"; };
-  document.addEventListener("change", (ev) => { if (ev.target.classList?.contains("zeile-haken")) aktualisiere(); });
-  zweiStufig(knopf, "Really change these on eBay?", async () => {
-    try { const r = await post("/api/leiter/freigabe-mehrere", { numbers: gewaehlt() }); meldung(`${r.angewendet} changed on eBay, ${r.probelauf} dry runs, ${r.fehler} failed.${r.fehler ? " See the history of the failed ones." : ""}`); } catch (e) { meldung(e.message); }
+// Sammelfreigabe (Niko 20.11.: "einen Button für Bulk Approval"): ein großer Knopf "Approve all N" für die ganze Gruppe,
+// daneben "Approve ticked" für eine Auswahl über die Häkchen in den Zeilen. Jedes Angebot wird einzeln gegen eBay geprüft.
+// gruppe: "titel" oder "sonst" (Werbung und Preis); live: schreibt die App gerade wirklich bei eBay?
+function sammelFreigabe(liste, l, gruppe = "titel") {
+  const freigebbar = liste.filter((a) => a.vorschlag && !a.vorschlag.nichtMoeglich);
+  const live = gruppe === "titel" ? l.schreiben?.titel : l.schreiben?.werbung || l.schreiben?.preis;
+  const was = gruppe === "titel" ? "title" : "step";
+  const haken = () => [...document.querySelectorAll(`.zeile-haken[data-gruppe="${gruppe}"]`)];
+  const gewaehlt = () => haken().filter((c) => c.checked).map((c) => c.value);
+  const alleKnopf = el("button", { class: "knopf " + (live ? "knopf-live" : "knopf-akzent"), type: "button", disabled: !freigebbar.length,
+    text: `Approve all ${freigebbar.length} ${was}${freigebbar.length === 1 ? "" : "s"} · ${live ? "LIVE" : "dry run"}` });
+  const auswahlKnopf = el("button", { class: "knopf knopf-klein", type: "button", disabled: true, text: "Approve ticked" });
+  const alle = el("input", { type: "checkbox", "aria-label": "Tick all", onchange: () => { for (const c of haken()) c.checked = alle.checked; aktualisiere(); } });
+  const aktualisiere = () => { const n = gewaehlt().length; auswahlKnopf.disabled = !n; auswahlKnopf.textContent = n ? `Approve ${n} ticked` : "Approve ticked"; };
+  const los = async (nummern, knopf) => {
+    for (const k of [alleKnopf, auswahlKnopf]) k.disabled = true;
+    knopf.textContent = `Approving ${nummern.length} … (about 2 s each)`;
+    try { const r = await post("/api/leiter/freigabe-mehrere", { numbers: nummern }); meldung(`${r.angewendet} changed on eBay, ${r.probelauf} dry runs, ${r.fehler} failed.${r.fehler ? " Open “More → History” of the failed ones." : ""}`); } catch (e) { meldung(e.message); }
     await ladeLeiter(); ladeZaehler();
-  });
-  queueMicrotask(aktualisiere);
-  return el("span", { class: "sammel" }, el("label", { class: "sammel-alle" }, alle, " all"), knopf, zaehler);
+  };
+  zweiStufig(alleKnopf, live ? `Really change all ${freigebbar.length} on eBay?` : `Run ${freigebbar.length} dry runs?`, () => los(freigebbar.map((a) => a.number), alleKnopf));
+  zweiStufig(auswahlKnopf, live ? "Really change the ticked ones on eBay?" : "Run the dry runs?", () => los(gewaehlt(), auswahlKnopf));
+  // Ein Listener für alle Häkchen der Seite (nicht bei jedem Neuzeichnen einen neuen)
+  if (!window.__sammelHaken) { window.__sammelHaken = true; document.addEventListener("change", (ev) => { if (ev.target.classList?.contains("zeile-haken")) zustand.sammelAktualisieren?.forEach((f) => f()); }); }
+  (zustand.sammelAktualisieren ||= new Set()).add(aktualisiere);
+  return el("span", { class: "sammel" }, alleKnopf, el("label", { class: "sammel-alle" }, alle, " tick all"), auswahlKnopf);
 }
 
 // Eine Zeile der Arbeitsliste: Bild, Titel (alt → neu), Kennzahlen, Status, ein Hauptknopf; Aufklappen für alles Weitere
@@ -799,14 +819,15 @@ function leiterZeile(a, l) {
   let mitte = null, haupt = null, haken = null;
   if (a.phase === "vorschlag" && a.stufe === "titel") {
     mitte = v ? titelDiff(v.alt, v.titel) : el("p", { class: "leise klein", text: (zustand.leiterStatus?.ki ? "No suggestion yet." : "No AI key: enter a title below.") + " Open the row to enter one or ask the AI." });
-    if (istAdmin() && v && !v.nichtMoeglich) { haken = el("input", { type: "checkbox", class: "zeile-haken", value: a.number, "aria-label": "Tick for approval" }); haupt = freigabeKnopf(a, live); }
+    if (istAdmin() && v && !v.nichtMoeglich) { haken = el("input", { type: "checkbox", class: "zeile-haken", "data-gruppe": "titel", value: a.number, "aria-label": "Tick for approval" }); haupt = freigabeKnopf(a, live); }
     else if (istAdmin() && !v) haupt = el("button", { class: "knopf knopf-klein", type: "button", text: "Ask the AI", onclick: (ev) => { ev.target.disabled = true; ev.target.textContent = "Asking …"; leiterAktion("/api/leiter/neuvorschlag", { number: a.number }, "New suggestion ready."); } });
   } else if (a.phase === "vorschlag" && a.stufe === "werbung") {
     mitte = el("p", { class: "klein", text: a.beworben ? `Already advertised in “${a.beworben}”. Approving moves it straight to the price step; no second ad is created.` : `Switch on Promoted Listings at ${Math.round((v?.satz ?? 0) * 100)} % of the sale price (paid only when it sells after an ad click).` });
+    if (istAdmin()) haken = el("input", { type: "checkbox", class: "zeile-haken", "data-gruppe": "sonst", value: a.number, "aria-label": "Tick for approval" });
     if (istAdmin()) haupt = a.beworben ? zweiStufig(el("button", { class: "knopf knopf-akzent knopf-klein", type: "button", text: "Move to price step" }), "Really?", () => leiterAktion("/api/leiter/freigabe", { number: a.number }, (r) => r.text)) : freigabeKnopf(a, live);
   } else if (a.phase === "vorschlag" && a.stufe === "preis") {
     mitte = v?.nichtMoeglich ? el("p", { class: "hinweis hinweis-warnung klein", text: v.nichtMoeglich }) : el("p", { class: "klein" }, "Price ", el("del", { text: eur(v?.alt) }), " → ", el("strong", { text: eur(v?.neu) }), ` (−${Math.round((v?.schritt ?? 0) * 100)} %). The app does not know the costs: check that it still pays off.`);
-    if (istAdmin() && v && !v.nichtMoeglich) haupt = freigabeKnopf(a, live);
+    if (istAdmin() && v && !v.nichtMoeglich) { haupt = freigabeKnopf(a, live); haken = el("input", { type: "checkbox", class: "zeile-haken", "data-gruppe": "sonst", value: a.number, "aria-label": "Tick for approval" }); }
   } else if (a.phase === "laeuft") {
     const s = a.stand, e = empfehlung(a, l);
     mitte = el("div", {}, el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(Math.min(1, s.gelaufen / s.tage) * 100)}%` })),

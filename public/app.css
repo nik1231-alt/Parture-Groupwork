@@ -514,3 +514,6 @@ a.knopf { text-decoration: none; }
   .lzeile-aktion { grid-column: 3; }
   .reiterleiste { overflow-x: auto; }
 }
+
+.sammel { flex-wrap: wrap; justify-content: flex-end; }
+.abschnitt-kopf { flex-wrap: wrap; }

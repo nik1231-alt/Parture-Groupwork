@@ -8,7 +8,7 @@ import * as protokoll from "./protokoll.mjs";
 import * as leiter from "./leiter.mjs";
 
 // Ohne Kontrollgruppe, damit die Aufnahme in den älteren Tests vorhersagbar bleibt; die Kontrollgruppe hat eigene Tests unten
-const E = { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 900, leiterMax: 3, leiterKontrolle: false };
+const E = { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 900, leiterMax: 3, leiterKontrolle: false, leiterNurOhneVerkauf: "nein" };
 const ADMIN = { name: "niko", rolle: "admin" }, BUILDER = { name: "anna", rolle: "builder" };
 const T0 = new Date("2026-11-20T09:00:00Z");
 const tag = (n) => new Date(T0.getTime() + n * 864e5);
@@ -219,7 +219,7 @@ test("Funnel: jedes Produkt hat genau einen Status und einen Grund, in der Reihe
     X: ["nicht_geeignet", "kein_ebay"], OK: ["nicht_geeignet", "genug"], N: ["nicht_geeignet", "neu"] });
   assert.ok(f.liste.every((x) => x.grund && x.grund.length > 10), "jeder Status hat einen lesbaren Grund");
   assert.equal(f.zahl.geeignet, 3); assert.equal(f.zahl.nicht_geeignet, 4); assert.equal(f.kpi.aufLeiter, 1);
-  assert.deepEqual(f.gruende, { kein_ebay: 1, gesperrt: 1, im_test: 0, neu: 1, genug: 1 });
+  assert.deepEqual(f.gruende, { kein_ebay: 1, gesperrt: 1, im_test: 0, neu: 1, genug: 1, verkauft: 0 });
   assert.equal(f.kpi.impressionen90, 300 + 301 + 302 + 303 + 304 + 10 + 5000 + 5);
   // "geeignet" im Funnel = genau die Kandidaten des nächsten Laufs
   assert.deepEqual(f.liste.filter((x) => x.status === "geeignet").map((x) => x.number).sort(), leiter.kandidaten(d, produkte, E, T0, { gesperrt: new Set(["D"]) }).map((p) => p.number).sort());
@@ -329,4 +329,16 @@ test("nach einer Titeländerung liest die App bei eBay nach und nennt den neuen 
   const r = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
   assert.equal(r.wert.ausgang, "angewendet");
   assert.match(r.wert.text, /Now on eBay: “Wandhalter passend für A”/);
+});
+
+// Niko 20.11.: Angebote, die bei eBay schon verkauft haben, werden nicht angefasst (Standard), "nein" schaltet das ab
+test("schon bei eBay verkauft: nicht geeignet (eigener Grund), nie verkaufte bleiben; abschaltbar", () => {
+  const d = neueDb(), en = { ...E, leiterNurOhneVerkauf: "ja" };
+  const produkte = [...shop(), { number: "N0", title: "nie verkauft", created_at: "2025-12-01T10:00:00Z", units_total: 0, units_90d: 0, impressionen_90d: 200, ebay_aktiv: 1 }];
+  assert.deepEqual(leiter.kandidaten(d, produkte, en, T0).map((p) => p.number), ["N0"], "A–E haben verkauft, nur N0 bleibt");
+  const f = leiter.trichter(d, produkte, en, T0);
+  assert.equal(f.gruende.verkauft, 5);
+  assert.match(f.liste.find((x) => x.number === "A").grund, /Already sold on eBay \(10 in total\)/);
+  assert.equal(leiter.nimmVonHandAuf(d, ADMIN, "A", produkte, en, T0).status, 409, "auch von Hand nicht");
+  assert.equal(leiter.kandidaten(d, produkte, { ...en, leiterNurOhneVerkauf: "nein" }, T0).length, 6, "abgeschaltet: alle mit wenig Impressionen");
 });
