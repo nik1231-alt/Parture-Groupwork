@@ -637,101 +637,12 @@ function laufAnsicht(l, skala) {
       el("p", { class: "leise klein", text: "Impressions are per 90 days: the 30 days before a phase against the waiting time of the phase, scaled up. The control group is the shop's listings that got no change; it shows what happened in the shop meanwhile. Effect and range are for a typical listing compared with the control group." }))];
 }
 
-// ======================================================= Problem (problem.mjs): wie ungleich Sichtbarkeit und Verkäufe verteilt sind
-const SVG_NS = "http://www.w3.org/2000/svg";
-function svg(tag, attrs = {}, ...kinder) {
-  const n = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) if (v != null && v !== false) n.setAttribute(k, String(v));
-  for (const k of kinder.flat()) if (k != null) n.append(k);
-  return n;
-}
-const svgText = (x, y, t, klasse = "", anker = "start") => { const n = svg("text", { x, y, class: "d-text " + klasse, "text-anchor": anker }); n.textContent = t; return n; };
+// ======================================================= Problem (Rechnung: problem.mjs, Oberfläche: public/problem.js)
 const pz = (v, stellen = 0) => (v == null ? "–" : (100 * v).toLocaleString(LOCALE, { maximumFractionDigits: stellen }) + " %");
 
 async function ladeProblem() {
   const root = $("#ansicht-problem");
-  try { zeichneProblem(await api("/api/problem")); } catch (e) { zeigeFehler(e, ladeProblem); fuelle(root); }
-}
-
-function zeichneProblem(d) {
-  const kachel = (titel, wert, unter, klasse = "") => el("div", { class: "kpi " + klasse }, el("div", { class: "kpi-titel", text: titel }), el("div", { class: "kpi-wert", text: wert }), unter ? el("div", { class: "kpi-unter", text: unter }) : null);
-  const v80 = d.verkaeufe.fuer80, i80 = d.impressionen.fuer80;
-  fuelle($("#ansicht-problem"),
-    el("div", { class: "einstieg" }, el("h1", { text: "Problem" }),
-      el("p", { class: "leise", text: "Live from the shop's eBay numbers (active eBay listings, eBay sales and impressions, last 90 days; other marketplaces are left out on purpose): a few listings carry most of the sales, while a long tail is hardly ever shown to buyers. This page is the reason the Funnel exists." })),
-    el("div", { class: "kpis" },
-      kachel("eBay listings", zahl(d.ebayAktiv), `active, of ${zahl(d.produkte)} products in the catalogue`),
-      kachel("Sold nothing on eBay", zahl(d.ohneVerkauf), `${pz(d.ohneVerkauf / d.ebayAktiv)} of eBay listings, last 90 days`, "warn"),
-      kachel("Barely seen on eBay", zahl(d.kaumGesehen), `${pz(d.kaumGesehen / d.ebayAktiv)} of eBay listings under ${zahl(d.grenze90)} impressions`, "offen"),
-      kachel("Never shown", zahl(d.ohneImpressionen), "eBay listings with 0 impressions in 90 days", "grau")),
-    el("div", { class: "aussagen" },
-      aussage(pz(v80?.anteil, 1), "of the eBay listings bring 80 % of the eBay sales", `${zahl(v80?.anzahl)} of ${zahl(d.verkaeufe.anzahl)} listings · the best 10 % bring ${pz(d.verkaeufe.top10)}`, "phase"),
-      aussage(pz(i80?.anteil), "of the eBay listings get 80 % of the impressions", `${zahl(i80?.anzahl)} of ${zahl(d.impressionen.anzahl)} listings · the best 10 % get ${pz(d.impressionen.top10)}`, "kontrolle")),
-    el("section", { class: "panel" },
-      el("h2", { text: "Where sales and visibility come from" }),
-      el("p", { class: "leise klein", text: "eBay listings sorted from best to worst. The curve shows how much of the total the best x % bring. The higher and steeper it rises, the more the total depends on a few products. The dashed line would be a shop where every product does equally well." }),
-      konzentrationsBild(d)),
-    el("div", { class: "problem-raster" },
-      el("section", { class: "panel" }, el("h2", { text: "Seen × sold" }),
-        el("p", { class: "leise klein", text: `Every active eBay listing in one of four fields. “Seen” means at least ${zahl(d.grenze90)} impressions in 90 days, the limit of the diagnosis.` }),
-        vierFelder(d)),
-      el("section", { class: "panel" }, el("h2", { text: "How often buyers see a listing" }),
-        el("p", { class: "leise klein", text: "eBay listings by impressions in 90 days. The orange columns are under the limit: that is where the Funnel starts." }),
-        stufenBild(d))),
-    el("div", { class: "panel kopf-zeile weiter" },
-      el("div", {}, el("h2", { text: "What we do about it" }), el("p", { class: "leise klein", text: `The ${zahl(d.kaumGesehen)} barely seen listings go into the Funnel: new title, then ads, then a lower price, each step measured against a control group.` })),
-      el("a", { class: "knopf knopf-akzent", href: "#ladder", text: "Open the Funnel →" })));
-}
-
-function aussage(gross, satz, unter, klasse) {
-  return el("div", { class: "aussage " + klasse }, el("div", { class: "aussage-zahl", text: gross }), el("div", { class: "aussage-satz", text: satz }), el("div", { class: "leise klein", text: unter }));
-}
-
-// Konzentrationskurve: x = Anteil der Produkte (beste zuerst), y = Anteil der Summe; Markierung beim 80-%-Punkt
-function konzentrationsBild(d) {
-  const B = 720, H = 330, l = 48, r = 20, o = 18, u = 42, w = B - l - r, h = H - o - u;
-  const x = (p) => l + w * p, y = (a) => o + h * (1 - a);
-  const pfad = (kurve) => kurve.map((pt, i) => `${i ? "L" : "M"}${x(pt.produkte).toFixed(1)},${y(pt.anteil).toFixed(1)}`).join(" ");
-  const gitter = [0, 0.2, 0.4, 0.6, 0.8, 1].flatMap((t) => [svg("line", { x1: l, x2: B - r, y1: y(t), y2: y(t), class: "d-gitter" }), svgText(l - 8, y(t) + 4, pz(t), "d-klein", "end"),
-    svg("line", { x1: x(t), x2: x(t), y1: o, y2: o + h, class: "d-gitter" }), svgText(x(t), H - u + 18, pz(t), "d-klein", "middle")]);
-  const marke = (pt, klasse, text, unten) => pt ? [svg("line", { x1: x(pt.anteil), x2: x(pt.anteil), y1: y(0.8), y2: o + h, class: "k-hilfslinie " + klasse }),
-    svg("circle", { cx: x(pt.anteil), cy: y(0.8), r: 5, class: "k-punkt " + klasse }), svgText(x(pt.anteil) + (unten ? 10 : 16), y(0.8) + (unten ? 20 : -14), text, "d-wert " + klasse)] : [];
-  return el("div", { class: "d-rahmen" }, svg("svg", { viewBox: `0 0 ${B} ${H}`, class: "diagramm", role: "img", "aria-label": `80 % of eBay sales come from ${pz(d.verkaeufe.fuer80?.anteil, 1)} of the listings, 80 % of impressions from ${pz(d.impressionen.fuer80?.anteil)} of the eBay listings` },
-    ...gitter,
-    svg("line", { x1: x(0), y1: y(0), x2: x(1), y2: y(1), class: "k-gleich" }),
-    svg("line", { x1: l, x2: B - r, y1: y(0.8), y2: y(0.8), class: "k-achtzig" }), svgText(B - r, y(0.8) - 6, "80 %", "d-klein", "end"),
-    svg("path", { d: pfad(d.impressionen.kurve), class: "k-kurve kontrolle" }),
-    svg("path", { d: pfad(d.verkaeufe.kurve), class: "k-kurve phase" }),
-    ...marke(d.verkaeufe.fuer80, "phase", `Sales: ${pz(d.verkaeufe.fuer80?.anteil, 1)} of listings`, false),
-    ...marke(d.impressionen.fuer80, "kontrolle", `Impressions: ${pz(d.impressionen.fuer80?.anteil)}`, true),
-    svgText(l + w / 2, H - 6, "Share of eBay listings, best first", "d-klein", "middle")),
-    el("div", { class: "legende" }, el("span", { class: "leg phase", text: "eBay sales" }), el("span", { class: "leg kontrolle", text: "eBay impressions" }), el("span", { class: "leg gleich", text: "Every product equal" })));
-}
-
-// Vier Felder gesehen × verkauft: Fläche je Feld nach Anzahl, das Ziel des Funnels ist markiert
-function vierFelder(d) {
-  const f = d.felder, summe = Math.max(1, f.gesehenVerkauft + f.gesehenNichtVerkauft + f.kaumGesehenVerkauft + f.kaumGesehenNichtVerkauft);
-  const feld = (n, titel, unter, klasse) => el("div", { class: "feld4 " + klasse },
-    el("div", { class: "feld4-zahl", text: zahl(n) }), el("div", { class: "feld4-titel", text: titel }), el("div", { class: "feld4-unter", text: `${pz(n / summe)} · ${unter}` }),
-    el("div", { class: "feld4-balken" }, el("i", { style: `width:${(100 * n) / summe}%` })));
-  return el("div", { class: "felder4" },
-    el("div", {}), el("div", { class: "feld4-kopf", text: "sold" }), el("div", { class: "feld4-kopf", text: "not sold" }),
-    el("div", { class: "feld4-seite", text: "seen" }),
-    feld(f.gesehenVerkauft, "Works", "keep it as it is", "gut"),
-    feld(f.gesehenNichtVerkauft, "Seen, not bought", "price, photos or fit", "warn"),
-    el("div", { class: "feld4-seite", text: "barely seen" }),
-    feld(f.kaumGesehenVerkauft, "Sells despite few views", "more visibility pays off first", "ziel"),
-    feld(f.kaumGesehenNichtVerkauft, "Invisible", "the Funnel's main target", "ziel"));
-}
-
-// Säulen der Impressions-Stufen; Stufen unter der Grenze sind orange
-function stufenBild(d) {
-  const max = Math.max(1, ...d.stufen.map((s) => s.anzahl));
-  const name = (s) => s.bis === 0 ? "0" : s.bis == null ? `${zahl(s.von)}+` : `${zahl(s.von)}–${zahl(s.bis)}`;
-  return el("div", { class: "stufen-bild" }, d.stufen.map((s) => el("div", { class: "stufe-saeule" + (s.unterGrenze ? " unter" : "") },
-    el("div", { class: "stufe-wert", text: zahl(s.anzahl) }),
-    el("div", { class: "stufe-balken" }, el("i", { style: `height:${Math.max(2, (100 * s.anzahl) / max)}%` })),
-    el("div", { class: "stufe-name", text: name(s) }))));
+  try { Problem.zeichne(root, await api("/api/problem")); } catch (e) { zeigeFehler(e, ladeProblem); fuelle(root); }
 }
 
 // ======================================================= Leiter (Titel -> Werbung -> Preis -> manuelle Prüfung)

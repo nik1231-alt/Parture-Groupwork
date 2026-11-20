@@ -414,7 +414,7 @@ const ROUTEN = {
     return { number: nr, leiter: zeile, verlauf, protokoll: eintraege };
   },
   // Seite Problem: wie ungleich Sichtbarkeit und Verkäufe verteilt sind (problem.mjs), live aus derselben Produktliste
-  "/api/problem": () => { const produkte = produkteLaden(); return problem.auswerten(produkte, leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d); },
+  "/api/problem": () => { const produkte = produkteLaden(), e = einst(); return { ...problem.auswerten(produkte, leiteSchwellenAb(produkte, e, new Date()).wenigImpressionen90d), werbesatz: e.werbesatz, preisSchritt: e.preisSchritt }; },
   // Seite Results, Abschnitt "Day by day": Wirkung jeder Phase gegen die Kontrollgruppe, mit Tageskurve (dashboard.mjs)
   "/api/dashboard": () => dashboardDaten(),
   // Seite Results: Wirkung jeder Phase der Leiter auf die Impressionen, je Lauf und gesamt (ergebnisse.mjs); das Beispiel hat erfundene Zahlen
