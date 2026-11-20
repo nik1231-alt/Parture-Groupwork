@@ -200,16 +200,16 @@ function zeile(p) {
       bild ? el("img", { class: "bild", src: bild, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
       el("div", { class: "name" }, el("div", { class: "titel", text: p.title || "(untitled)" }), el("div", { class: "nummer", text: "No. " + p.number })),
       el("span", { class: "zahl", text: eur(p.avg_price) }),
-      el("span", { class: "zahl", text: zahl(p.units_90d ?? 0) }),
+      el("span", { class: "zahl", text: zahl(p.units_90d) }),
       el("span", { class: "zahl", text: zahl(p.impressionen_90d) }),
       el("span", { class: "chip" }, el("span", { class: "punkt", style: `--punkt: var(--g-${p.gruppe})` }), p.empfehlung),
       el("span", { class: "pfeil", "aria-hidden": "true", text: "›" }),
-      el("div", { class: "kennzahlen-kurz" }, el("span", { text: eur(p.avg_price) }), el("span", { text: `${zahl(p.units_90d ?? 0)} sales` }), el("span", { text: `${zahl(p.impressionen_90d)} impressions` }))),
+      el("div", { class: "kennzahlen-kurz" }, el("span", { text: eur(p.avg_price) }), el("span", { text: `${zahl(p.units_90d)} sales` }), el("span", { text: `${zahl(p.impressionen_90d)} impressions` }))),
     el("div", { class: "zeilendetails" },
       el("p", { text: p.begruendung }),
       el("dl", { class: "kennzahlen" },
-        kennzahl("Views 90 d", zahl(p.aufrufe_90d)), kennzahl("Click rate", prozent(p.klickrate, 2)), kennzahl("Conversion", prozent(p.conversion)),
-        kennzahl("eBay sales total", zahl(p.units_total ?? 0)), kennzahl("Last sold", datum(p.last_sold_at)), kennzahl("Listed since", datum(p.created_at))),
+        kennzahl("Views 90 d", zahl(p.aufrufe_90d)), kennzahl("Click rate", prozent(p.klickrate, 2)), kennzahl("eBay conversion", prozent(p.conversion)),
+        kennzahl("eBay sales total", zahl(p.units_total)), kennzahl("Last sold", datum(p.last_sold_at)), kennzahl("In catalogue since", datum(p.created_at))),
       hinweis, mehrInfo));
 }
 
@@ -229,7 +229,7 @@ async function ladeProduktMehr(nr, ziel) {
         el("div", {}, el("h3", { text: werte.length ? `Variants · ${varianten.option || "option"}` : "Variants" }),
           werte.length ? el("ul", { class: "varianten" }, werte.map((w) => el("li", {}, el("span", { text: w.value }), el("span", { class: "leise", text: `${w.sku} · ${eur(w.price)}` }))))
             : el("p", { class: "leise klein", text: "One version only, no variants." })),
-        el("div", {}, el("h3", { text: "eBay listing" }),
+        el("div", {}, el("h3", { text: "Channels · reference only" }),
           p.kanaele.length ? el("ul", { class: "varianten" }, p.kanaele.map((k) => el("li", {}, el("span", { text: KANAL[k.channel] || k.channel }),
             el("span", { class: "leise", text: `${k.listed ? "listed" : "not listed"}${k.preis_aktuell ? " · " + eur(k.preis_aktuell) : ""} · ${zahl(k.units_90d ?? 0)} sales in 90 days` }))))
             : el("p", { class: "leise klein", text: "No eBay listing." }))),
@@ -675,7 +675,7 @@ function zeichneLeiter(l) {
   const offen = l.angebote.filter((a) => a.phase === "vorschlag" || a.phase === "offen" || (a.phase === "laeuft" && a.stand && a.stand.gelaufen >= a.stand.tage)).length;
   fuelle($("#ansicht-ladder"),
     el("div", { class: "einstieg" }, el("h1", { text: "Funnel" }),
-      el("p", { class: "leise", text: "Find the eBay listings buyers rarely see, change one thing at a time, and measure each change against a control group." }),
+      el("p", { class: "leise", text: "Find the eBay listings buyers rarely see, change one thing at a time, and measure each change against a control group. Only eBay performance counts here." }),
       el("details", { class: "wie" }, el("summary", { text: "How it works" }),
         el("ol", { class: "wie-liste" },
           el("li", { text: `Eligible: under ${zahl(f.kpi.grenze90)} impressions in 90 days, active on eBay, not blocked.` }),

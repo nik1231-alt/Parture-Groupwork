@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { ladeProdukte, ladeSperre, baueBewertung } from "./bewertung.mjs";
+import { ladeProdukte, ladeSperre, baueBewertung, ebayTrafficFilter, ladeImpressionenProTag } from "./bewertung.mjs";
 import { leiteSchwellenAb, TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 import * as einstellungen from "./einstellungen.mjs";
 import * as experimente from "./experimente.mjs";
@@ -66,11 +66,7 @@ const adminNoetig = (ctx) => { if (ctx?.rolle !== "admin") throw Object.assign(n
 const ki = kiTitel.erzeuge();
 const tabelleDa = (db, t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
 // Impressionen je Tag eines Produkts für die Tage nach "von" bis einschließlich "bis" (JJJJ-MM-TT), aus den Tageswerten in pm.db
-const impTag = (nummer, von, bis) => mitDb((db) => {
-  const tage = Math.round((Date.parse(bis) - Date.parse(von)) / 864e5);
-  if (tage <= 0 || !tabelleDa(db, "traffic_tag")) return 0;
-  return (db.prepare("SELECT SUM(impressionen) s FROM traffic_tag WHERE number = ? AND datum > ? AND datum <= ?").get(nummer, von, bis).s || 0) / tage;
-});
+const impTag = (nummer, von, bis) => mitDb((db) => ladeImpressionenProTag(db, nummer, von, bis));
 const trafficBis = () => { try { return mitDb((db) => db.prepare("SELECT traffic_bis FROM stand").get()?.traffic_bis ?? null); } catch { return null; } };
 // Preis und Varianten eines Produkts für den Preisvorschlag der Stufe 3
 const leiterKontext = (nummer) => mitDb((db) => {
@@ -348,24 +344,22 @@ const ROUTEN = {
     return r.wert;
   },
   "/api/produkte": (q) => mitDb((db) => {
-    const suche = q.get("q") ? "%" + q.get("q").toLowerCase() + "%" : null;
-    // Traffic-Tabelle ist optional (eine pm.db vom Server hat sie evtl. nicht): dann bleiben die Felder leer.
-    const hatTraffic = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic'").get();
-    const tr = (spalte, tage) => hatTraffic ? `(SELECT SUM(${spalte}) FROM traffic t WHERE t.number = produkt.number AND t.tage = ${tage})` : "NULL";
-    const sql = "SELECT number, title, image_url, status, grams, print_s, ship_method, units_total, units_90d, avg_price, last_sold_at, "
-      + `${tr("impressionen", 30)} impressionen_30d, ${tr("aufrufe", 30)} aufrufe_30d, ${tr("transaktionen", 30)} transaktionen_30d, ${tr("impressionen", 90)} impressionen_90d, ${tr("aufrufe", 90)} aufrufe_90d `
-      + "FROM produkt" + (suche ? " WHERE lower(title) LIKE ? OR number LIKE ?" : "") + " ORDER BY units_90d DESC, units_total DESC LIMIT 500";
-    return suche ? db.prepare(sql).all(suche, suche) : db.prepare(sql).all();
+    const suche = (q.get("q") || "").toLowerCase();
+    return ladeProdukte(db).filter((p) => !suche || String(p.title || "").toLowerCase().includes(suche) || p.number.includes(suche))
+      .sort((a, b) => (b.units_90d || 0) - (a.units_90d || 0) || (b.units_total || 0) - (a.units_total || 0)).slice(0, 500);
   }),
   "/api/traffic": () => mitDb((db) => {
     if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic'").get()) return [];
-    return db.prepare("SELECT tage, SUM(impressionen) impressionen, SUM(aufrufe) aufrufe, SUM(transaktionen) transaktionen FROM traffic GROUP BY tage ORDER BY tage").all();
+    return db.prepare("SELECT tage, SUM(impressionen) impressionen, SUM(aufrufe) aufrufe, SUM(transaktionen) transaktionen FROM traffic t WHERE " + ebayTrafficFilter(db) + " GROUP BY tage ORDER BY tage").all();
   }),
   "/api/produkt": (q) => mitDb((db) => {
     const nr = q.get("nr");
     const p = db.prepare("SELECT * FROM produkt WHERE number = ?").get(nr);
     if (!p) throw Object.assign(new Error("Product " + String(nr).slice(0, 40) + " not found."), { status: 404 });
-    p.kanaele = db.prepare("SELECT channel, listed, external_id, preis_aktuell, kanal_status, units_total, units_90d, last_sold_at FROM kanal WHERE number = ? AND channel = 'ebay'").all(nr); // nur eBay (Scope)
+    const analyse = ladeProdukte(db).find((x) => x.number === nr);
+    if (!analyse) throw Object.assign(new Error("No eBay listing for this product."), { status: 404 });
+    Object.assign(p, analyse);
+    p.kanaele = db.prepare("SELECT channel, listed, external_id, preis_aktuell, kanal_status, units_total, units_90d, last_sold_at FROM kanal WHERE number = ?").all(nr);
     p.bilder = db.prepare("SELECT url, position, kind FROM bild WHERE number = ? ORDER BY position").all(nr);
     return p;
   }),
