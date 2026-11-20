@@ -566,6 +566,7 @@ const statusChip = (s) => el("span", { class: "status " + (STATUS_KLASSE[s] || "
 function zeichneLeiter(l) {
   const root = $("#ansicht-ladder");
   const st = l.status, f = l.trichter;
+  zustand.leiterStatus = st;
   const warten = l.angebote.filter((a) => a.phase === "vorschlag" || a.phase === "offen");
   const laufen = l.angebote.filter((a) => a.phase === "laeuft");
   const fertig = l.angebote.filter((a) => a.stufe === "raus" && a.ergebnis !== "kontrolle");
@@ -736,7 +737,15 @@ function leiterVorschlag(a) {
       for (const h of v.pruefung?.hinweise || []) aus.push(el("p", { class: "hinweis hinweis-warnung klein", text: h.text }));
       if (v.verworfen?.length) aus.push(el("details", { class: "klein" }, el("summary", { style: "cursor:pointer", text: `${v.verworfen.length} AI suggestion${v.verworfen.length === 1 ? " was" : "s were"} thrown away by the rule check` }),
         el("ul", {}, v.verworfen.map((x) => el("li", { text: `“${x.titel}”: ${x.verstoesse.map((y) => y.text).join(" ")}` })))));
-    } else aus.push(el("p", { class: "leise", text: letzter?.ereignis === "kein_vorschlag" ? "No suggestion yet: " + letzter.details?.text : "No title suggestion yet. It comes with the next ladder run, or enter one below." }));
+    } else {
+      // Die alte Meldung "no AI key" bleibt im Lebenslauf stehen, auch wenn der Schlüssel inzwischen eingetragen ist (20.11.):
+      // dann sagen, dass die KI jetzt bereitsteht, statt den alten Grund zu wiederholen
+      const kiJetztDa = zustand.leiterStatus?.ki && /no AI key/i.test(letzter?.details?.text || "");
+      aus.push(kiJetztDa
+        ? el("div", { class: "hinweiszeile" }, el("span", { text: "The AI is ready now; it was not set up when this listing entered the ladder." }),
+          el("button", { class: "knopf knopf-akzent knopf-klein", type: "button", text: "Ask the AI now", onclick: (ev) => { ev.target.disabled = true; ev.target.textContent = "Asking the AI …"; leiterAktion("/api/leiter/neuvorschlag", { number: a.number }, "New suggestion ready."); } }))
+        : el("p", { class: "leise", text: letzter?.ereignis === "kein_vorschlag" ? "No suggestion yet: " + letzter.details?.text : "No title suggestion yet. It comes with the next ladder run, or enter one below." }));
+    }
     aus.push(titelEingabe(a, v));
   } else if (a.stufe === "werbung") {
     aus.push(el("p", { text: `Switch on eBay Promoted Listings (standard) at ${Math.round((v?.satz ?? 0) * 100)} % of the sale price. The fee is only due when the item sells after a click on the ad.` }));
