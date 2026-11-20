@@ -20,6 +20,6 @@
     "tote": "node scripts/tote-exporte.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0"
+    "better-sqlite3": "12.11.1"
   }
 }

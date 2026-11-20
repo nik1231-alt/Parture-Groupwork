@@ -54,7 +54,9 @@ test("Durchlauf: Builder zieht einen Test, schlägt Titel vor, Admin gibt im Pro
   // ---- Builder ----
   const anna = await anmelden("anna");
   assert.equal(daten(await get("/api/ich", anna)).rolle, "builder");
-  daten(await post("/api/einstellungen", anna, { werte: { testGroesse: 4 } }));            // kleiner Test, damit der Durchlauf schnell bleibt
+  // Regeln ändert nur ein Admin: der Builder bekommt 403, der Admin stellt einen kleinen Test ein (damit der Durchlauf schnell bleibt)
+  assert.equal((await post("/api/einstellungen", anna, { werte: { testGroesse: 4 } })).status, 403);
+  daten(await post("/api/einstellungen", await anmelden("niko"), { werte: { testGroesse: 4 } }));
   const uebersicht = daten(await get("/api/experimente", anna));
   assert.equal(uebersicht.titelMaxZeichen, TITEL_MAX_ZEICHEN, "die Oberfläche bekommt die Titellänge vom Server");
   assert.ok(uebersicht.moeglich >= 4, `genug Kandidaten in der Team-Kopie (${uebersicht.moeglich})`);

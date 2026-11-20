@@ -1,70 +1,85 @@
-# Architektur auf einer Seite
+# Architecture on one page
 
-## Bild
+## Picture
 
 ```
- Builder (3), Admin (Niko)
-        │ Browser
+ Builders, admins
+        │ browser
         ▼
- Cloudflare Access (E-Mail-Code, 4 Adressen) ──► Cloudflare Tunnel ──► Server-Laptop (Windows), Ports nur 127.0.0.1
-                                                                        │
-                        ┌───────────────────────────────────────────────┴──────────────────────┐
-                        ▼                                                                      ▼
-              PROD  app/server.mjs :5070  (Branch main)                          VORSCHAU :5071 (Branch vorschau, ohne eBay-Keys)
-                │ liest                     │ schreibt                 │ nach Freigabe, Schalter an
-                ▼                           ▼                          ▼
-             pm.db  ◄── 04:30 Hub-Export   app.db                    eBay Trading-API (nur Titel)
-             (Whitelist, nur lesen)        (Benutzer, Sitzungen,
-                                            Tests, Freigaben, Protokoll)
+ Cloudflare Access (one-time e-mail code) ──► Cloudflare Tunnel ──► server laptop (Windows), ports only on 127.0.0.1
+                                                                       │
+                       ┌───────────────────────────────────────────────┴──────────────────────┐
+                       ▼                                                                      ▼
+             PROD  app/server.mjs :5070 (branch main)                          PREVIEW :5071 (branch vorschau, write switches off)
+               │ reads                    │ writes                   │ after approval, switch on
+               ▼                          ▼                          ▼
+            pm.db  ◄── 04:30 hub export   app.db                    eBay Trading API (title, ads, price)
+            (whitelist, read only)        (users, sessions, ladder,  Google Gemini (title suggestions)
+                                           settings, log)
 
- GitHub (Pull Request + CI) ──► Wächter app/waechter.mjs ──► npm ci, npm test ──► nur bei Grün: App neu starten
+ GitHub (pull request + CI) ──► watcher app/waechter.mjs ──► npm ci, npm test ──► only when green: restart the app
 ```
 
-## Datenfluss
+## Modules
 
-1. **Nachts (04:30)** schreibt der Parture-Hub `pm.db`: nur Whitelist-Spalten (Katalog, Kanäle, Mengen, Preise, Bilder,
-   Traffic-Zähler, Sperrliste). Die Datei wird fertig geschrieben und erst dann atomar ausgetauscht. Kosten und Kunden
-   kommen nie hinein, der Export prüft Spaltennamen und Texte vor dem Austausch.
-2. **Die App öffnet `pm.db` bei jeder Anfrage neu und nur lesend** (`mitDb` in `app/server.mjs`), damit sie nach dem
-   nächtlichen Austausch nicht auf der alten Datei hängt.
-3. **`app.db`** gehört der App: Benutzer, Sitzungen, Einstellungen, Tests, Freigaben, Protokoll. Sie wird täglich gesichert.
-4. **Zu eBay** geht nur ein Weg: Freigabe durch einen Admin → `app/freigabe.mjs` → `app/ebay-schreiben.mjs`. Vorher wird der
-   aktuelle Titel gelesen; weicht er ab, passiert nichts. Ohne Keys oder ohne `EBAY_SCHREIBEN=an` ist es ein Probelauf.
-5. **Auswertung:** Ausgangszahlen werden beim Teststart festgehalten, danach vergleicht `app/experimente.mjs` und
-   `app/auswertung.mjs` Test- gegen Kontrollgruppe über die Prüfzeit, mit 3 Tagen Datenverzug.
+| File | Job |
+|---|---|
+| `server.mjs` | HTTP server (`node:http`), login and roles on every request, routes, the daily ladder run |
+| `leiter.mjs` | the funnel: who is eligible and why (`trichter`), the lot with control group (`nimmAuf`), approval and eBay step (`gibFrei`, `fuehreAus`), evaluation against the control group (`werteAus`, `wirkung`) |
+| `regeln.mjs` | the diagnosis (low impressions / fine / wait) and every default rule value |
+| `ki-titel.mjs`, `titel-regeln.mjs`, `titelhilfe.mjs` | AI suggestions, the rule check every title must pass, and the AI-free title help |
+| `ebay-schreiben.mjs` | the only way to eBay: read first, then write title, ad rate or price |
+| `experimente.mjs`, `auswertung.mjs` | the lot (`ziehe`) and the net effect (`netto`), shared by the ladder and the older title test |
+| `login.mjs`, `rollen.mjs`, `protokoll.mjs` | passwords and sessions, roles, the append-only log |
+| `einstellungen.mjs` | rule values with type and range checks; only admins may save |
+| `waechter.mjs`, `sicherung.mjs` | deploy after green tests, restart on crash or hang, daily backup |
+| `public/app.js` | the whole interface in plain JavaScript; data is inserted as text only (`textContent`), never as HTML |
 
-## Entscheidungen
+## Data flow
 
-| Entscheidung | Warum | Verworfene Alternative |
+1. **At night (04:30)** the Parture hub writes `pm.db` with whitelisted columns only (catalogue, channels, units, prices,
+   images, traffic counts, block list). The file is written completely and then swapped atomically. Costs and customers
+   never go in: the export checks column names and texts before the swap.
+2. **The app opens `pm.db` read-only on every request** (`mitDb` in `app/server.mjs`), so it never hangs on the old file
+   after the nightly swap.
+3. **`app.db`** belongs to the app: users, sessions, settings, ladder, log. It is backed up daily.
+4. **To eBay** there is one way only: an admin approves → `leiter.gibFrei` → `ebay-schreiben.mjs`. The listing is read
+   first; if title or price differ from what the app expects, nothing happens. Without keys or without the switch it is a dry run.
+5. **Evaluation:** when a phase starts, the app stores the listing's impressions per day of the 30 days before. When the
+   waiting time is over (with a data lag of 3 days), it compares the listing and the control group over the same days.
+
+## Decisions
+
+| Decision | Why | Rejected alternative |
 |---|---|---|
-| **Kein Framework**, `node:http` und reines JavaScript im Browser | ca. 4.300 Zeilen, eine Abhängigkeit (`better-sqlite3`), kein Build-Schritt, jede Zeile lesbar und testbar | Express/React: schneller am Anfang, aber Build, viele Abhängigkeiten, Magie, die in der Vorführung niemand erklären kann. Preis: Routing und Sitzungen selbst geschrieben, dafür mit Tests |
-| **SQLite** für Daten und App-Zustand | eine Datei, atomarer Austausch von `pm.db`, Trigger für das Protokoll, kein Datenbankserver zu betreiben | PostgreSQL: Mehrbenutzer-Stärke, die bei 5 Personen niemand braucht, dafür ein Dienst mehr |
-| **Whitelist-Daten** statt Zugriff auf die Firmendatenbank | die Gruppe sieht nur, was ohnehin öffentlich ist; Firmenregel: keine Kosten, keine Kunden | geschwärzte Kopie: eine neue Spalte im Original wäre still mitgekommen |
-| **Zwei Umgebungen** (PROD mit Keys, VORSCHAU ohne) | alle sehen Änderungen nach 1 bis 2 Minuten, ohne dass Ungeprüftes bei eBay schreiben kann | nur lokal: niemand arbeitet am gleichen Stand; nur PROD: jeder Versuch wäre live |
-| **Wächter** auf dem Server statt Hosting-Dienst | Daten und Keys bleiben auf dem Firmenrechner; Ausrollen nur nach grünen Tests, Neustart bei Absturz oder Hängen, Sicherung | Render/Fly/Vercel: Keys und Daten bei Dritten, Kosten, und `pm.db` käme nicht hin |
-| **Los mit Kontrollgruppe** statt Vorher/Nachher | Impressionen schwanken mit Saison und eBay; nur der Vergleich zur gleichzeitig unveränderten Gruppe zeigt den Titel-Effekt | Vorher/Nachher: ein Dezember sieht immer besser aus als ein Oktober |
-| **Freigabe durch einen Menschen** vor jeder eBay-Änderung | echte Angebote eines echten Shops; Fehler kosten Geld | automatische Änderung: schneller, aber kein Schutz gegen Tippfehler oder falsche Gruppe |
-| **Protokoll nur anhängen** (Datenbank-Trigger) | Nachweis, wer was wann getan hat, auch gegen Fehler der App selbst | normale Tabelle: ein Programmfehler könnte Einträge überschreiben |
-| **Titelhilfe zeigt nur Wörter**, erfindet keine Titel | Vorgabe aus dem Briefing; ein Mensch entscheidet, jede Zahl ist belegt | KI-generierte Titel: nicht nachvollziehbar, und genau das soll der Test ja erst zeigen |
+| **No framework**, `node:http` and plain JavaScript in the browser | one dependency (`better-sqlite3`, pinned), no build step, every line readable and testable | Express/React: faster at the start, but a build, many dependencies and magic nobody can explain in the walkthrough. Price: routing and sessions written by hand, with tests |
+| **SQLite** for data and app state | one file, atomic swap of `pm.db`, a trigger makes the log append-only, no database server to run | PostgreSQL: multi-user strength that 4 people do not need, and one more service |
+| **Whitelist data** instead of access to the company database | the team sees only what is public anyway; company rule: no costs, no customers | a redacted copy: a new column in the original would silently come along |
+| **Control group drawn by lot, running inside the ladder** | impressions swing with season and eBay; only the comparison with listings that stayed unchanged over the same days shows what a phase did | before/after only: December always looks better than October. A separate test page: two places doing the same thing |
+| **Three levers in a fixed order** (title, ads, price) | cheapest first: a title costs nothing, ads cost only on a sale, a lower price costs margin on every sale | all at once: nobody would know which lever worked |
+| **AI suggests, a rule check filters, a human approves** | real listings of a real shop; one bad title (brand misuse, "Original") can mean a legal warning | AI writes directly: fast, but no protection against exactly those mistakes |
+| **Two environments** (PROD, preview) | everyone sees changes after one or two minutes without untested code writing to eBay | only local: nobody works on the same state; only PROD: every try would be live |
+| **Watcher on the server** instead of a hosting service | data and keys stay on the company machine; deploy only after green tests, restart on crash or hang, backup | Render/Fly/Vercel: keys and data at third parties, cost, and `pm.db` would not get there |
+| **Append-only log** (database trigger) | proof of who did what and when, even against bugs in the app itself | a normal table: a bug could overwrite entries |
 
-## Wo die App Dateien und Netz anfasst (A2.1, gezählt am 19.11.)
+## Where the app touches files and the network
 
-Gesucht mit `grep -n "fetch\|new Database(" app/*.mjs` (ohne Tests). Alles andere im Code rechnet nur.
+Found with `grep -n "fetch\|new Database(" app/*.mjs` (tests excluded). Everything else only computes.
 
-| Stelle | Was | Wann |
+| Place | What | When |
 |---|---|---|
-| `server.mjs` `mitDb` | `pm.db`, **nur lesend**, bei jeder Anfrage neu | immer |
-| `server.mjs` `appDb` | `daten/app.db`, eigene Daten der App | immer |
-| `server.mjs` `accessOk` | Schlüssel von Cloudflare Access (`/cdn-cgi/access/certs`), höchstens stündlich | nur auf dem Server |
-| `server.mjs` `/api/live` | Hub `/api/pm/katalog` mit eigenem Token | nur auf dem Server |
-| `ebay-schreiben.mjs` | eBay OAuth + Trading-API (`GetItem`, Titel ändern) | nur nach Freigabe, nur mit Keys und Schalter |
-| `export-ebay.mjs`, `traffic.mjs` | eBay-API (lesen), baut `pm.db` selbst | nur von Hand (`npm run export`) oder mit `EBAY_TRAFFIC_AUTO=an`; auf PROD aus, der Traffic kommt aus dem Hub (B1.10) |
-| `benachrichtigung.mjs` | Telegram `sendMessage` | nur mit `TELEGRAM_*` in der `.env` |
-| `sicherung.mjs` | liest `app.db`/`traffic-tage.db`, schreibt Kopien | täglich ab 3 Uhr |
-| `benutzer.mjs` | `app.db` | Kommandozeile auf dem Server |
-| `waechter.mjs` | `/healthz` der eigenen App, `git`, `npm` | nur auf dem Server |
+| `server.mjs` `mitDb` | `pm.db`, **read only**, opened per request | always |
+| `server.mjs` `appDb` | `daten/app.db`, the app's own data | always |
+| `server.mjs` `accessOk` | Cloudflare Access keys (`/cdn-cgi/access/certs`), at most hourly | only on the server |
+| `server.mjs` `/api/live` | hub `/api/pm/katalog` with its own token | only on the server |
+| `ebay-schreiben.mjs` | eBay OAuth + Trading API (`GetItem`, revise title, price, Promoted Listings) | only after approval, only with keys and switch |
+| `ki-titel.mjs` | Google Gemini `generateContent` | in the daily run and on "Ask the AI again", only with `GOOGLE_API_KEY` |
+| `export-ebay.mjs`, `traffic.mjs` | eBay API (read), builds `pm.db` itself | only by hand (`npm run export`) or with `EBAY_TRAFFIC_AUTO=an`; off on PROD, traffic comes from the hub |
+| `benachrichtigung.mjs` | Telegram `sendMessage` | only with `TELEGRAM_*` in `.env` |
+| `sicherung.mjs` | reads `app.db`, writes copies | daily from 3:00 |
+| `waechter.mjs` | the app's own `/healthz`, `git`, `npm` | only on the server |
 
-## Was die App bewusst nicht macht
+## What the app deliberately does not do
 
-Amazon und andere Marktplätze, Kosten oder Gewinn, Kundendaten, Preisänderungen, automatische Freigabe, KI-Titel.
-Begründung jeweils oben oder in [`checkliste-tool.md`](checkliste-tool.md), Abschnitt D.
+Amazon and other marketplaces, costs or profit, customer data, automatic approval, ending listings on eBay ("take offline"
+after the manual check is a task for the admin, not an API call).
