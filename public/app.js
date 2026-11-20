@@ -129,8 +129,8 @@ async function ladeZaehler() {
 let ersterAufruf = true;
 function route() {
   const [seite, arg] = location.hash.replace(/^#/, "").split("/");
-  const ansicht = ["problem", "tests", "ladder", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
-  for (const a of ["listings", "problem", "tests", "ladder", "settings", "approvals", "team", "log", "account"]) {
+  const ansicht = ["problem", "tests", "ladder", "dashboard", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
+  for (const a of ["listings", "problem", "tests", "ladder", "dashboard", "settings", "approvals", "team", "log", "account"]) {
     $("#ansicht-" + a).hidden = a !== ansicht;
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
@@ -141,6 +141,7 @@ function route() {
   if (ansicht === "problem") ladeProblem();
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
   if (ansicht === "ladder") { if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; } ladeLeiter(); }
+  if (ansicht === "dashboard") Dashboard.lade(); // public/ergebnisse.js
   if (ansicht === "settings") ladeEinstellungen();
   if (ansicht === "approvals") ladeFreigaben();
   if (ansicht === "team") ladeTeam();
