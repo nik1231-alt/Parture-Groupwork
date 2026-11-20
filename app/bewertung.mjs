@@ -7,7 +7,16 @@ export function ladeProdukte(db) {
   const hatTraffic = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic'").get();
   const hatKanal = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='kanal'").get();
   const summe = (spalte, tage) => `(SELECT SUM(${spalte}) FROM traffic t WHERE t.number = p.number AND t.tage = ${tage})`;
-  const sql = "SELECT p.number, p.title, p.image_url, p.avg_price, p.units_total, p.units_90d, p.created_at, p.last_sold_at, "
+  // Nur eBay (Niko 20.11.2026: Verkäufe anderer Plattformen sind nicht im Scope, nicht anzeigen, nicht auswerten). Ältere pm.db
+  // (auch die Team-Kopie bis 20.11.) summierten in produkt.units_* alle Kanäle, Amazon allein mehr als eBay; deshalb kommen
+  // Verkäufe, Preis und letzter Verkauf hier aus der eBay-Zeile in kanal, sobald es die Tabelle gibt.
+  const ebay = (spalte, art = "SUM") => `(SELECT ${art}(k.${spalte}) FROM kanal k WHERE k.number = p.number AND k.channel = 'ebay')`;
+  const kanalSpalten = hatKanal ? new Set(db.prepare("PRAGMA table_info(kanal)").all().map((c) => c.name)) : new Set();
+  const verkaufJeKanal = ["units_total", "units_90d", "avg_price", "preis_aktuell", "last_sold_at"].every((s) => kanalSpalten.has(s));
+  const verkauf = verkaufJeKanal
+    ? `COALESCE(${ebay("avg_price", "MAX")}, ${ebay("preis_aktuell", "MAX")}) AS avg_price, COALESCE(${ebay("units_total")}, 0) AS units_total, COALESCE(${ebay("units_90d")}, 0) AS units_90d, p.created_at, ${ebay("last_sold_at", "MAX")} AS last_sold_at, `
+    : "p.avg_price, p.units_total, p.units_90d, p.created_at, p.last_sold_at, ";
+  const sql = "SELECT p.number, p.title, p.image_url, " + verkauf
     + (hatTraffic
       ? `${summe("aufrufe", 90)} AS aufrufe_90d, ${summe("impressionen", 90)} AS impressionen_90d, ${summe("aufrufe", 30)} AS aufrufe_30d, ${summe("impressionen", 30)} AS impressionen_30d, ${summe("transaktionen", 30)} AS transaktionen_30d `
       : "NULL AS aufrufe_90d, NULL AS impressionen_90d, NULL AS aufrufe_30d, NULL AS impressionen_30d, NULL AS transaktionen_30d ")

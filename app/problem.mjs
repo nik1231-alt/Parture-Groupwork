@@ -1,9 +1,10 @@
 // Das Problem in Zahlen (Seite Problem): wie ungleich Sichtbarkeit und Verkäufe über die Produkte verteilt sind.
 // Reine Rechnung ohne Datenbank, live aus derselben Produktliste wie alle anderen Seiten.
 //
-// Gemessen am 20.11.2026: 80 % der Verkäufe kommen von 8,5 % der Produkte, 80 % der Impressionen aber von 35 % der
-// eBay-Angebote. Die Sichtbarkeit ist also breiter verteilt als die Verkäufe, und unten bleibt ein langer Schwanz, den
-// kaum jemand sieht. Genau dort setzt der Funnel an (Diagnose "Low impressions", Grenze aus regeln.leiteSchwellenAb).
+// Nur eBay (Niko 20.11.2026: andere Plattformen sind nicht im Scope): alles bezieht sich auf die aktiven eBay-Angebote und
+// ihre eBay-Verkäufe. Eine erste Messung mit den Verkäufen aller Kanäle (Amazon allein mehr als eBay) wurde verworfen.
+// Die Frage der Seite: wie viel stärker hängen Verkäufe als Impressionen an wenigen Angeboten, und wie lang ist der Schwanz,
+// den kaum jemand sieht? Genau dort setzt der Funnel an (Diagnose "Low impressions", Grenze aus regeln.leiteSchwellenAb).
 
 const zahl = (v) => Number(v) || 0;
 
@@ -41,11 +42,10 @@ export function auswerten(produkte, grenze90) {
     grenze90: Math.round(grenze90),
     produkte: produkte.length,
     ebayAktiv: ebay.length,
-    ohneVerkauf: produkte.filter((p) => !verkauft(p)).length,
-    ebayOhneVerkauf: ebay.filter((p) => !verkauft(p)).length,
+    ohneVerkauf: ebay.filter((p) => !verkauft(p)).length,
     ohneImpressionen: ebay.filter((p) => zahl(p.impressionen_90d) === 0).length,
     kaumGesehen: ebay.filter((p) => !gesehen(p)).length,
-    verkaeufe: konzentration(produkte.map((p) => p.units_90d)),
+    verkaeufe: konzentration(ebay.map((p) => p.units_90d)),
     impressionen: konzentration(ebay.map((p) => p.impressionen_90d)),
     // Vier Felder der eBay-Angebote: gesehen ja/nein × verkauft ja/nein (gesehen = über der Grenze der Diagnose)
     felder: { gesehenVerkauft: feld(true, true), gesehenNichtVerkauft: feld(true, false), kaumGesehenVerkauft: feld(false, true), kaumGesehenNichtVerkauft: feld(false, false) },

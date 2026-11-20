@@ -37,7 +37,7 @@
 
 ## Data flow
 
-1. **Every hour** (since 20.11.2026; before only at 04:30) the Parture hub writes `pm.db` with whitelisted columns only (catalogue, channels, units, prices,
+1. **Every hour** (since 20.11.2026; before only at 04:30) the Parture hub writes `pm.db` with whitelisted columns only, eBay only (catalogue, the eBay listing per product, eBay units, prices,
    images, traffic counts, block list). The file is written completely and then swapped atomically. Costs and customers
    never go in: the export checks column names and texts before the swap.
 2. **The app opens `pm.db` read-only on every request** (`mitDb` in `app/server.mjs`), so it never hangs on the old file

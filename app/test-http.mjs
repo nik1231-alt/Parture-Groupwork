@@ -74,6 +74,9 @@ test("mit Anmeldung: Cookie ist HttpOnly und SameSite=Strict, Seiten und Daten s
   assert.match(await seite.text(), /Listings/);
   // Nach einem Ausrollen muss sofort die neue Oberfläche kommen (Cloudflare hielt sonst bis zu 2 h das alte app.js)
   for (const p of ["/", "/app.js", "/app.css"]) assert.equal((await fetch(basis + p, { headers: { Cookie: cookie } })).headers.get("cache-control"), "no-cache", p);
+  // Die Versionsangabe der Skripte ist der laufende Stand, nicht der feste Wert aus der Datei (sonst blieb nach #43 das alte app.js)
+  const html = await (await fetch(basis + "/", { headers: { Cookie: cookie } })).text();
+  assert.match(html, /\/app\.js\?v=[\w.-]+"/); assert.doesNotMatch(html, /\?v=2026-11-20/);
   assert.equal((await fetch(basis + "/api/einstellungen", { headers: { Cookie: cookie } })).status, 200);
   const ich = await (await fetch(basis + "/api/ich", { headers: { Cookie: cookie } })).json();
   assert.deepEqual([ich.daten.angemeldet, ich.daten.name], [true, "anna"]);
