@@ -544,11 +544,27 @@ function zeichneLeiter(l) {
         st.automatisch ? `runs daily from ${st.uhrzeit}:00` : "daily run is off", `last run: ${st.letzterLauf ? zeitpunkt(st.letzterLauf) : "never"}${st.letzterFehler ? " (failed, see Log)" : ""}`,
         `${zahl(l.kandidaten)} more listings are waiting for a place (at most ${l.max} at a time)`].join(" · ") }),
       laufKnopf ? el("div", { class: "aktionen" }, laufKnopf) : null),
+    istAdmin() ? auswahlAufnehmen(l.kandidatenListe || []) : null,
     el("h2", { text: `Waiting for a decision (${warten.length})`, style: "margin: 18px 0 10px" }),
     warten.length ? warten.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "Nothing is waiting." }),
     el("h2", { text: `Waiting time running (${laufen.length})`, style: "margin: 22px 0 10px" }),
     laufen.length ? laufen.map(leiterKarte) : el("p", { class: "leere-hinweis leise", text: "No step is running." }),
     fertig.length ? el("details", { class: "panel", style: "margin-top:22px" }, el("summary", { style: "cursor:pointer", text: `Left the ladder (${fertig.length})` }), fertig.map(leiterKarte)) : null);
+}
+
+// Admin: ein bestimmtes Angebot aus allen Kandidaten wählen und sofort auf die Leiter setzen (der KI-Titel kommt gleich mit)
+function auswahlAufnehmen(liste) {
+  const option = (p) => el("option", { value: p.number, text: `${p.number} · ${p.title || "(untitled)"} · ${zahl(p.impressionen_90d)} impressions / 90 days · ${zahl(p.units_90d)} sales` });
+  const wahl = el("select", { "aria-label": "Listing for the ladder" }, el("option", { value: "", text: liste.length ? `Choose one of ${zahl(liste.length)} listings …` : "No listing qualifies right now" }), ...liste.map(option));
+  const suche = el("input", { type: "search", placeholder: "Filter by number or word", "aria-label": "Filter the list",
+    oninput: () => { const q = suche.value.trim().toLowerCase(); wahl.replaceChildren(wahl.firstChild, ...liste.filter((p) => !q || `${p.number} ${p.title || ""}`.toLowerCase().includes(q)).map(option)); } });
+  const knopf = el("button", { class: "knopf knopf-akzent", type: "button", text: "Put on the ladder",
+    onclick: () => { if (!wahl.value) return meldung("Please choose a listing first."); knopf.disabled = true; knopf.textContent = "Asking the AI …";
+      leiterAktion("/api/leiter/aufnehmen", { number: wahl.value }, (r) => r.vorschlag ? `Listing ${r.number} is on the ladder, the title suggestion is ready below.` : `Listing ${r.number} is on the ladder, but there is no title suggestion yet: ${r.hinweis}`); } });
+  return el("div", { class: "panel auswahl" },
+    el("h2", { text: "Add a listing" }),
+    el("p", { class: "leise klein", text: "Every listing that qualifies for the ladder: low impressions, active on eBay, not blocked, not in a test. Sorted by sales, best first. The listing starts at step 1; nothing changes on eBay until you approve the title." }),
+    el("div", { class: "auswahl-zeile" }, suche, wahl, knopf));
 }
 
 // Der Trichter oben: wie viele Angebote auf welcher Stufe stehen und wie viele die Leiter wie verlassen haben

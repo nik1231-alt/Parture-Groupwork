@@ -314,7 +314,9 @@ const ROUTEN = {
   // Leiter: jede Stufe mit ihren Angeboten, Zwischenständen und Lebensläufen, dazu Schalter und letzter Lauf
   "/api/leiter": () => {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
-    return { ...leiter.uebersicht(appDb(), produkte, daten), kandidaten: leiter.kandidaten(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() }).length, status: leiterStatus() };
+    const k = leiter.kandidaten(appDb(), produkte, daten.einst, new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() });
+    return { ...leiter.uebersicht(appDb(), produkte, daten), kandidaten: k.length, status: leiterStatus(),
+      kandidatenListe: k.map((p) => ({ number: p.number, title: p.title ?? null, impressionen_90d: p.impressionen_90d ?? null, units_90d: p.units_90d ?? null })) };
   },
   "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal GROUP BY channel ORDER BY produkte DESC").all()),
   // Live-Stand vom Hub (nur auf dem Server, lokal fehlt HUB_URL): dieselbe Whitelist, aber Stand jetzt statt 04:30.
@@ -396,6 +398,15 @@ const POST_ROUTEN = {
     adminNoetig(ctx);
     const nr = String((await leseJson(req))?.number ?? "").slice(0, 40);
     return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag }));
+  },
+  // Admin setzt ein Angebot aus der Auswahlliste auf die Leiter; der KI-Titelvorschlag wird gleich mitgeholt (ändert nichts bei eBay)
+  "/api/leiter/aufnehmen": async (req, ctx) => {
+    adminNoetig(ctx);
+    const nr = String((await leseJson(req))?.number ?? "").slice(0, 40), produkte = produkteLaden();
+    const r = leiter.nimmVonHandAuf(appDb(), ctx, nr, produkte, einst(), new Date(), { imTest: experimente.imTest(appDb()), gesperrt: sperreHub() });
+    if (!r.ok) return antwort(r);
+    const v = await titelVorschlag(nr, produkte, ctx.name);
+    return { number: nr, vorschlag: v.ok, hinweis: v.ok ? null : v.fehler };
   },
   "/api/leiter/vonhand": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.starteVonHand(appDb(), ctx, String(b?.number ?? "").slice(0, 40), { impTag })); },
   "/api/leiter/ueberspringen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.ueberspringe(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund, einst(), { fuer: leiterKontext })); },

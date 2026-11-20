@@ -272,3 +272,8 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
   .leiter-kopf { grid-template-columns: 48px minmax(0, 1fr); }
   .leiter-kopf .badge { grid-column: 1 / -1; justify-self: start; }
 }
+
+/* Auswahlliste "Add a listing" auf der Seite Ladder */
+.auswahl-zeile { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.auswahl-zeile input[type="search"] { flex: 0 1 220px; }
+.auswahl-zeile select { flex: 1 1 320px; min-width: 0; max-width: 100%; }

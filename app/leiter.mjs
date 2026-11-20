@@ -80,11 +80,26 @@ export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date
 export function nimmAuf(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), optionen = {}) {
   const frei = Math.max(0, einst.leiterMax - aktiveNummern(db).size);
   const neu = kandidaten(db, produkte, einst, jetzt, optionen).slice(0, frei).map((p) => p.number);
-  db.transaction(() => {
-    const ins = db.prepare("INSERT INTO leiter (number, stufe, phase, eingestiegen_at, aktualisiert_at) VALUES (?, 'titel', 'vorschlag', ?, ?) ON CONFLICT(number) DO UPDATE SET stufe = 'titel', phase = 'vorschlag', ergebnis = NULL, eingestiegen_at = excluded.eingestiegen_at, stufe_start = NULL, basis_imp_tag = NULL, vorschlag = NULL, aktualisiert_at = excluded.aktualisiert_at");
-    for (const n of neu) { ins.run(n, jetzt.toISOString(), jetzt.toISOString()); verlauf(db, n, "titel", "aufgenommen", null, "system", jetzt); }
-  })();
+  db.transaction(() => { for (const n of neu) trageEin(db, n, null, "system", jetzt); })();
   return neu;
+}
+
+function trageEin(db, number, details, benutzer, jetzt) {
+  db.prepare("INSERT INTO leiter (number, stufe, phase, eingestiegen_at, aktualisiert_at) VALUES (?, 'titel', 'vorschlag', ?, ?) ON CONFLICT(number) DO UPDATE SET stufe = 'titel', phase = 'vorschlag', ergebnis = NULL, eingestiegen_at = excluded.eingestiegen_at, stufe_start = NULL, basis_imp_tag = NULL, vorschlag = NULL, aktualisiert_at = excluded.aktualisiert_at")
+    .run(number, jetzt.toISOString(), jetzt.toISOString());
+  verlauf(db, number, "titel", "aufgenommen", details, benutzer, jetzt);
+}
+
+// Admin wählt ein bestimmtes Angebot aus den Kandidaten (Auswahlliste auf der Seite Ladder) und setzt es sofort auf die Leiter,
+// auch über die Höchstzahl hinaus: für einen gezielten Test oder die Vorführung. Es gelten dieselben Bedingungen wie beim Lauf.
+export function nimmVonHandAuf(db, nutzer, number, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), optionen = {}) {
+  if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can put a listing on the ladder.");
+  const nr = String(number ?? "");
+  if (!kandidaten(db, produkte, einst, jetzt, optionen).some((p) => p.number === nr))
+    return fehler(409, "This listing cannot go on the ladder right now (not low impressions, no active eBay listing, blocked, in a test, or on the ladder in the last 90 days).");
+  db.transaction(() => trageEin(db, nr, { vonHand: true }, nutzer.name, jetzt))();
+  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_added", objekt: "product " + nr, details: { vonHand: true } }, jetzt);
+  return ok({ number: nr });
 }
 
 // Angebote in Stufe 1 ohne Vorschlag (die KI wird danach gefragt, siehe server.mjs)
