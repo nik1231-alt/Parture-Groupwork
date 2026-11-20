@@ -638,12 +638,12 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Parture Groupwork läuft: http://127.0.0.1:${PORT}  (DB: ${dbPfad()})`);
+  console.log(`Parture Groupwork running: http://127.0.0.1:${PORT}  (DB: ${dbPfad()})`);
   if (SICH_AUTO) { setTimeout(pruefeSicherung, 45e3).unref(); setInterval(pruefeSicherung, 15 * 60e3).unref(); }
   if (LEITER_AUTO) { setTimeout(pruefeLeiter, 60e3).unref(); setInterval(pruefeLeiter, 15 * 60e3).unref(); }
   // Liste der beworbenen eBay-Angebote (Phase 2 nur für nicht beworbene): beim Start und alle 6 Stunden
   // Nach jedem Ausrollen einmal: schon bei eBay verkaufte Angebote ohne eBay-Änderung von der Leiter (leiter.raeumeVerkaufteAb)
-  setTimeout(() => { try { const p = produkteLaden(); leiter.raeumeVerkaufteAb(appDb(), p, leiterDaten(p).einst); } catch (e) { console.error("Leiter aufräumen:", e.message); } }, 20e3).unref();
+  setTimeout(() => { try { const p = produkteLaden(); leiter.raeumeVerkaufteAb(appDb(), p, leiterDaten(p).einst); } catch (e) { console.error("Ladder clean-up:", e.message); } }, 20e3).unref();
   if (schreiber.konfiguriert()) { setTimeout(() => aktualisiereWerbung().catch(() => {}), 30e3).unref(); setInterval(() => aktualisiereWerbung().catch(() => {}), 6 * 3600e3).unref(); }
-  if (TRAFFIC_AUTO) { console.log(`Automatischer Traffic-Import: täglich ab ${TRAFFIC_UHR}:00 Uhr (Verzögerung ${verzoegerungTage()} Tage).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
+  if (TRAFFIC_AUTO) { console.log(`Automatic traffic import: daily from ${TRAFFIC_UHR}:00 (delay ${verzoegerungTage()} days).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
 });

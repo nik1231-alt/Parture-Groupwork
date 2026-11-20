@@ -100,7 +100,7 @@ async function verkaeufe(token) {
     for (let offset = 0; ; offset += 200) {
       const url = `https://api.ebay.com/sell/fulfillment/v1/order?filter=${encodeURIComponent(`creationdate:[${von}..${bis}]`)}&limit=200&offset=${offset}`;
       const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-      if (!r.ok) { console.warn(`  Bestellungen ${von.slice(0, 10)}..${bis.slice(0, 10)}: HTTP ${r.status} (übersprungen)`); break; }
+      if (!r.ok) { console.warn(`  Orders ${von.slice(0, 10)}..${bis.slice(0, 10)}: HTTP ${r.status} (skipped)`); break; }
       const j = await r.json();
       for (const o of j.orders || []) {
         const t = Date.parse(o.creationDate);
@@ -214,9 +214,9 @@ const token = await accessToken();
 console.log("Token ok. Lese aktive Listings …");
 const items = await aktiveListings(token);
 console.log(`  ${items.length} aktive Listings`);
-console.log("Lese Bestellungen (nur zählen) …");
+console.log("Reading orders (counting only) …");
 const vk = await verkaeufe(token);
-console.log(`  ${vk.size} Artikel mit Verkäufen in ${TAGE_HISTORIE} Tagen`);
+console.log(`  ${vk.size} items with sales in ${TAGE_HISTORIE} days`);
 
 // ---- Traffic: nur fertige Tage (heute minus VERZOEGERUNG), fehlende Tage nachholen, die letzten Tage nachprüfen ----
 const stichtag = laDatum(new Date(), VERZOEGERUNG);
@@ -226,7 +226,7 @@ const alt = leseCache(cache, alleTage[0]);
 const nachpruef = new Set(alleTage.slice(-NACHPRUEFEN_TAGE));
 // Reihenfolge: erst die Nachprüfung der letzten Tage, dann die fehlenden Tage vom neuesten zum ältesten
 const holen = planeTage([...alt.keys()], alleTage).sort((a, b) => (nachpruef.has(b) - nachpruef.has(a)) || (a < b ? 1 : -1));
-console.log(`Traffic bis ${stichtag} (Verzögerung ${VERZOEGERUNG} Tage): ${alt.size} von ${alleTage.length} Tagen im Zwischenspeicher, ${holen.length} werden geholt (davon ${holen.filter((d) => alt.has(d)).length} zur Nachprüfung) …`);
+console.log(`Traffic up to ${stichtag} (delay ${VERZOEGERUNG} days): ${alt.size} of ${alleTage.length} days in the cache, fetching ${holen.length} (${holen.filter((d) => alt.has(d)).length} of them to re-check) …`);
 const ids = items.map((i) => i.itemId);
 let abweichungen = 0, nachgeprueft = 0, geholt = 0, limit = null;
 const tage = new Map(alt);
@@ -238,14 +238,14 @@ for (const d of holen) {
   speichereTag(cache, d, m); tage.set(d, m); geholt++;
 }
 const vollstaendig = alleTage.every((d) => tage.has(d));
-if (limit) console.log(`  eBay-Limit erreicht nach ${geholt} Tagen: ${limit}. Der Fortschritt ist gespeichert, der nächste Lauf macht weiter.`);
-console.log(`  ${tage.size} von ${alleTage.length} Tagen vorhanden${vollstaendig ? " (vollständig)" : ""}.`);
-if (nachgeprueft) console.log(`  Nachprüfung: ${nachgeprueft} Tage erneut gelesen, ${abweichungen} Zeilen hat eBay nachträglich geändert (überschrieben).`);
+if (limit) console.log(`  eBay limit reached after ${geholt} days: ${limit}. Progress is saved, the next run continues.`);
+console.log(`  ${tage.size} of ${alleTage.length} days available${vollstaendig ? " (complete)" : ""}.`);
+if (nachgeprueft) console.log(`  Re-check: ${nachgeprueft} days read again, eBay changed ${abweichungen} rows afterwards (overwritten).`);
 
 // Solange die 90 Tage nicht vollständig sind, kommen die Summen direkt von eBay (Zeitraum-Abfragen, wenige Aufrufe).
 let fenster = null;
 if (!vollstaendig) {
-  console.log("  Tageswerte noch unvollständig: die 30- und 90-Tage-Summen kommen als Zeitraum-Summen direkt von eBay.");
+  console.log("  Daily values still incomplete: the 30- and 90-day sums come as period sums directly from eBay.");
   try {
     fenster = {};
     for (const n of [30, 90]) fenster[n] = await holeZeitraum(token, tageListe(stichtag, n)[0], stichtag, ids, { drosselMs: 300 });
@@ -257,14 +257,14 @@ if (!vollstaendig) {
 cache.close();
 const kontrolle = await holeKontrolle(token, alleTage[0], stichtag);
 const ab = abdeckung(tage, kontrolle, alleTage);
-if (ab) console.log(`  Kontrolle gegen die Kontosumme: im Mittel ${(100 * ab.mittel).toFixed(1)} %, schwächster Tag ${ab.schlechtester} mit ${(100 * ab.min).toFixed(1)} % (${ab.tage} Tage geprüft)`);
-else console.log("  Kontrolle gegen die Kontosumme war nicht möglich.");
+if (ab) console.log(`  Check against the account total: on average ${(100 * ab.mittel).toFixed(1)} %, weakest day ${ab.schlechtester} with ${(100 * ab.min).toFixed(1)} % (${ab.tage} days checked)`);
+else console.log("  The check against the account total was not possible.");
 if (ab && ab.mittel < MIN_ABDECKUNG) throw new Error(`Traffic check failed: the listings explain only ${(100 * ab.mittel).toFixed(1)} % of the account total on average (limit ${(100 * MIN_ABDECKUNG).toFixed(0)} %). The old file stays unchanged.`);
 
 const { produkte, nK, nB, nT } = schreibe(items, vk, tage, stichtag, { abdeckung: ab, fenster });
 const ohneNr = [...produkte.keys()].filter((k) => k.startsWith("ID")).length;
 console.log(`Fertig in ${Math.round((Date.now() - t0) / 1000)} s: ${produkte.size} Produkte, ${nK} Kanal-Zeilen, ${nB} Bilder, ${nT} Traffic-Summen, Tagesdaten bis ${stichtag} -> ${DB_PFAD}`);
-if (ohneNr) console.log(`Hinweis: ${ohneNr} Listings ohne erkennbare Artikelnummer in der SKU (als "ID<ItemID>" angelegt).`);
+if (ohneNr) console.log(`Note: ${ohneNr} listings without a recognisable item number in the SKU (created as "ID<ItemID>").`);
 
 // Team-Kopie: dieselben Daten ohne die Tagesdaten (klein halten, die App braucht dort nur die Summen)
 if (TEAM) {

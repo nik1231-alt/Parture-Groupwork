@@ -56,13 +56,13 @@ export async function aktualisiere({ ordner = WURZEL, branch, hart = false, test
   const fern = (await git(ordner, "rev-parse", `origin/${branch}`)).ausgabe.trim();
   if (!lokal || !fern) return f("Stand nicht lesbar");
   if (lokal === fern) return { status: "unveraendert", von: lokal, nach: fern };
-  if (leseStatus(ordner).abgelehnt === fern) return { status: "unveraendert", von: lokal, nach: fern, grund: "dieser Stand wurde bereits abgelehnt" };
+  if (leseStatus(ordner).abgelehnt === fern) return { status: "unveraendert", von: lokal, nach: fern, grund: "this version was already rejected" };
 
   if (!hart) {
     const schmutzig = (await git(ordner, "status", "--porcelain", "--untracked-files=no")).ausgabe.trim();
-    if (schmutzig) return { status: "blockiert", von: lokal, nach: fern, grund: "lokale Änderungen im Ordner blockieren das Ausrollen: " + schmutzig.split("\n")[0] };
+    if (schmutzig) return { status: "blockiert", von: lokal, nach: fern, grund: "local changes in the folder block the rollout: " + schmutzig.split("\n")[0] };
     r = await git(ordner, "merge", "--ff-only", "--quiet", `origin/${branch}`);
-    if (!r.ok) return { status: "blockiert", von: lokal, nach: fern, grund: "kein Fast-Forward möglich: " + r.ausgabe.trim().split("\n").slice(-1)[0] };
+    if (!r.ok) return { status: "blockiert", von: lokal, nach: fern, grund: "no fast-forward possible: " + r.ausgabe.trim().split("\n").slice(-1)[0] };
   } else {
     r = await git(ordner, "reset", "--hard", "--quiet", `origin/${branch}`);
     if (!r.ok) return f("git reset: " + r.ausgabe.trim());
@@ -150,7 +150,7 @@ async function haupt() {
   setInterval(async () => {
     if (!kind || beendet || Date.now() - startAm < anlaufS * 1000) return;
     if (await gesund()) { fehlschlaege = 0; return; }
-    if (++fehlschlaege >= 3) { log("/healthz antwortet nicht (3 Versuche), App wird neu gestartet."); fehlschlaege = 0; kind?.kill("SIGKILL"); }
+    if (++fehlschlaege >= 3) { log("/healthz does not answer (3 attempts), restarting the app."); fehlschlaege = 0; kind?.kill("SIGKILL"); }
   }, gesundheitS * 1000).unref?.();
 
   let pruefLaeuft = false;
@@ -160,21 +160,21 @@ async function haupt() {
     try {
       // App vor npm ci stoppen (siehe Kopf); der Neustart-Timer des exit-Handlers wird dabei entschärft, sonst liefe die App
       // mitten in npm ci wieder an und hielte die Dateien erneut offen.
-      const vorInstallation = async () => { log("Abhängigkeiten geändert: App wird für npm ci gestoppt."); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } };
+      const vorInstallation = async () => { log("Dependencies changed: stopping the app for npm ci."); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } };
       const e = await aktualisiere({ ordner, branch, hart, vorInstallation });
-      if (e.status === "ausgerollt") { log(`Ausgerollt: ${e.von.slice(0, 7)} → ${e.nach.slice(0, 7)} (Tests bestanden). Neustart.`); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } starte(); }
-      else if (e.status === "abgelehnt") { log(`ABGELEHNT ${e.nach.slice(0, 7)}: ${e.grund}. Alter Stand ${e.von.slice(0, 7)} läuft weiter.\n${e.ausgabe}`); if (e.appGestoppt) starte(); }
+      if (e.status === "ausgerollt") { log(`Rolled out: ${e.von.slice(0, 7)} → ${e.nach.slice(0, 7)} (tests passed). Restarting.`); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } starte(); }
+      else if (e.status === "abgelehnt") { log(`REJECTED ${e.nach.slice(0, 7)}: ${e.grund}. Old version ${e.von.slice(0, 7)} keeps running.\n${e.ausgabe}`); if (e.appGestoppt) starte(); }
       else if (e.status === "blockiert" || e.status === "fehler") { if (e.grund !== leseStatus(ordner).letzterHinweis) { log(`${e.status.toUpperCase()}: ${e.grund}`); schreibeStatus(ordner, { letzterHinweis: e.grund }); } }
       else if (leseStatus(ordner).letzterHinweis) schreibeStatus(ordner, { letzterHinweis: null });
       schreibeStatus(ordner, { geprueftAm: new Date().toISOString() });
-    } catch (x) { log("Prüfung fehlgeschlagen: " + x.message); } finally { pruefLaeuft = false; }
+    } catch (x) { log("Check failed: " + x.message); } finally { pruefLaeuft = false; }
   };
 
-  const ende = async (sig) => { beendet = true; log(`${sig}: Wächter wird beendet.`); if (geplant) clearTimeout(geplant); await stoppe(); process.exit(0); };
+  const ende = async (sig) => { beendet = true; log(`${sig}: watcher is shutting down.`); if (geplant) clearTimeout(geplant); await stoppe(); process.exit(0); };
   process.on("SIGINT", () => ende("SIGINT")); process.on("SIGTERM", () => ende("SIGTERM"));
 
   setInterval(() => {}, 2 ** 30); // hält den Prozess auch dann am Leben, wenn gerade keine App läuft
-  log(`Wächter gestartet: ${branch ? `folgt origin/${branch}${hart ? " (hart)" : " (nur Fast-Forward)"}, Prüfung alle ${intervallS} s` : "nur Überwachung"}`);
+  log(`Watcher started: ${branch ? `follows origin/${branch}${hart ? " (hard)" : " (fast-forward only)"}, check every ${intervallS} s` : "monitoring only"}`);
   if (branch) await pruefe();   // vor dem ersten Start: gleich den aktuellen Stand holen
   starte();
   if (branch) setInterval(pruefe, intervallS * 1000);

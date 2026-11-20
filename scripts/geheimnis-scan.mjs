@@ -14,7 +14,7 @@ const git = (...a) => execFileSync("git", a, { cwd: WURZEL, encoding: "utf8", ma
 const VERBOTEN = [
   [/(^|\/)\.env($|\.)(?!beispiel$)/, "Umgebungsdatei"],
   [/(^|\/)erstes-passwort/i, "Passwortdatei"],
-  [/\.(pem|key|p12|pfx)$/i, "Schlüsseldatei"],
+  [/\.(pem|key|p12|pfx)$/i, "key file"],
   [/\.db(-wal|-shm)?$/i, "Datenbank"],
 ];
 const ERLAUBT = new Set([".env.beispiel", "daten-team/pm.db"]);
@@ -23,9 +23,9 @@ const ERLAUBT = new Set([".env.beispiel", "daten-team/pm.db"]);
 const MUSTER = [
   ["eBay-Token", new RegExp("v\\^1\\.1#" + "i\\^1")],
   ["eBay-App-ID", /\b[A-Za-z0-9]+-[A-Za-z0-9]+-PRD-[0-9a-f]{9}-[0-9a-f]{8}\b/],
-  ["privater Schlüssel", new RegExp("-----BEGIN [A-Z ]*PRIVATE " + "KEY-----")],
+  ["private key", new RegExp("-----BEGIN [A-Z ]*PRIVATE " + "KEY-----")],
   ["GitHub-Token", /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{30,}\b/],
-  ["AWS-Schlüssel", /\bAKIA[0-9A-Z]{16}\b/],
+  ["AWS key", /\bAKIA[0-9A-Z]{16}\b/],
   ["Telegram-Bot-Token", /\b\d{8,11}:[A-Za-z0-9_-]{33,36}\b/],
   ["Cloudflare-Token", /\bcfut_[A-Za-z0-9]{30,}\b/],
   // Zuweisungen im Stil einer .env-Zeile mit echtem Wert (Code wie const X = process.env.X zählt nicht; Platzhalter in spitzen Klammern, leer oder "..." zählen nicht)
@@ -67,7 +67,7 @@ if (process.argv.includes("--historie")) {
 
 const einmalig = [...new Set(treffer)];
 if (einmalig.length) {
-  console.error("Geheimnis-Scan: GEFUNDEN\n  " + einmalig.join("\n  ") + "\nBitte entfernen (und das betroffene Geheimnis bei eBay/GitHub erneuern, falls es schon gepusht wurde).");
+  console.error("Secret scan: FOUND\n  " + einmalig.join("\n  ") + "\nPlease remove it (and renew the affected secret at eBay/GitHub if it was already pushed).");
   process.exit(1);
 }
-console.log(`Geheimnis-Scan: sauber (${dateien.length} Dateien${process.argv.includes("--historie") ? " und die gesamte Historie" : ""}).`);
+console.log(`Secret scan: clean (${dateien.length} files${process.argv.includes("--historie") ? " and the whole history" : ""}).`);

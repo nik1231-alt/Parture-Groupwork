@@ -17,9 +17,9 @@ test("Vorschlag: Nachricht mit Name, Anzahl und Testname geht an die richtige Ch
   assert.equal(await b.vorschlag("anna", 4, "Staender"), true);
   assert.match(url, /^https:\/\/api\.telegram\.org\/bot123456789:/);
   assert.equal(body.chat_id, "42");
-  assert.match(body.text, /anna schlägt 4 Titeländerungen vor.*Staender/);
+  assert.match(body.text, /anna proposes 4 title changes.*Staender/);
   assert.equal((await erzeuge({ env: ENV, fetchFn: async (u, o) => { body = JSON.parse(o.body); return { ok: true }; } }).vorschlag("ben", 1, "X")), true);
-  assert.match(body.text, /1 Titeländerung vor/);
+  assert.match(body.text, /proposes 1 title change /);
 });
 
 test("Netzfehler und HTTP-Fehler werfen nie, der Token steht in keiner Logzeile", async () => {

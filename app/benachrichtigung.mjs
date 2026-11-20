@@ -18,11 +18,11 @@ export function erzeuge({ env = process.env, fetchFn = fetch, log = console.warn
       });
       if (!r.ok) { log("Benachrichtigung fehlgeschlagen: HTTP " + r.status); return false; }
       return true;
-    } catch (e) { log("Benachrichtigung fehlgeschlagen: " + ohneToken(e.message)); return false; }
+    } catch (e) { log("Notification failed: " + ohneToken(e.message)); return false; }
   }
   return {
     konfiguriert, sende,
-    vorschlag: (wer, anzahl, testName, link) => sende(`Parture: ${wer} schlägt ${anzahl} Titeländerung${anzahl === 1 ? "" : "en"} vor (Test „${testName}“). Wartet auf deine Freigabe.${link ? "\n" + link : ""}`),
-    fehler: (was, grund) => sende(`Parture: ${was} fehlgeschlagen. ${grund || ""}`),
+    vorschlag: (wer, anzahl, testName, link) => sende(`Parture: ${wer} proposes ${anzahl} title change${anzahl === 1 ? "" : "s"} (test “${testName}”). Waiting for your approval.${link ? "\n" + link : ""}`),
+    fehler: (was, grund) => sende(`Parture: ${was} failed. ${grund || ""}`),
   };
 }

@@ -59,7 +59,7 @@ test("durchgefallene Tests: Rückfall auf den alten Stand, der schlechte Stand w
   assert.equal(leseStatus(prod).abgelehnt, schlecht);
   const nochmal = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(nochmal.status, "unveraendert");
-  assert.match(nochmal.grund, /abgelehnt/);
+  assert.match(nochmal.grund, /rejected/);
   schreibe(werk, "ok.txt", "1"); const repariert = push("repariert");
   const e2 = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(e2.status, "ausgerollt");
@@ -128,7 +128,7 @@ test("kein Fast-Forward (lokaler Commit auf dem Server): PROD blockiert. Umgesch
   push("auf GitHub weiter");
   const b = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(b.status, "blockiert");
-  assert.match(b.grund, /Fast-Forward/);
+  assert.match(b.grund, /fast-forward/);
   assert.equal(gitIn(prod)("rev-parse", "HEAD"), lokal, "PROD bleibt unangetastet");
   // GitHub-Historie wird umgeschrieben (Force-Push): VORSCHAU zieht hart nach
   w("reset", "--hard", "--quiet", "HEAD~1"); schreibe(werk, "anders.txt", "x"); w("add", "-A"); w("commit", "-q", "-m", "umgeschrieben"); w("push", "-q", "--force", "origin", "main");

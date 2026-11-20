@@ -95,9 +95,9 @@ async function haupt() {
     const datei = process.argv[3]; if (!datei) { console.error("Aufruf: npm run sicherung -- wiederherstellen <datei aus daten/sicherung>"); process.exit(2); }
     const pfad = path.isAbsolute(datei) ? datei : fs.existsSync(path.resolve(datei)) ? path.resolve(datei) : path.join(k.ziel, datei);
     const quelle = k.quellen.find((q) => path.basename(pfad).startsWith(q.name + "-"));
-    if (!quelle) { console.error("Der Dateiname passt zu keiner Quelle (app-… oder traffic-tage-…)."); process.exit(2); }
+    if (!quelle) { console.error("The file name does not match any source (app-… or traffic-tage-…)."); process.exit(2); }
     const r = stelleWiederHer(pfad, quelle.pfad);
-    console.log(`Zurückgespielt nach ${quelle.pfad}.` + (r.alt ? ` Die bisherige Datei liegt unter ${r.alt}.` : "") + " Jetzt die App neu starten.");
+    console.log(`Restored to ${quelle.pfad}.` + (r.alt ? ` The previous file is at ${r.alt}.` : "") + " Now restart the app.");
     return;
   }
   const r = await sichere(k);
