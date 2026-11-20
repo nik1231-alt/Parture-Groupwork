@@ -462,14 +462,6 @@ a.knopf { text-decoration: none; }
 .wie { margin-top: 4px; } .wie > summary { cursor: pointer; color: var(--akzent); font-weight: 600; font-size: 14px; }
 .wie-liste { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; color: var(--leise); max-width: 80ch; }
 .band { margin-bottom: 12px; }
-.schrittleiste { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
-.schritt-knopf { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--linie); background: var(--karte); cursor: pointer; color: var(--text); }
-.schritt-knopf:hover { border-color: var(--akzent-linie); }
-.schritt-knopf.aktiv { border-color: var(--akzent-linie); background: linear-gradient(var(--akzent-weich), var(--karte)); }
-.schritt-nr { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--karte-leise); font: 700 13px var(--anzeige); }
-.schritt-knopf.aktiv .schritt-nr { background: var(--akzent); color: var(--akzent-text); }
-.schritt-text { display: grid; min-width: 0; } .schritt-text strong { font-size: 14px; } .schritt-text small { font-size: 11.5px; color: var(--leise); line-height: 1.3; }
-.schritt-zahl { font: 700 20px var(--anzeige); font-variant-numeric: tabular-nums; }
 .reiterleiste { display: flex; gap: 2px; border-bottom: 1px solid var(--linie); margin: 4px 0 16px; }
 .reiter { border: 0; background: transparent; padding: 10px 14px; font-weight: 600; color: var(--leise); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; gap: 6px; align-items: center; }
 .reiter:hover { color: var(--text); } .reiter[aria-selected="true"] { color: var(--text); border-bottom-color: var(--akzent); }
@@ -508,11 +500,12 @@ a.knopf { text-decoration: none; }
 .grund-feld { flex: 1 1 200px; min-width: 0; } .grund-feld .feld { width: 100%; }
 .steuerung { margin-top: 18px; }
 @media (max-width: 860px) {
-  .schrittleiste { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
   .lzeile { grid-template-columns: 24px 48px minmax(0, 1fr); }
   .lzeile .bild { width: 48px; height: 48px; }
   .lzeile-aktion { grid-column: 3; }
   .reiterleiste { overflow-x: auto; }
+}
 
 /* Seite Dashboard (public/ergebnisse.js): Antwort-Satz, Phasen-Reiter, Tageskurve, Gruppenvergleich, Hebel */
 .r-antwort { display: grid; gap: 8px; border-left: 0; }
@@ -605,3 +598,15 @@ a.knopf { text-decoration: none; }
 .fluss-punkt.d-f-laeuft { background: var(--akzent); } .fluss-punkt.d-f-wartet, .fluss-punkt.d-f-offen, .fluss-punkt.d-f-ueberarbeiten { background: var(--g-sichtbarkeit); } .fluss-punkt.d-f-entfernt, .fluss-punkt.d-f-offline { background: var(--schlecht); }
 @media (max-width: 800px) { .fluss-zeile { grid-template-columns: 1fr 1fr; gap: 4px 12px; } .fluss-balken { grid-column: 1 / -1; grid-row: 2; } .fluss-text { grid-column: 2; grid-row: 1; text-align: right; } }
 .tag-fuer-tag { margin-top: 28px; }
+
+/* Funnel: Stufe im Bild wählen, Arbeit darunter (Niko 20.11.: an der Übersicht orientieren) */
+.pl-knoten.gewaehlt { background: var(--karte-hover); box-shadow: inset 0 0 0 2px var(--akzent); }
+.pl-todo { margin-top: 2px; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--karte-leise); color: var(--leise); white-space: nowrap; }
+.pl-todo.dringend { background: var(--akzent); color: #fff; }
+.stufe-panel { scroll-margin-top: 16px; }
+.stufe-panel > .kopf-zeile { align-items: flex-start; }
+.stufe-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.stufe-teil { margin-top: 14px; }
+.stufe-teil > summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+.stufe-panel .zieh-panel { border: 0; box-shadow: none; padding: 0; margin: 0; background: transparent; }
+.trichter-bild { grid-template-columns: minmax(0, 1fr); } .trichter-bild > * { min-width: 0; }  /* sonst schiebt der breite Fluss die Seite auf dem Handy seitlich auf */

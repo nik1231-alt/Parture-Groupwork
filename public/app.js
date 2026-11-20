@@ -141,7 +141,7 @@ function route() {
   if (ansicht === "problem") ladeProblem();
   if (ansicht === "ergebnisse") ladeErgebnisse();
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
-  if (ansicht === "ladder") { if (arg && FUNNEL_TABS.includes(arg)) zustand.funnelTab = arg; else if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; zustand.funnelTab = "all"; } ladeLeiter(); }
+  if (ansicht === "ladder") { if (arg === "work") zustand.funnelTab = "overview"; else if (arg && FUNNEL_TABS.includes(arg)) zustand.funnelTab = arg; else if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; zustand.funnelTab = "all"; } ladeLeiter(); }
   if (ansicht === "settings") ladeEinstellungen();
   if (ansicht === "approvals") ladeFreigaben();
   if (ansicht === "team") ladeTeam();
@@ -764,39 +764,84 @@ const statusChip = (s) => el("span", { class: "status " + (STATUS_KLASSE[s] || "
 // Funnel-Seite (Niko 20.11.: "sehr intuitiv durchbewegen, leicht verständlich, übersichtlich, anwendungsbezogen"):
 //   Kopf mit einem Satz und "How it works" zum Aufklappen, Band zum Datenstand, Schrittleiste 1–5 mit Zahlen,
 //   drei Reiter: Overview (Kennzahlen, Bild, Wirkung) · Work (losen, freigeben, warten, entscheiden) · All products (Tabelle).
-const FUNNEL_TABS = ["work", "overview", "all"];
+// Funnel-Seite (Niko 20.11.: "Overview gefällt mir viel besser, ist viel übersichtlicher — bitte mehr daran orientieren"):
+// EINE Ansicht. Oben Kennzahlen und das Bild "Where every product stands"; die Kreise der Leiter zeigen, was dort zu tun ist,
+// und ein Klick öffnet direkt darunter nur diese Stufe mit ihren Knöpfen. Darunter die Wirkung je Phase. Zweiter Reiter: alle Produkte.
+const FUNNEL_TABS = ["overview", "all"];
+const ARBEIT_STUFEN = ["geeignet", "titel", "werbung", "preis", "pruefung"];
 function zeichneLeiter(l) {
   zustand.leiterDaten = l;
   zustand.leiterStatus = l.status;
-  if (!FUNNEL_TABS.includes(zustand.funnelTab)) zustand.funnelTab = istAdmin() ? "work" : "overview";
-  const tab = zustand.funnelTab, f = l.trichter;
+  if (!FUNNEL_TABS.includes(zustand.funnelTab)) zustand.funnelTab = "overview";
+  const tab = zustand.funnelTab, f = l.trichter, arbeit = stufenArbeit(l);
+  if (!ARBEIT_STUFEN.includes(zustand.funnelStufe)) zustand.funnelStufe = ARBEIT_STUFEN.slice(1).find((s) => arbeit[s].todo) || ARBEIT_STUFEN.slice(1).find((s) => arbeit[s].alle.length) || "geeignet";
   const reiter = (id, name, zahlText) => el("button", { class: "reiter", type: "button", role: "tab", "aria-selected": String(tab === id), onclick: () => { zustand.funnelTab = id; history.replaceState(null, "", "#ladder/" + id); zeichneLeiter(l); } },
     name, zahlText != null ? el("span", { class: "zahl-pille", text: String(zahlText) }) : null);
-  const offen = l.angebote.filter((a) => a.phase === "vorschlag" || a.phase === "offen" || (a.phase === "laeuft" && a.stand && a.stand.gelaufen >= a.stand.tage)).length;
+  const todo = ARBEIT_STUFEN.slice(1).reduce((s, x) => s + arbeit[x].todo, 0);
   fuelle($("#ansicht-ladder"),
     el("div", { class: "einstieg" }, el("h1", { text: "Funnel" }),
       el("p", { class: "leise", text: "Find the eBay listings buyers rarely see, change one thing at a time, and measure each change against a control group. Only eBay performance counts here." }),
       el("details", { class: "wie" }, el("summary", { text: "How it works" }),
         el("ol", { class: "wie-liste" },
-          el("li", { text: `Eligible: under ${zahl(f.kpi.grenze90)} impressions in 90 days, active on eBay, not blocked.` }),
+          el("li", { text: `Eligible: under ${zahl(f.kpi.grenze90)} impressions in 90 days, active on eBay, never sold on eBay, not blocked.` }),
           el("li", { text: "Draw by lot: you choose how many. With a control group, the same number stays unchanged, so a busy or quiet season does not count as an effect." }),
           el("li", { text: "Phase 1 new title (AI + rule check) → Phase 2 ads (only if the listing is not advertised yet; otherwise it skips to the price) → Phase 3 lower price → Phase 4 manual check." }),
           el("li", { text: `After each waiting time you decide: “Seen again” (at least ${zahl(f.kpi.grenze90)} impressions per 90 days) or the next phase. The app shows the numbers and a recommendation.` }),
-          el("li", { text: "Nothing changes on eBay until an admin approves it. Every step is in the history and the Log." })))),
-    vorschauBand(),  datenBand(l),
-    schrittLeiste(l),
+          el("li", { text: "Click a circle of the ladder to work on that step. Nothing changes on eBay until an admin approves it; every step is in the history and the Log." })))),
+    vorschauBand(), datenBand(l),
     el("div", { class: "reiterleiste", role: "tablist", "aria-label": "Funnel views" },
-      reiter("work", "Work", offen), reiter("overview", "Overview"), reiter("all", "All products", f.kpi.produkte)),
-    tab === "overview" ? [kpiLeiste(l), trichterBild(l), wirkungTabelle(l)]
-      : tab === "all" ? statusTabelle(f)
-      : arbeitsBereich(l));
+      reiter("overview", "Funnel", todo || null), reiter("all", "All products", f.kpi.produkte)),
+    tab === "all" ? statusTabelle(f)
+      : [kpiLeiste(l), trichterBild(l, arbeit), stufePanel(l, arbeit), wirkungTabelle(l), istAdmin() ? steuerZeile(l) : null]);
+}
+
+// Was in jeder Stufe der Leiter steht und was davon auf jemanden wartet (Vorschlag freigeben oder nach der Prüfzeit entscheiden)
+function stufenArbeit(l) {
+  const A = l.angebote.filter((a) => a.stufe !== "raus"), r = { geeignet: { alle: l.kandidatenListe || [], todo: 0 } };
+  const vorbei = (a) => a.phase === "laeuft" && a.stand && a.stand.gelaufen >= a.stand.tage;
+  for (const s of ARBEIT_STUFEN.slice(1)) {
+    const alle = A.filter((a) => a.stufe === s);
+    const vorschlag = alle.filter((a) => a.phase === "vorschlag"), entscheiden = alle.filter((a) => vorbei(a) || a.phase === "offen");
+    const warten = alle.filter((a) => a.phase === "laeuft" && !vorbei(a)).sort((a, b) => String(a.stand?.ende).localeCompare(String(b.stand?.ende)));
+    r[s] = { alle, vorschlag, warten, entscheiden, todo: istAdmin() ? vorschlag.length + entscheiden.length : 0 };
+  }
+  return r;
+}
+
+// Die gewählte Stufe unter dem Bild: kurzer Kopf mit den Zahlen, dann nur die Angebote, die gerade etwas brauchen, mit ihren Knöpfen
+const STUFE_KOPF = {
+  geeignet: ["Eligible", "Listings with low impressions that never sold on eBay. Draw some by lot to start."],
+  titel: ["Phase 1 · New title", "Old title on the left, new one on the right; added words are highlighted."],
+  werbung: ["Phase 2 · Ads", "Only for listings that are not advertised yet; the app checks eBay right before and otherwise moves the listing to the price step."],
+  preis: ["Phase 3 · Lower price", "The app does not know the costs: check that the new price still pays off."],
+  pruefung: ["Phase 4 · Manual check", "Title, ads and price did not bring the impressions back: rework, take offline or keep."],
+};
+function stufePanel(l, arbeit) {
+  const s = zustand.funnelStufe, x = arbeit[s], [titel, hinweis] = STUFE_KOPF[s];
+  const zeilen = (liste) => el("div", { class: "tabelle" }, liste.map((a) => leiterZeile(a, l)));
+  const teil = (name, liste, extra = null) => liste.length ? el("div", { class: "stufe-teil" },
+    el("div", { class: "abschnitt-kopf" }, el("h3", {}, name, el("span", { class: "zahl-pille", text: String(liste.length) })), extra), zeilen(liste)) : null;
+  if (s === "geeignet") return el("section", { id: "stufe", class: "panel stufe-panel" },
+    el("div", { class: "kopf-zeile" }, el("div", {}, el("h2", { text: titel }), el("p", { class: "leise klein", text: hinweis }))),
+    istAdmin() ? ziehenPanel(l) : el("p", { class: "leise", text: `${zahl(x.alle.length)} listings are eligible. An admin draws them by lot.` }),
+    istAdmin() ? el("details", { class: "stufe-teil" }, el("summary", { text: "Add one specific listing" }), auswahlAufnehmen(x.alle)) : null);
+  const chips = [[x.vorschlag.length, "to approve", "offen"], [x.entscheiden.length, "to decide", "warn"], [x.warten.length, "waiting", "phase"]]
+    .filter(([n]) => n).map(([n, t, k]) => el("span", { class: "status " + k, text: `${zahl(n)} ${t}` }));
+  const sammel = istAdmin() && x.vorschlag.length ? sammelFreigabe(x.vorschlag, l, s === "titel" ? "titel" : "sonst") : null;
+  return el("section", { id: "stufe", class: "panel stufe-panel" },
+    el("div", { class: "kopf-zeile" }, el("div", {}, el("h2", { text: titel }), el("p", { class: "leise klein", text: hinweis })), el("div", { class: "stufe-chips" }, ...chips)),
+    x.alle.length ? null : el("p", { class: "leere-hinweis leise", text: "No listing is in this step right now." }),
+    teil("Approve", x.vorschlag, sammel),
+    teil(s === "pruefung" ? "Decide" : "Waiting time over: decide", x.entscheiden),
+    x.warten.length ? el("details", { class: "stufe-teil", open: x.vorschlag.length + x.entscheiden.length === 0 },
+      el("summary", {}, `Waiting time running (${x.warten.length}) · next due ${x.warten[0].stand?.ende ? datum(x.warten[0].stand.ende + "T12:00:00Z") : "–"}`), zeilen(x.warten)) : null);
 }
 
 // Auf VORSCHAU deutlich sagen, dass hier nichts bei eBay passiert (20.11.: die erste Tranche wurde dort statt auf PROD gestartet)
 function vorschauBand() {
   if (zustand.betrieb?.umgebung !== "vorschau") return null;
   return el("div", { class: "hinweis hinweis-warnung band" }, el("strong", { text: "Preview: nothing here changes eBay. " }), "This copy has its own data and only does dry runs. Real changes happen on ",
-    el("a", { href: "https://app.parture-team.com/#ladder/work", text: "app.parture-team.com" }), ".");
+    el("a", { href: "https://app.parture-team.com/#ladder/overview", text: "app.parture-team.com" }), ".");
 }
 
 // Band oben, solange die eBay-Daten alt sind: dann bewegen sich Prüfzeiten und Messungen nicht
@@ -807,43 +852,6 @@ function datenBand(l) {
   if (alter <= 3) return null;
   return el("div", { class: "hinweis hinweis-warnung band" }, el("strong", { text: `eBay data up to ${datum(bis + "T12:00:00Z")}. ` }),
     `Waiting times count finished data days, so they only move on when new days arrive (normally with a lag of 1–3 days; now ${alter} days).`);
-}
-
-// Schrittleiste: der Weg in fünf Schritten mit der Zahl, die gerade dort steht; Klick springt in die Arbeitsliste
-function schrittLeiste(l) {
-  const f = l.trichter, A = l.angebote;
-  const vorschlag = A.filter((a) => a.phase === "vorschlag").length, laeuft = A.filter((a) => a.phase === "laeuft");
-  const fertigWarten = laeuft.filter((a) => a.stand && a.stand.gelaufen >= a.stand.tage).length + A.filter((a) => a.phase === "offen").length;
-  const schritt = (nr, titel, n, unter, ziel) => el("button", { class: "schritt-knopf" + (n ? " aktiv" : ""), type: "button", onclick: () => { zustand.funnelTab = ziel === "all" ? "all" : "work"; if (ziel === "all") zustand.funnelFilter = "geeignet"; zeichneLeiter(l); const z = document.getElementById(ziel); if (z) z.scrollIntoView({ behavior: "smooth", block: "start" }); } },
-    el("span", { class: "schritt-nr", text: String(nr) }), el("span", { class: "schritt-text" }, el("strong", { text: titel }), el("small", { text: unter })), el("span", { class: "schritt-zahl", text: zahl(n) }));
-  return el("div", { class: "schrittleiste" },
-    schritt(1, "Choose", f.zahl.geeignet, "eligible listings", "ziehen"),
-    schritt(2, "Approve", vorschlag, "suggestions waiting", "freigeben"),
-    schritt(3, "Wait", laeuft.length - laeuft.filter((a) => a.stand && a.stand.gelaufen >= a.stand.tage).length, "waiting time running", "warten"),
-    schritt(4, "Decide", fertigWarten, "waiting over or manual check", "entscheiden"),
-    schritt(5, "Results", f.zahl.erholt + f.zahl.raus, "seen again or left", "ergebnis"));
-}
-
-function arbeitsBereich(l) {
-  const A = l.angebote;
-  const gruppe = (id, titel, hinweis, liste, extra = null) => el("section", { id, class: "arbeitsgruppe" },
-    el("div", { class: "abschnitt-kopf" }, el("h2", {}, titel, el("span", { class: "zahl-pille", text: String(liste.length) })), extra),
-    hinweis ? el("p", { class: "leise klein", text: hinweis }) : null,
-    liste.length ? el("div", { class: "tabelle" }, liste.map((a) => leiterZeile(a, l))) : el("p", { class: "leere-hinweis leise", text: "Nothing here right now." }));
-  const titelOffen = A.filter((a) => a.phase === "vorschlag" && a.stufe === "titel");
-  const sonstOffen = A.filter((a) => a.phase === "vorschlag" && a.stufe !== "titel");
-  const laeuft = A.filter((a) => a.phase === "laeuft");
-  const warten = laeuft.filter((a) => !(a.stand && a.stand.gelaufen >= a.stand.tage)), entscheiden = [...laeuft.filter((a) => a.stand && a.stand.gelaufen >= a.stand.tage), ...A.filter((a) => a.phase === "offen")];
-  const fertig = A.filter((a) => a.stufe === "raus" && a.ergebnis !== "kontrolle");
-  return [
-    istAdmin() ? ziehenPanel(l) : null,
-    gruppe("freigeben", "Approve new titles", "Old title on the left, new one on the right; added words are highlighted. “Approve all” approves the whole list; tick rows to approve only some.", titelOffen, istAdmin() && titelOffen.length ? sammelFreigabe(titelOffen, l, "titel") : null),
-    sonstOffen.length ? gruppe("freigeben-2", "Approve ads or price", "Ads only for listings that are not advertised yet; the app checks eBay right before and otherwise moves the listing to the price step.", sonstOffen, istAdmin() ? sammelFreigabe(sonstOffen, l, "sonst") : null) : null,
-    gruppe("warten", "Waiting time running", "The change is live. The bars compare this listing with the control group over the same days.", warten),
-    gruppe("entscheiden", "Decide", "The waiting time is over (or title, ads and price did not help). The app recommends a step; you decide.", entscheiden),
-    el("details", { id: "ergebnis", class: "panel", style: "margin-top:18px" }, el("summary", { text: `Left the ladder (${fertig.length})` }), fertig.length ? el("div", { class: "tabelle" }, fertig.map((a) => leiterZeile(a, l))) : el("p", { class: "leise klein", text: "Nothing yet." })),
-    istAdmin() ? el("details", { class: "panel" }, el("summary", { text: "Add one specific listing" }), auswahlAufnehmen(l.kandidatenListe || [])) : null,
-    istAdmin() ? steuerZeile(l) : null];
 }
 
 // Losen: Anzahl frei wählbar, Kontrollgruppe ja/nein, Vorschau genau der Angebote, die gezogen würden (in Losreihenfolge)
@@ -870,7 +878,7 @@ function ziehenPanel(l) {
     leiterAktion("/api/leiter/ziehen", { anzahl: zustand.ziehAnzahl, kontrolle: zustand.ziehKontrolle }, (r) => `${r.aufgenommen} on the ladder${r.kontrolle ? `, ${r.kontrolle} in the control group` : ""}, ${r.titelVorschlaege} AI titles.`); });
   neu();
   return el("section", { id: "ziehen", class: "panel zieh-panel" },
-    el("div", { class: "kopf-zeile" }, el("div", {}, el("h2", { text: "1 · Choose listings" }), el("p", { class: "leise klein", text: `${zahl(liste.length)} listings are eligible right now. There is no upper limit.` }))),
+    el("div", { class: "kopf-zeile" }, el("div", {}, el("p", { class: "leise klein", text: `${zahl(liste.length)} listings are eligible right now. There is no upper limit.` }))),
     el("div", { class: "zieh-felder" },
       el("label", { class: "zieh-feld", for: "zieh-anzahl" }, el("span", { text: "How many on the ladder" }), anzahl),
       el("label", { class: "zieh-feld schalter-feld" }, kontrolle, el("span", { text: "Draw a control group of the same size" })),
@@ -883,6 +891,7 @@ function ziehenPanel(l) {
 // gruppe: "titel" oder "sonst" (Werbung und Preis); live: schreibt die App gerade wirklich bei eBay?
 function sammelFreigabe(liste, l, gruppe = "titel") {
   const freigebbar = liste.filter((a) => a.vorschlag && !a.vorschlag.nichtMoeglich);
+  if (!freigebbar.length) return el("span", { class: "leise klein", text: gruppe === "titel" ? "No title suggestion yet: “Get AI titles” below, or open a row and type one." : "Nothing ready to approve yet." });
   const live = gruppe === "titel" ? l.schreiben?.titel : l.schreiben?.werbung || l.schreiben?.preis;
   const was = gruppe === "titel" ? "title" : "step";
   const haken = () => [...document.querySelectorAll(`.zeile-haken[data-gruppe="${gruppe}"]`)];
@@ -1033,7 +1042,7 @@ function kpiLeiste(l) {
 //   1. alle Produkte als ein gestapelter Balken nach Status, 2. warum nicht geeignet: je Grund "x von N" als Balken,
 //   3. die Leiter als Fluss: geeignet → Los → Phase 1 … 4 → wieder gesehen, Abzweig Kontrollgruppe; Kreisfläche ~ Anzahl.
 // Ein Klick auf jeden Teil filtert die Tabelle aller Produkte unten.
-function trichterBild(l) {
+function trichterBild(l, arbeit = null) {
   const f = l.trichter, N = Math.max(1, f.kpi.produkte);
   const filtern = (status) => { zustand.funnelFilter = status; zustand.funnelSichtbar = 50; zustand.funnelTab = "all"; zeichneLeiter(l); $("#funnel-tabelle")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
   const anteil = (n) => pz(n / N, n && n / N < 0.01 ? 1 : 0);
@@ -1047,15 +1056,22 @@ function trichterBild(l) {
     el("span", { class: "gr-balken" }, el("i", { style: `width:${(100 * n) / N}%` })),
     el("span", { class: "gr-wert" }, el("strong", { text: zahl(n) }), ` of ${zahl(N)} · ${anteil(n)}`)));
   const maxP = Math.max(1, f.zahl.geeignet, f.zahl.kontrolle, f.zahl.titel, f.zahl.werbung, f.zahl.preis, f.zahl.pruefung, f.zahl.erholt);
+  // Mit Arbeit (Funnel-Seite): die Kreise der Leiter wählen die Stufe darunter und tragen ein Abzeichen "N to approve / to decide"
   const knoten = (status, titel, unter) => {
     const n = f.zahl[status] || 0, d = Math.round(46 + 50 * Math.sqrt(n / maxP));
-    return el("button", { class: "pl-knoten " + (STATUS_KLASSE[status] || "") + (n ? "" : " leer"), type: "button", onclick: () => filtern(status), title: `${STATUS_TEXT[status]}: ${zahl(n)}` },
+    const w = arbeit && ARBEIT_STUFEN.includes(status) ? arbeit[status] : null, gewaehlt = !!w && zustand.funnelStufe === status;
+    const abzeichen = !w ? null : status === "geeignet" ? (istAdmin() && n ? "draw" : null)
+      : w.vorschlag.length && istAdmin() ? `${zahl(w.vorschlag.length)} to approve` : w.entscheiden.length && istAdmin() ? `${zahl(w.entscheiden.length)} to decide` : w.warten.length ? `${zahl(w.warten.length)} waiting` : null;
+    const waehle = () => { zustand.funnelStufe = status; zeichneLeiter(l); $("#stufe")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+    return el("button", { class: "pl-knoten " + (STATUS_KLASSE[status] || "") + (n ? "" : " leer") + (gewaehlt ? " gewaehlt" : ""), type: "button", onclick: w ? waehle : () => filtern(status),
+      "aria-pressed": w ? String(gewaehlt) : null, title: w ? `${STATUS_TEXT[status]}: ${zahl(n)}. Click to work on this step.` : `${STATUS_TEXT[status]}: ${zahl(n)}. Click to list them.` },
       el("span", { class: "pl-kreis", style: `width:${d}px;height:${d}px` }, el("span", { text: zahl(n) })),
-      el("strong", { text: titel }), el("small", { text: unter }));
+      el("strong", { text: titel }), el("small", { text: unter }),
+      abzeichen ? el("span", { class: "pl-todo" + (w.todo || status === "geeignet" ? " dringend" : ""), text: abzeichen }) : null);
   };
   const pfeil = (text) => el("span", { class: "pl-pfeil", "aria-hidden": "true" }, text ? el("small", { text }) : null);
   return el("section", { class: "panel trichter-bild", "aria-label": "Funnel" },
-    el("div", { class: "kopf-zeile" }, el("h2", { text: "Where every product stands" }), el("span", { class: "leise klein", text: "Click any part to list those products below." })),
+    el("div", { class: "kopf-zeile" }, el("h2", { text: "Where every product stands" }), el("span", { class: "leise klein", text: arbeit ? "Click a circle of the ladder to work on it; click the bar or a reason to list those products." : "Click any part to list those products below." })),
     el("div", { class: "fb", role: "group", "aria-label": "All products by status" }, ...seg),
     el("div", { class: "fb-legende" }, ...legende),
     el("div", { class: "tb-teil" }, el("h3", { text: `Why ${zahl(f.zahl.nicht_geeignet)} of ${zahl(N)} products are not eligible` }), el("div", { class: "gruende" }, ...gruende)),
