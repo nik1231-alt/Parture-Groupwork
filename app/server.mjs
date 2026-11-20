@@ -361,8 +361,8 @@ function leseJson(req) {
 // Jede Funktion prüft die Eingabe selbst (Typen, Grenzen, Zustand) und liefert { ok, wert } oder { ok: false, status, fehler }.
 const antwort = (r) => { if (!r.ok) throw Object.assign(new Error(r.fehler), { status: r.status || 400 }); return r.wert; };
 const POST_ROUTEN = {
-  "/api/einstellungen": async (req) => antwort(einstellungen.speichere(appDb(), (await leseJson(req))?.werte)),
-  "/api/einstellungen/zuruecksetzen": async (req) => { await leseJson(req); return antwort(einstellungen.zuruecksetzen(appDb())); },
+  "/api/einstellungen": async (req, ctx) => { adminNoetig(ctx); return antwort(einstellungen.speichere(appDb(), (await leseJson(req))?.werte)); },
+  "/api/einstellungen/zuruecksetzen": async (req, ctx) => { adminNoetig(ctx); await leseJson(req); return antwort(einstellungen.zuruecksetzen(appDb())); },
   "/api/experiment": async (req, ctx) => {
     const r = antwort(experimente.legeAn(appDb(), await leseJson(req), produkteLaden(), einst(), new Date(), undefined, sperreLaden()));
     // Der seed steht im Protokoll: damit lässt sich das Los später mit denselben Kandidaten nachrechnen
