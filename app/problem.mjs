@@ -1,15 +1,15 @@
-// Das Problem in Zahlen (Seite Problem): wie ungleich Sichtbarkeit und Verkäufe über die Produkte verteilt sind.
-// Reine Rechnung ohne Datenbank, live aus derselben Produktliste wie alle anderen Seiten.
+// The problem in numbers (page Problem): how unevenly visibility and sales are spread over the products.
+// Pure calculation without a database, live from the same product list as all other pages.
 //
-// Nur eBay (Niko 20.11.2026: andere Plattformen sind nicht im Scope): alles bezieht sich auf die aktiven eBay-Angebote und
-// ihre eBay-Verkäufe. Eine erste Messung mit den Verkäufen aller Kanäle (Amazon allein mehr als eBay) wurde verworfen.
-// Die Frage der Seite: wie viel stärker hängen Verkäufe als Impressionen an wenigen Angeboten, und wie lang ist der Schwanz,
-// den kaum jemand sieht? Genau dort setzt der Funnel an (Diagnose "Low impressions", Grenze aus regeln.leiteSchwellenAb).
+// eBay only (Niko, 20 Nov 2026: other platforms are not in scope): everything refers to the active eBay listings and
+// their eBay sales. A first measurement with the sales of all channels (Amazon alone more than eBay) was discarded.
+// The question of the page: how much more strongly do sales than impressions depend on a few listings, and how long is the tail
+// that hardly anyone sees? That is exactly where the funnel starts (diagnosis "Low impressions", limit from regeln.leiteSchwellenAb).
 
 const zahl = (v) => Number(v) || 0;
 
-// Konzentration: Werte absteigend sortieren und kumulieren. kurve = 101 Punkte (0 … 100 % der Produkte → Anteil der Summe),
-// anteilFuer(z) = kleinster Anteil der Produkte, der z der Summe bringt; top10 = Anteil der Summe bei den besten 10 %.
+// Concentration: sort the values in descending order and accumulate. kurve = 101 points (0 … 100 % of the products → share of the sum),
+// anteilFuer(z) = smallest share of the products that brings z of the sum; top10 = share of the sum held by the best 10 %.
 export function konzentration(werte) {
   const v = werte.map(zahl).sort((a, b) => b - a), n = v.length, summe = v.reduce((a, b) => a + b, 0);
   const kum = []; let c = 0; for (const x of v) { c += x; kum.push(c); }
@@ -21,7 +21,7 @@ export function konzentration(werte) {
     top10: summe ? bis(Math.round(0.1 * n)) / summe : null, top20: summe ? bis(Math.round(0.2 * n)) / summe : null };
 }
 
-// Verteilung der Impressionen in Stufen; die Grenze der Diagnose ist eine eigene Kante, damit "Low impressions" genau eine Säule ist.
+// Distribution of the impressions into bands; the diagnosis limit is its own edge, so that "Low impressions" is exactly one column.
 export function stufen(impressionen, grenze) {
   const g = Math.round(grenze);
   const kanten = [...new Set([0, 1, g, 1000, 5000, Infinity].filter((k) => k === 0 || k === Infinity || k >= 1).sort((a, b) => a - b))];
@@ -33,7 +33,7 @@ export function stufen(impressionen, grenze) {
   return aus;
 }
 
-// produkte: Liste aus bewertung.ladeProdukte (impressionen_90d, units_90d, ebay_aktiv). grenze90: Grenze der Diagnose.
+// products: list from bewertung.ladeProdukte (impressionen_90d, units_90d, ebay_aktiv). grenze90: the diagnosis limit.
 export function auswerten(produkte, grenze90) {
   const ebay = produkte.filter((p) => p.ebay_aktiv === 1 || p.ebay_aktiv === true);
   const gesehen = (p) => zahl(p.impressionen_90d) >= grenze90, verkauft = (p) => zahl(p.units_90d) > 0;
@@ -47,7 +47,7 @@ export function auswerten(produkte, grenze90) {
     kaumGesehen: ebay.filter((p) => !gesehen(p)).length,
     verkaeufe: konzentration(ebay.map((p) => p.units_90d)),
     impressionen: konzentration(ebay.map((p) => p.impressionen_90d)),
-    // Vier Felder der eBay-Angebote: gesehen ja/nein × verkauft ja/nein (gesehen = über der Grenze der Diagnose)
+    // Four fields of the eBay listings: seen yes/no × sold yes/no (seen = above the diagnosis limit)
     felder: { gesehenVerkauft: feld(true, true), gesehenNichtVerkauft: feld(true, false), kaumGesehenVerkauft: feld(false, true), kaumGesehenNichtVerkauft: feld(false, false) },
     stufen: stufen(ebay.map((p) => p.impressionen_90d), grenze90),
   };
