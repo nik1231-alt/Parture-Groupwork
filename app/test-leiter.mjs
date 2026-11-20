@@ -270,3 +270,63 @@ test("von Hand als wieder gesehen beenden; der automatische Teil bewertet bei nu
   assert.equal(zeile(d, nr).stufe, "raus"); assert.equal(zeile(d, nr).ergebnis, "erholt");
   assert.equal(d.prepare("SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ladder_moved'").get().n, 1);
 });
+
+// ---------- Sauberer Start, Losen mit Anzahl, Werbung schon vorhanden (Niko 20.11.) ----------
+test("Take off ohne eBay-Änderung: sofort wieder Eligible (keine 90 Tage Pause); mit Änderung bleibt die Pause", async () => {
+  const d = neueDb(), s = schreiber();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 2 }, T0); // A, B
+  assert.equal(leiter.brichAb(d, BUILDER, "A", "x", T0).status, 403);
+  const r = leiter.brichAb(d, ADMIN, "A", "falsch gezogen", T0);
+  assert.deepEqual(r, { ok: true, wert: { number: "A", pause: false } });
+  assert.equal(zeile(d, "A"), undefined, "Zeile weg");
+  assert.ok(leiter.kandidaten(d, shop(), E, T0).some((p) => p.number === "A"), "A ist sofort wieder Kandidat");
+  // B wird bei eBay geändert und dann abgebrochen: 90 Tage Pause
+  leiter.setzeTitelVorschlag(d, BUILDER, "B", titelVorschlag, T0);
+  await leiter.gibFrei(d, ADMIN, "B", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
+  assert.equal(leiter.brichAb(d, ADMIN, "B", "läuft aus", T0).wert.pause, true);
+  assert.ok(!leiter.kandidaten(d, shop(), E, tag(10)).some((p) => p.number === "B"));
+});
+
+test("Start over: alles ohne eBay-Änderung zurück (auch Kontrolle), Angebote mit Änderung bleiben", async () => {
+  const d = neueDb(), s = schreiber();
+  const [nr] = leiter.nimmAuf(d, shop(), { ...EK, leiterMax: 2 }, T0, { seed: 3 });
+  leiter.setzeTitelVorschlag(d, BUILDER, nr, titelVorschlag, T0);
+  await leiter.gibFrei(d, ADMIN, nr, { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
+  assert.equal(leiter.setzeZurueck(d, BUILDER, "x", T0).status, 403);
+  const r = leiter.setzeZurueck(d, ADMIN, "neu ziehen", T0);
+  assert.deepEqual(r.wert, { zurueckgesetzt: 3, behalten: 1 });
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM leiter").get().n, 1);
+  assert.equal(zeile(d, nr).phase, "laeuft");
+});
+
+test("Losen von Hand: Anzahl ohne Obergrenze, Kontrollgruppe ja oder nein je Ziehung", () => {
+  const d = neueDb();
+  assert.equal(leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0, { anzahl: 4, kontrolle: false }).length, 4, "4 trotz leiterMax 1");
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM leiter WHERE stufe = 'kontrolle'").get().n, 0);
+  const d2 = neueDb();
+  assert.equal(leiter.nimmAuf(d2, shop(), { ...E, leiterMax: 1 }, T0, { anzahl: 2, kontrolle: true, seed: 9 }).length, 2);
+  assert.equal(d2.prepare("SELECT COUNT(*) n FROM leiter WHERE stufe = 'kontrolle'").get().n, 2);
+});
+
+test("schon beworben: aus Phase 2 direkt in die Preisstufe, mit Grund im Lebenslauf; nur aus Phase 2", () => {
+  const d = neueDb();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0); // A in Phase 1
+  assert.equal(leiter.springeUeberWerbung(d, "A", { kampagnen: ["K"] }, E, {}, T0).status, 409, "aus Phase 1 nicht");
+  leiter.ueberspringe(d, ADMIN, "A", "kein neuer Titel", E, {}, T0); // → Phase 2
+  const r = leiter.springeUeberWerbung(d, "A", { kampagnen: ["Kampagne 10.10.2025"] }, E, { fuer: () => ({ kanaele: ITEMS, varianten: [] }) }, T0);
+  assert.equal(r.ok, true);
+  assert.equal(zeile(d, "A").stufe, "preis");
+  const v = d.prepare("SELECT details FROM leiter_verlauf WHERE number = 'A' AND ereignis = 'uebersprungen' ORDER BY id DESC").get();
+  assert.match(JSON.parse(v.details).grund, /Already advertised on eBay \(Kampagne 10\.10\.2025\)/);
+});
+
+test("nach einer Titeländerung liest die App bei eBay nach und nennt den neuen Titel", async () => {
+  const d = neueDb();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.setzeTitelVorschlag(d, BUILDER, "A", titelVorschlag, T0);
+  let gelesen = 0;
+  const s = { ...schreiber(), lies: async () => (gelesen++ === 0 ? { ok: true, titel: "Halter A", status: "Active", variationen: [] } : { ok: true, titel: "Wandhalter passend für A", status: "Active", variationen: [] }) };
+  const r = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
+  assert.equal(r.wert.ausgang, "angewendet");
+  assert.match(r.wert.text, /Now on eBay: “Wandhalter passend für A”/);
+});
