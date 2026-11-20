@@ -153,5 +153,5 @@ test("ladeProdukte: Verkäufe nur von eBay, andere Plattformen zählen nicht", a
       ('B', 'shopify', 1, 'y', 'b', 5, 40, 10, 5, '2026-11-18')`);
   const m = Object.fromEntries(ladeProdukte(d).map((r) => [r.number, [r.units_90d, r.units_total, r.avg_price, r.last_sold_at]]));
   assert.deepEqual(m.A, [30, 90, 8.49, "2026-11-10"], "nur die eBay-Zeile, nicht Amazon");
-  assert.deepEqual(m.B, [0, 0, null, null], "ohne eBay-Angebot: keine Verkäufe, kein Preis");
+  assert.equal(m.B, undefined, "ohne eBay-Angebot: nicht Teil der Analyse");
 });
