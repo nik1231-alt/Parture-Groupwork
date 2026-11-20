@@ -1,4 +1,4 @@
-// Tests für Rollen, Freigabe und Protokoll. Es wird nie bei eBay geschrieben: der Schreiber ist hier ein Ersatz im Speicher.
+// Tests for roles, approval and log. Nothing is ever written to eBay: the writer here is a substitute in memory.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -25,7 +25,7 @@ const produkte = () => Array.from({ length: 8 }, (_, i) => ({ number: String(100
   impressionen_90d: 500, aufrufe_90d: 10, impressionen_30d: 200, aufrufe_30d: 4, transaktionen_30d: 1 }));
 const kanaele = (nummer) => [{ external_id: "9000" + nummer + "00", title: `Holder for device ${Number(nummer) - 100}` }];
 
-// Ein Test mit allen Titeln, bereit zum Einreichen. Gibt { db, id, ebay } zurück (ebay = was bei "eBay" gerade steht).
+// A test with all titles, ready to submit. Returns { db, id, ebay } (ebay = what is currently "on eBay").
 function vorbereitet() {
   const db = baseDb();
   const p = produkte();
@@ -35,7 +35,7 @@ function vorbereitet() {
   for (const a of db.prepare("SELECT number, alt FROM experiment_angebot WHERE experiment_id = ?").all(id)) ebay.set("9000" + a.number + "00", a.alt);
   return { db, id, p, ebay };
 }
-// Ersatz für ebay-schreiben.mjs
+// Substitute for ebay-schreiben.mjs
 function ersatzSchreiber(ebay, { an = true, ablehnen = null, langsam = false } = {}) {
   const aufrufe = { lies: 0, schreibe: [] };
   return { aufrufe, schreibenAn: () => an, konfiguriert: () => true,
@@ -55,7 +55,7 @@ test("Roles: new users are builders, when retrofitting the oldest user becomes a
   assert.equal(rollen.rolleVon(d, "anna"), "builder");
   login.legeBenutzerAn(d, "ben", "ein-langes-passwort");
   assert.equal(rollen.rolleVon(d, "ben"), "builder");
-  rollen.bereiteVor(d); // zweiter Lauf ändert nichts
+  rollen.bereiteVor(d); // a second run changes nothing
   assert.equal(rollen.anzahlAdmins(d), 1);
 });
 
@@ -152,7 +152,7 @@ test("Approval: if the title was changed by hand on eBay in the meantime, nothin
   assert.equal(v.ebay.get(erster), "Von Hand geänderter Titel");
   assert.equal(status(v.db, v.id), "freigabe", "der Test startet erst, wenn alle Titel geändert sind");
   assert.equal(protokoll.liste(v.db, 100).filter((z) => z.aktion === "ebay_refused")[0].ergebnis, "refused");
-  // Der Admin stellt den erwarteten Titel wieder her und versucht es erneut: nur die fehlgeschlagene Änderung läuft noch einmal.
+  // The admin restores the expected title and tries again: only the failed change runs once more.
   v.ebay.set(erster, v.db.prepare("SELECT alt FROM aenderung WHERE item_id = ?").get(erster).alt);
   const r2 = await fg.erteile(v.db, ADMIN, { id: v.id, art: "titel" }, s, v.p, JETZT);
   assert.deepEqual([r2.wert.angewendet, r2.wert.gestartet], [1, true]);
@@ -187,7 +187,7 @@ test("Reject: nothing is changed on eBay, the test goes back to \"prepared\" and
   assert.equal(ex.setzeTitel(v.db, { id: v.id, number: v.db.prepare("SELECT number FROM experiment_angebot WHERE gruppe = 'test'").get().number, neu: "Neuer Versuch" }, EINST).ok, true);
 });
 
-// ---------- Zurück auf die alten Titel ----------
+// ---------- Back to the old titles ----------
 test("Revert: a closed test creates reverting changes that an admin must approve again", async () => {
   const v = vorbereitet(); fg.reicheEin(v.db, BUILDER, { id: v.id }, kanaele, JETZT);
   const s = ersatzSchreiber(v.ebay);
@@ -254,8 +254,8 @@ test("Limit: also when approving, in case too many are open (e.g. entered by han
   assert.equal(s.aufrufe.lies, 0); assert.equal(s.aufrufe.schreibe.length, 0);
 });
 
-// ---------- Zustandsautomat der Freigabe (Checkliste A3.7) ----------
-// offen/fehlgeschlagen → angewendet | abgelehnt | verworfen. Aus einem Endzustand führt kein Weg zurück: unerlaubte Übergänge liefern 409.
+// ---------- State machine of the approval (checklist A3.7) ----------
+// open/failed → applied | rejected | discarded. From a final state there is no way back: illegal transitions return 409.
 const zustaende = (db) => db.prepare("SELECT status FROM aenderung ORDER BY id").all().map((z) => z.status);
 
 test("State machine: rejected is final, rejecting or approving again returns 409, nothing happens on eBay", async () => {
@@ -314,7 +314,7 @@ test("Input: test id only as a positive whole number, kind only titel/zurueck, e
   assert.equal(status(v.db, v.id), "vorbereitet");
 });
 
-// ---------- eBay-Schreibweg: ein Test je Riegel (Checkliste A3.11) ----------
+// ---------- eBay write path: one test per latch (checklist A3.11) ----------
 test("eBay latch 1: without all three credentials no call goes out, even with EBAY_SCHREIBEN=an", async () => {
   let aufrufe = 0;
   const fetchFn = async () => { aufrufe++; throw new Error("kein Netz erwartet"); };

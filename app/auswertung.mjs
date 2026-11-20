@@ -15,7 +15,7 @@ export function median(werte) {
   return w.length % 2 ? w[m] : (w[m - 1] + w[m]) / 2;
 }
 
-// Nettoeffekt wie in experimente.urteile: (Testgruppe nachher/vorher) / (Kontrolle nachher/vorher) - 1.
+// Net effect as in experimente.urteile: (test group after/before) / (control after/before) - 1.
 // If the control is unusable (starting value 0), the raw change of the test group counts.
 export function netto(test, kontrolle) {
   const eigen = test.vorher > 0 ? test.nachher / test.vorher : test.nachher > 0 ? Infinity : 1;

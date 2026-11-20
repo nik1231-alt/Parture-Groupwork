@@ -1,7 +1,7 @@
-// Ende-zu-Ende-Test (Checkliste A4.2): der ganze Weg gegen den echten Server, so wie ihn Builder und Admin in der Oberfläche gehen.
-//   Builder meldet sich an -> zieht einen Test -> trägt Titel ein -> sendet zur Freigabe
-//   Admin meldet sich an   -> gibt frei (Probelauf: EBAY_SCHREIBEN aus, keine Zugangsdaten) -> Protokoll -> Testansicht
-// Daten: die Team-Kopie daten-team/pm.db, nur lesend. Eigene Daten (Benutzer, Tests, Protokoll) in einer Wegwerf-app.db.
+// End-to-end test (checklist A4.2): the whole path against the real server, the way builders and admins walk it in the interface.
+//   A builder logs in -> draws a test -> enters titles -> sends for approval
+//   An admin logs in   -> approves (dry run: EBAY_SCHREIBEN off, no credentials) -> log -> test view
+// Data: the team copy daten-team/pm.db, read only. Own data (users, tests, log) in a throw-away app.db.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -21,13 +21,13 @@ const pmdb = path.join(import.meta.dirname, "..", "daten-team", "pm.db");
   const d = new Database(appdb); bereiteVor(d);
   legeBenutzerAn(d, "niko", "ein-langes-passwort", new Date("2026-11-01T10:00:00Z"));
   legeBenutzerAn(d, "anna", "ein-langes-passwort", new Date("2026-11-02T10:00:00Z"));
-  rollen.bereiteVor(d); // der älteste Benutzer (niko) wird Admin, anna ist Builder
+  rollen.bereiteVor(d); // the oldest user (niko) becomes admin, anna is a builder
   d.close();
 }
 const basis = `http://127.0.0.1:${PORT}`;
 let server;
 test.before(async () => {
-  // Alles, was nach außen reden oder schreiben könnte, ist leer: keine eBay-Keys, Schalter aus, keine Telegram-Meldung, kein Hub
+  // Everything that could talk to the outside or write is empty: no eBay keys, switch off, no Telegram message, no hub
   const env = { ...process.env, PM_OHNE_ENV: "1", PM_PORT: String(PORT), PM_APPDB: appdb, PM_DB: pmdb, PM_UMGEBUNG: "", CF_ACCESS_TEAM_DOMAIN: "", CF_ACCESS_AUD: "",
     EBAY_SCHREIBEN: "", EBAY_APP_ID: "", EBAY_CERT_ID: "", EBAY_REFRESH_TOKEN: "", EBAY_TRAFFIC_AUTO: "", TELEGRAM_BOT_TOKEN: "", TELEGRAM_CHAT_ID: "", HUB_URL: "", PM_TOKEN: "",
     SICHERUNG_AUTO: "aus", SICHERUNG_ORDNER: path.join(verz, "sicherung"), TRAFFIC_CACHE: path.join(verz, "kein-cache.db") };
@@ -35,7 +35,7 @@ test.before(async () => {
   for (let i = 0; i < 900; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
-// Erst auf das Ende des Servers warten, dann löschen: unter Windows hält der laufende Prozess app.db offen (EBUSY beim rmSync)
+// First wait for the end of the server, then delete: on Windows the running process keeps app.db open (EBUSY on rmSync)
 test.after(async () => {
   if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
   fs.rmSync(verz, { recursive: true, force: true });
@@ -54,7 +54,7 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
   // ---- Builder ----
   const anna = await anmelden("anna");
   assert.equal(daten(await get("/api/ich", anna)).rolle, "builder");
-  // Regeln ändert nur ein Admin: der Builder bekommt 403, der Admin stellt einen kleinen Test ein (damit der Durchlauf schnell bleibt)
+  // Only an admin changes rules: the builder gets 403, the admin sets a small test size (so that the run stays fast)
   assert.equal((await post("/api/einstellungen", anna, { werte: { testGroesse: 4 } })).status, 403);
   daten(await post("/api/einstellungen", await anmelden("niko"), { werte: { testGroesse: 4 } }));
   const uebersicht = daten(await get("/api/experimente", anna));
@@ -68,7 +68,7 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
   assert.equal(detail.status, "prepared"); assert.equal(detail.seed, neu.seed);
   const testAngebote = detail.angebote.filter((a) => a.gruppe === "test");
   assert.equal(testAngebote.length, 2);
-  // Titelregel: zu lang wird abgelehnt (400), danach je Testangebot ein gültiger neuer Titel
+  // Title rule: too long is rejected (400), afterwards one valid new title per test listing
   const zuLang = await post("/api/experiment/titel", anna, { id: neu.id, number: testAngebote[0].number, neu: "x".repeat(TITEL_MAX_ZEICHEN + 1) });
   assert.equal(zuLang.status, 400); assert.match(zuLang.json.error, /too long/);
   const titel = new Map();
@@ -79,7 +79,7 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
   }
   const eingereicht = daten(await post("/api/experiment/freigabe", anna, { id: neu.id }));
   assert.ok(eingereicht.aenderungen >= 2, "mindestens ein eBay-Angebot je Testangebot");
-  // Nach "Send for approval" ist der Vorschlag gesperrt, und ein Builder kann nicht freigeben
+  // After "Send for approval" the suggestion is locked, and a builder cannot approve
   assert.equal((await post("/api/experiment/titel", anna, { id: neu.id, number: testAngebote[0].number, neu: "Changed after submit" })).status, 409);
   assert.equal((await post("/api/freigabe/erteilen", anna, { id: neu.id, art: "titel" })).status, 403);
   assert.equal(daten(await get("/api/experiment?id=" + neu.id, anna)).status, "approval");
@@ -93,7 +93,7 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
   assert.deepEqual({ probelauf: ergebnis.probelauf, angewendet: ergebnis.angewendet, fehlgeschlagen: ergebnis.fehlgeschlagen, gestartet: ergebnis.gestartet, schreibenAn: ergebnis.schreibenAn },
     { probelauf: eingereicht.aenderungen, angewendet: 0, fehlgeschlagen: 0, gestartet: false, schreibenAn: false }, "Probelauf: nichts geändert, Test nicht gestartet");
 
-  // ---- Protokoll: jeder Schritt mit Person, alt und neu, der Probelauf als dry_run ----
+  // ---- Log: every step with person, old and new, the dry run as dry_run ----
   const log = daten(await get("/api/protokoll", niko));
   const erstellt = log.find((z) => z.aktion === "test_created" && z.objekt === "test " + neu.id);
   assert.equal(erstellt.benutzer, "anna"); assert.equal(erstellt.details.seed, neu.seed, "der seed des Loses steht im Protokoll");
@@ -109,7 +109,7 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
   }
   assert.ok(!log.some((z) => z.aktion === "ebay_changed" || z.aktion === "ebay_failed"), "nichts bei eBay geändert, kein Fehler");
 
-  // ---- Freigaben bleiben offen (Probelauf ändert nichts), Testansicht und Auswertung antworten ----
+  // ---- Approvals stay open (the dry run changes nothing), test view and evaluation answer ----
   const danach = daten(await get("/api/freigaben", niko));
   assert.ok(danach.aenderungen.filter((a) => a.experiment_id === neu.id).every((a) => a.status === "offen" && /Dry run/.test(a.ergebnis)));
   detail = daten(await get("/api/experiment?id=" + neu.id, niko));

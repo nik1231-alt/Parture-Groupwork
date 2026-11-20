@@ -1,7 +1,7 @@
 // Example view for the page Results: INVENTED listings (two runs) with invented daily values, sent through the same calculation as the real results.
 // A real result exists only once a waiting time (default 14 days) plus data delay has passed. Until then the app uses this to show
 // what the page looks like and how it is read. The figures are marked as an example in the interface and touch no real data.
-// Feste Startwerte: jeder Aufruf liefert dieselben Zahlen.
+// Fixed start values: every call returns the same figures.
 import { baueErgebnisse, PHASEN } from "./ergebnisse.mjs";
 import { netto } from "./auswertung.mjs";
 

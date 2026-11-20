@@ -1,7 +1,7 @@
-// XSS (Checkliste A3.6): ein Angebotstitel mit <script> darf nie als HTML in die Seite kommen.
-// Drei Riegel: (1) die Oberfläche setzt Daten nur per textContent ein (statische Prüfung von public/), (2) die API liefert JSON mit
-// nosniff, nie HTML, (3) die CSP erlaubt nur Skripte aus der eigenen App, eingeschleuste Inline-Skripte liefen also auch dann nicht.
-// Der Server läuft mit einer Kopie der Team-Daten, in der ein Titel ein Skript enthält.
+// XSS (checklist A3.6): a listing title with <script> must never get into the page as HTML.
+// Three latches: (1) the interface inserts data only through textContent (static check of public/), (2) the API delivers JSON with
+// nosniff, never HTML, (3) the CSP allows only scripts from the app itself, so injected inline scripts would not run even then.
+// The server runs with a copy of the team data in which one title contains a script.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -15,14 +15,14 @@ const WURZEL = path.join(import.meta.dirname, "..");
 const PUBLIC = path.join(WURZEL, "public");
 const BOESE = `<script>alert("xss")</script> Holder <img src=x onerror=alert(1)>`;
 
-// ---------- statisch: die Oberfläche ----------
+// ---------- static: the interface ----------
 test("Interface: no innerHTML, outerHTML, insertAdjacentHTML, document.write, eval or new Function in public/*.js", () => {
   const verboten = /\.(innerHTML|outerHTML)\s*[+]?=|insertAdjacentHTML|document\.write|\beval\s*\(|new\s+Function\s*\(|createContextualFragment|DOMParser|javascript:/;
   const dateien = fs.readdirSync(PUBLIC).filter((f) => f.endsWith(".js"));
   assert.ok(dateien.length >= 3, "public/*.js nicht gefunden");
   for (const f of dateien) {
     fs.readFileSync(path.join(PUBLIC, f), "utf8").split(/\r?\n/).forEach((z, i) => {
-      if (/^\s*\/\//.test(z)) return; // Kommentare dürfen die Wörter nennen
+      if (/^\s*\/\//.test(z)) return; // Comments may name the words
       assert.doesNotMatch(z, verboten, `${f}:${i + 1}: ${z.trim().slice(0, 120)}`);
     });
   }
@@ -39,7 +39,7 @@ test("Interface: HTML pages have no inline scripts and no on…= handlers (the C
   for (const f of fs.readdirSync(PUBLIC).filter((n) => n.endsWith(".html"))) {
     const html = fs.readFileSync(path.join(PUBLIC, f), "utf8");
     for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
-      // eigene Datei, höchstens mit Versionsangabe (?v=…), damit ein Ausrollen nicht am Zwischenspeicher hängen bleibt
+      // own file, at most with a version number (?v=…), so that a rollout does not get stuck on the cache
       assert.match(m[1], /\bsrc="\/[\w.-]+\.js(\?v=[\w.-]+)?"/, `${f}: Skript ohne eigene Datei`);
       assert.equal(m[2].trim(), "", `${f}: Inline-Skript`);
     }
@@ -47,7 +47,7 @@ test("Interface: HTML pages have no inline scripts and no on…= handlers (the C
   }
 });
 
-// ---------- Server mit präparierten Daten ----------
+// ---------- Server with prepared data ----------
 const PORT = 4200 + Math.floor(Math.random() * 90);
 const verz = fs.mkdtempSync(path.join(os.tmpdir(), "parture-xss-"));
 const appdb = path.join(verz, "app.db"), pmdb = path.join(verz, "pm.db");
@@ -68,7 +68,7 @@ test.before(async () => {
   for (let i = 0; i < 900; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
-// Erst auf das Ende des Servers warten, dann löschen: unter Windows hält der laufende Prozess app.db offen (EBUSY).
+// First wait for the end of the server, then delete: on Windows the running process keeps app.db open (EBUSY).
 test.after(async () => {
   if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
   fs.rmSync(verz, { recursive: true, force: true });

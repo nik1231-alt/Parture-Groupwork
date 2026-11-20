@@ -1,4 +1,4 @@
-// Tests: npm test  (Node-eigener Test-Runner, keine zusätzlichen Pakete)
+// Tests: npm test  (Node's own test runner, no additional packages)
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -10,7 +10,7 @@ import { baueBewertung } from "./bewertung.mjs";
 const JETZT = new Date("2026-11-10T12:00:00Z");
 const alt = "2025-12-01T10:00:00.000Z"; // deutlich älter als 90 Tage
 const TAGE = (d) => new Date(JETZT.getTime() + d * 86400000);
-// Standard: Angebot mit genug Impressionen
+// Default: listing with enough impressions
 const p = (o) => ({ created_at: alt, title: "Wandhalter passend für Test", units_90d: 5, units_total: 20, aufrufe_90d: 200, impressionen_90d: 10000, ...o });
 const bereich = (o, e = EINSTELLUNGEN) => bewerte(p(o), e, JETZT).gruppe;
 const db = () => { const d = new Database(":memory:"); einst.bereiteVor(d); ex.bereiteVor(d); return d; };
@@ -61,7 +61,7 @@ test("Limit: mode 'fixed number' takes the number from the settings, too little 
   const viele = Array.from({ length: 100 }, (_, i) => ({ created_at: alt, impressionen_90d: (i + 1) * 100 }));
   assert.equal(leiteSchwellenAb(viele, { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 777 }, JETZT).wenigImpressionen90d, 777);
   assert.equal(leiteSchwellenAb([{ created_at: alt, impressionen_90d: 5 }], EINSTELLUNGEN, JETZT).wenigImpressionen90d, EINSTELLUNGEN.wenigImpressionen90d);
-  // die Begründung nennt den Maßstab der gewählten Einstellung
+  // the reason names the yardstick of the chosen setting
   assert.match(bewerte(p({ impressionen_90d: 10 }), { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 777, wenigImpressionen90d: 777 }, JETZT).begruendung, /your limit: under 777/);
   assert.match(bewerte(p({ impressionen_90d: 10 }), EINSTELLUNGEN, JETZT).begruendung, /lowest 25 % of the shop/);
 });
@@ -82,9 +82,9 @@ test("Settings: defaults, saving, overriding, resetting", () => {
   assert.equal(einst.speichere(d, { anteilUnten: 0.1, schonfristTage: 60 }).ok, true);
   assert.equal(einst.effektiv(d).anteilUnten, 0.1);
   assert.equal(einst.effektiv(d).schonfristTage, 60);
-  assert.equal(einst.effektiv(d).testGroesse, 40); // unberührt
+  assert.equal(einst.effektiv(d).testGroesse, 40); // untouched
   einst.speichere(d, { anteilUnten: 0.3 });
-  assert.equal(einst.effektiv(d).anteilUnten, 0.3);   // überschrieben, nicht doppelt
+  assert.equal(einst.effektiv(d).anteilUnten, 0.3);   // overwritten, not doubled
   assert.equal(d.prepare("SELECT COUNT(*) c FROM einstellung WHERE key = 'anteilUnten'").get().c, 1);
   einst.zuruecksetzen(d);
   assert.equal(einst.effektiv(d).anteilUnten, 0.25);
@@ -94,8 +94,8 @@ test("Settings: defaults, saving, overriding, resetting", () => {
 test("Settings: invalid values are rejected and nothing is saved", () => {
   const d = db();
   const abgelehnt = (e, muster) => { const r = einst.speichere(d, e); assert.equal(r.ok, false); assert.equal(r.status, 400); assert.match(r.fehler, muster); };
-  abgelehnt({ anteilUnten: 0.9 }, /between 5 and 50/);        // zu groß
-  abgelehnt({ anteilUnten: 0.01 }, /between 5 and 50/);       // zu klein
+  abgelehnt({ anteilUnten: 0.9 }, /between 5 and 50/);        // too large
+  abgelehnt({ anteilUnten: 0.01 }, /between 5 and 50/);       // too small
   abgelehnt({ anteilUnten: "25" }, /enter a number/);         // falscher Typ
   abgelehnt({ anteilUnten: NaN }, /enter a number/);
   abgelehnt({ anteilUnten: Infinity }, /enter a number/);
@@ -111,7 +111,7 @@ test("Settings: invalid values are rejected and nothing is saved", () => {
   abgelehnt({}, /Nothing to save/);
   assert.equal(einst.speichere(d, null).ok, false);
   assert.equal(einst.speichere(d, [1]).ok, false);
-  // ein Fehler in einem Feld verhindert das Speichern der anderen Felder derselben Anfrage
+  // an error in one field prevents saving the other fields of the same request
   assert.equal(einst.speichere(d, { schonfristTage: 30, anteilUnten: 5 }).ok, false);
   assert.equal(einst.effektiv(d).schonfristTage, 90);
   assert.equal(d.prepare("SELECT COUNT(*) c FROM einstellung").get().c, 0);
@@ -154,14 +154,14 @@ test("Settings: the mode controls the diagnosis limit", () => {
   assert.equal(bereich({ impressionen_90d: 5000 }, e), "ok");
 });
 
-// ---------- Tests (Experimente) ----------
-// 60 Angebote mit wenig Impressionen, 20 mit vielen, 5 neue
+// ---------- Tests (experiments) ----------
+// 60 listings with low impressions, 20 with many, 5 new
 const shop = () => [
   ...Array.from({ length: 60 }, (_, i) => ({ number: "L" + String(i).padStart(2, "0"), title: "Niedrig " + i, ...p({ impressionen_90d: 100 + i, impressionen_30d: 30, aufrufe_30d: 3, transaktionen_30d: 1, image_url: "https://x/" + i + ".jpg", avg_price: 5 }) })),
   ...Array.from({ length: 20 }, (_, i) => ({ number: "H" + i, title: "Hoch " + i, ...p({ impressionen_90d: 50000, impressionen_30d: 10000 }) })),
   ...Array.from({ length: 5 }, (_, i) => ({ number: "N" + i, title: "Neu " + i, ...p({ created_at: "2026-11-01T00:00:00.000Z", impressionen_90d: 5 }) })),
 ];
-// feste Grenze, damit alle 60 "Niedrig"-Angebote in Frage kommen (im Standard gilt das untere Viertel des Shops)
+// fixed limit, so that all 60 "Low" listings qualify (by default the lowest quarter of the shop applies)
 const E = { ...EINSTELLUNGEN, testGroesse: 40, modus: "fest", festeGrenze: 1000 };
 
 test("Draw: the same random value gives the same draw, another gives a different one", () => {
@@ -209,14 +209,14 @@ test("Create test: too few matching listings gives an understandable refusal", (
 
 test("Create test: a listing is always in only one test", () => {
   const d = db();
-  assert.equal(ex.legeAn(d, {}, shop(), { ...E, testGroesse: 40 }, JETZT, 1).ok, true);      // 40 von 60 belegt
-  const zweiter = ex.legeAn(d, {}, shop(), { ...E, testGroesse: 40 }, JETZT, 2);             // nur noch 20 frei
+  assert.equal(ex.legeAn(d, {}, shop(), { ...E, testGroesse: 40 }, JETZT, 1).ok, true);      // 40 of 60 taken
+  const zweiter = ex.legeAn(d, {}, shop(), { ...E, testGroesse: 40 }, JETZT, 2);             // only 20 free any more
   assert.equal(zweiter.ok, false); assert.equal(zweiter.status, 409);
-  assert.equal(ex.legeAn(d, {}, shop(), { ...E, testGroesse: 20 }, JETZT, 3).ok, true);      // 20 passen noch
+  assert.equal(ex.legeAn(d, {}, shop(), { ...E, testGroesse: 20 }, JETZT, 3).ok, true);      // 20 still fit
   const nummern = d.prepare("SELECT number FROM experiment_angebot").all().map((r) => r.number);
-  assert.equal(new Set(nummern).size, nummern.length);                                        // kein Angebot doppelt
+  assert.equal(new Set(nummern).size, nummern.length);                                        // no listing twice
   assert.equal(ex.imTest(d).size, 60);
-  // nach dem Abschluss sind die Angebote wieder frei
+  // after closing, the listings are free again
   ex.schliesse(d, { id: 1, abschluss: "zurueck" }, JETZT);
   assert.equal(ex.imTest(d).size, 20);
   assert.equal(ex.kandidaten(d, shop(), E, JETZT).length, 40);
@@ -234,7 +234,7 @@ test("Create test: the name is checked, without a name there is a default name",
   assert.equal(d.prepare("SELECT name FROM experiment WHERE id = ?").get(r2.wert.id).name, `Title test #${r2.wert.id}`);
 });
 
-// vorbereiteter Test mit 40 Angeboten
+// prepared test with 40 listings
 function vorbereitet(e = E) {
   const d = db(); const ps = shop();
   const id = ex.legeAn(d, {}, ps, e, JETZT, 5).wert.id;
@@ -278,7 +278,7 @@ test("Start: only when all test listings have a new title, then the starting fig
   assert.equal(e.status, "laeuft"); assert.equal(e.gestartet_at, JETZT.toISOString());
   const zeilen = v.d.prepare("SELECT * FROM experiment_angebot").all();
   assert.ok(zeilen.every((z) => z.imp30 === 30 && z.auf30 === 3 && z.trans30 === 1)); // beide Gruppen
-  assert.equal(ex.starte(v.d, { id: v.id }, v.ps, JETZT).status, 409);                   // nicht doppelt starten
+  assert.equal(ex.starte(v.d, { id: v.id }, v.ps, JETZT).status, 409);                   // do not start twice
   assert.equal(ex.setzeTitel(v.d, { id: v.id, number: v.testNr[0], neu: "Spät" }, E).status, 409); // nach dem Start keine Titeländerung
 });
 
@@ -308,7 +308,7 @@ test("Verdict: if the control group grows just as much, there is no difference (
 
 test("Verdict: limit at exactly the target mark (besserAb, default +20 %), just below it is no difference", () => {
   const k = G(S(1000, 50, 10), S(1000, 50, 10));
-  const marke = Math.round(1000 * (1 + EINSTELLUNGEN.besserAb));   // 1200 bei +20 %
+  const marke = Math.round(1000 * (1 + EINSTELLUNGEN.besserAb));   // 1200 at +20 %
   assert.equal(ex.urteile(G(S(1000, 0, 10), S(marke, 0, 10)), k, E).urteil, "better");
   assert.equal(ex.urteile(G(S(1000, 0, 10), S(marke - 1, 0, 10)), k, E).urteil, "no_difference");
 });
@@ -316,7 +316,7 @@ test("Verdict: limit at exactly the target mark (besserAb, default +20 %), just 
 test("Verdict: fewer impressions or too much fewer sales -> worse (protective figure)", () => {
   const k = G(S(1000, 50, 10), S(1000, 50, 10));
   assert.equal(ex.urteile(G(S(1000, 50, 10), S(500, 25, 5)), k, E).urteil, "worse");
-  const r = ex.urteile(G(S(1000, 50, 100), S(3000, 150, 20)), k, E); // dreimal so viele Impressionen, aber Verkäufe um 80 % gefallen
+  const r = ex.urteile(G(S(1000, 50, 100), S(3000, 150, 20)), k, E); // three times as many impressions, but sales fell by 80 %
   assert.equal(r.urteil, "worse"); assert.equal(r.schutz.ok, false);
 });
 
@@ -348,14 +348,14 @@ test("Run: runs, is ready after 30 days, verdict over the whole group, closing",
   assert.equal(liste(TAGE(10)).status, "running");
   assert.equal(liste(TAGE(10)).tage, 10);
   assert.equal(liste(TAGE(29)).status, "running");
-  // nach 31 Tagen: die Testgruppe hat doppelt so viele Impressionen, alle anderen bleiben gleich
+  // after 31 days: the test group has twice as many impressions, all others stay the same
   const spaeter = v.ps.map((x) => (v.testNr.includes(x.number) ? { ...x, impressionen_30d: 60 } : x));
   const k = liste(TAGE(31), spaeter);
   assert.equal(k.status, "ready"); assert.equal(k.bereit_am, TAGE(30).toISOString().slice(0, 10));
   assert.equal(k.urteil.urteil, "better");
   assert.equal(k.urteil.test.vorher.imp, 20 * 30); assert.equal(k.urteil.test.nachher.imp, 20 * 60);
   assert.equal(k.urteil.kontrolle.vorher.imp, 20 * 30); assert.equal(k.urteil.kontrolle.nachher.imp, 20 * 30);
-  // die Liste enthält nicht die einzelnen Angebote, die Detailansicht schon
+  // the list does not contain the single listings, the detail view does
   assert.equal(k.angebote, undefined);
   const dt = ex.detail(v.d, v.id, spaeter, TAGE(31), E).wert;
   assert.equal(dt.angebote.length, 40);
@@ -376,7 +376,7 @@ test("Run: if the whole shop grows along, there is no difference (the control gr
 test("Run: discard a test, close twice, invalid input", () => {
   const v = vorbereitet();
   assert.equal(ex.schliesse(v.d, { id: v.id, abschluss: "zurueck" }, JETZT).ok, true);       // vorbereiteten Test verwerfen
-  assert.equal(ex.liste(v.d, v.ps, JETZT, E)[0].urteil, null);                                 // nie gestartet: kein Urteil
+  assert.equal(ex.liste(v.d, v.ps, JETZT, E)[0].urteil, null);                                 // never started: no verdict
   assert.equal(ex.schliesse(v.d, { id: v.id, abschluss: "behalten" }, JETZT).status, 409);
   assert.equal(ex.schliesse(v.d, { id: 99, abschluss: "behalten" }, JETZT).status, 404);
   assert.equal(ex.schliesse(v.d, { id: v.id, abschluss: "löschen" }, JETZT).status, 400);
@@ -494,7 +494,7 @@ test("Login: the cookie is read and is HttpOnly, SameSite=Strict, Secure over HT
   assert.match(lg.cookie("", true, 0), /Max-Age=0/);
 });
 
-// ---------- Sperre je Adresse und Passwort ändern ----------
+// ---------- Lock per address and change password ----------
 test("Login: lock per address across all names, other addresses and the right name stay untouched", () => {
   const d = ldb(); lg.legeBenutzerAn(d, "anna", PW);
   for (let i = 0; i < lg.MAX_FEHLVERSUCHE_IP; i++) assert.equal(lg.anmelden(d, "name" + i, "falsch-falsch", JETZT, "1.2.3.4").status, 401, "jeder Name nur einmal falsch: keine Namenssperre");
@@ -526,7 +526,7 @@ test("Login: wrong old passwords when changing count as failed attempts and even
   assert.equal(lg.aendernPasswort(d, "anna", PW, "ein-neues-passwort", JETZT).status, 429);
 });
 
-// ---------- Sicherheit: Passwort-Hash, Grenzen, keine Kundendaten (Checkliste A3.3, A3.13) ----------
+// ---------- Security: password hash, limits, no customer data (checklist A3.3, A3.13) ----------
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -560,7 +560,7 @@ test("No customer data: pm.db has no columns for buyers, and the export reads on
   assert.ok(spalten.length > 10);
   const verdaechtig = /buyer|kaeufer|käufer|kunde|customer|e?mail|adress|address|strasse|street|phone|telefon|plz|zip|order|bestell|user|name/i;
   assert.deepEqual(spalten.filter((s) => verdaechtig.test(s.split(".")[1])), [], "keine Spalte mit Personen- oder Bestellbezug");
-  // export-ebay.mjs: in verkaeufe() werden von einer Bestellung (o) und ihren Positionen (li) nur diese Felder gelesen
+  // export-ebay.mjs: in verkaeufe() only these fields are read from an order (o) and its items (li)
   const q = fs.readFileSync(path.join(wurzel, "app", "export-ebay.mjs"), "utf8");
   const fn = q.slice(q.indexOf("async function verkaeufe("), q.indexOf("\n}", q.indexOf("async function verkaeufe(")));
   const felder = [...new Set([...fn.matchAll(/\b(o|li)\.(\w+)/g)].map((m) => `${m[1]}.${m[2]}`))].sort();
@@ -569,8 +569,8 @@ test("No customer data: pm.db has no columns for buyers, and the export reads on
   assert.doesNotMatch(code, /buyer|shippingAddress|fulfillmentStartInstructions|contactAddress|email/i, "keine Käuferfelder im Export-Code");
 });
 
-// Wer die README befolgt, kopiert .env.beispiel nach .env. Steht dort ein Wert, gilt er: am 20.11. zeigte PM_DB=daten/pm.db auf eine
-// Datei, die es im frischen Klon nicht gibt, und die App blieb leer statt die Team-Kopie zu nehmen (Blindtest der README, #20).
+// Whoever follows the README copies .env.beispiel to .env. If a value is in there it applies: on 20 Nov PM_DB=daten/pm.db pointed to a
+// file that does not exist in a fresh clone, and the app stayed empty instead of taking the team copy (README blind test, #20).
 test(".env.beispiel: after copying, the app starts with the team copy, without credentials and without a write switch", async () => {
   const fs = await import("node:fs");
   const werte = Object.fromEntries(fs.readFileSync(new URL("../.env.beispiel", import.meta.url), "utf8").split(/\r?\n/)

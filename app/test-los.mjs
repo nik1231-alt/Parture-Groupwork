@@ -1,5 +1,5 @@
-// Tests für das Los (Checkliste A1.3 und B1.4): reproduzierbar, gleich große Gruppen, kein Angebot doppelt, Sperrliste wirkt.
-// Reine Modultests mit Datenbanken im Speicher; pm.db wird nicht angefasst.
+// Tests for the draw (checklist A1.3 and B1.4): reproducible, equally large groups, no listing twice, the block list works.
+// Pure module tests with databases in memory; pm.db is not touched.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -9,7 +9,7 @@ import { ladeSperre } from "./bewertung.mjs";
 
 const JETZT = new Date("2026-11-19T12:00:00Z");
 const E = { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 1000, testGroesse: 20 };
-// 30 Angebote mit wenig Impressionen (alle Kandidaten), alle älter als die Schonfrist
+// 30 listings with low impressions (all candidates), all older than the grace period
 const shop = (anzahl = 30) => Array.from({ length: anzahl }, (_, i) => ({ number: "P" + String(i).padStart(2, "0"), title: "Holder " + i, created_at: "2025-12-01T10:00:00.000Z",
   units_90d: 1, units_total: 3, impressionen_90d: 100 + i, aufrufe_90d: 5, impressionen_30d: 30, aufrufe_30d: 2, transaktionen_30d: 0 }));
 const appDb = () => { const d = new Database(":memory:"); ex.bereiteVor(d); return d; };
@@ -17,7 +17,7 @@ const gruppen = (d, id) => {
   const z = d.prepare("SELECT number, gruppe FROM experiment_angebot WHERE experiment_id = ? ORDER BY number").all(id);
   return { test: z.filter((r) => r.gruppe === "test").map((r) => r.number), kontrolle: z.filter((r) => r.gruppe === "kontrolle").map((r) => r.number) };
 };
-// pm.db im Speicher: kanal immer, sperre nur auf Wunsch (die Tabelle ist optional)
+// pm.db in memory: kanal always, sperre only on request (the table is optional)
 function pmDb(sperren) {
   const d = new Database(":memory:");
   d.exec("CREATE TABLE kanal (number TEXT, channel TEXT, external_id TEXT, title TEXT)");
@@ -39,10 +39,10 @@ test("Draw reproducible: the seed is in the database and in the answer, the same
   assert.equal(ra.ok, true); assert.equal(ra.wert.seed, 4711);
   assert.equal(a.prepare("SELECT seed FROM experiment WHERE id = ?").get(ra.wert.id).seed, 4711);
   assert.deepEqual(gruppen(a, ra.wert.id), gruppen(b, rb.wert.id));
-  // Nachrechnen aus dem gespeicherten seed: dieselben Kandidaten, derselbe seed -> genau die gespeicherten Gruppen
+  // Recalculating from the stored seed: the same candidates, the same seed -> exactly the stored groups
   const nach = ex.ziehe(shop(), E.testGroesse, a.prepare("SELECT seed FROM experiment").get().seed);
   assert.deepEqual({ test: nach.test.map((p) => p.number).sort(), kontrolle: nach.kontrolle.map((p) => p.number).sort() }, gruppen(a, ra.wert.id));
-  // die Reihenfolge der Eingabe spielt keine Rolle (feste Ausgangsreihenfolge vor dem Mischen)
+  // the order of the input does not matter (fixed starting order before shuffling)
   assert.deepEqual(ex.ziehe([...shop()].reverse(), 20, 4711), ex.ziehe(shop(), 20, 4711));
   const c = appDb(); const rc = ex.legeAn(c, {}, shop(), E, JETZT, 4712);
   assert.notDeepEqual(gruppen(c, rc.wert.id), gruppen(a, ra.wert.id), "ein anderer seed ergibt eine andere Ziehung");
@@ -55,7 +55,7 @@ test("Draw reproducible: without a given seed one is drawn, stored and returned"
   assert.equal(d.prepare("SELECT seed FROM experiment").get().seed, r.wert.seed);
 });
 
-// ---------- 2. gleich große Gruppen ----------
+// ---------- 2. equally large groups ----------
 test("Draw: groups equally large, with an odd number at most 1 difference", () => {
   for (const n of [4, 10, 20, 30]) for (const seed of [1, 2, 99]) {
     const { test: t, kontrolle: k } = ex.ziehe(shop(), n, seed);
@@ -65,13 +65,13 @@ test("Draw: groups equally large, with an odd number at most 1 difference", () =
     const { test: t, kontrolle: k } = ex.ziehe(shop(), n, 5);
     assert.equal(t.length + k.length, n); assert.ok(Math.abs(t.length - k.length) <= 1, `n = ${n}: ${t.length} gegen ${k.length}`);
   }
-  const d = appDb(); const r = ex.legeAn(d, {}, shop(), { ...E, testGroesse: 11 }, JETZT, 3);   // die Settings erlauben nur gerade Zahlen, das Modul bleibt trotzdem fair
+  const d = appDb(); const r = ex.legeAn(d, {}, shop(), { ...E, testGroesse: 11 }, JETZT, 3);   // the settings allow only even numbers, the module stays fair anyway
   const g = gruppen(d, r.wert.id);
   assert.deepEqual([g.test.length, g.kontrolle.length], [5, 6]);
   assert.deepEqual([r.wert.test, r.wert.kontrolle], [5, 6]);
 });
 
-// ---------- 3. kein Angebot doppelt ----------
+// ---------- 3. no listing twice ----------
 test("Draw: no listing twice, neither within one test (even with duplicate candidates) nor across two tests", () => {
   const doppelt = [...shop(), ...shop().slice(0, 10)];
   for (const seed of [1, 7, 123, 99999]) {
@@ -116,7 +116,7 @@ test("Block list: a blocked listing is never drawn (200 draws), and if there are
   const gesperrt = new Set(["P00", "P03", "P10", "P29"]);
   for (let seed = 1; seed <= 200; seed++) {
     const d = appDb();
-    const r = ex.legeAn(d, {}, shop(), { ...E, testGroesse: 26 }, JETZT, seed, gesperrt);   // 26 von 26 freien: jedes freie Angebot wird gezogen
+    const r = ex.legeAn(d, {}, shop(), { ...E, testGroesse: 26 }, JETZT, seed, gesperrt);   // 26 of 26 free: every free listing is drawn
     assert.equal(r.ok, true); assert.equal(r.wert.gesperrt, 4);
     const nummern = d.prepare("SELECT number FROM experiment_angebot").all().map((z) => z.number);
     assert.ok(!nummern.some((n) => gesperrt.has(n)), `seed ${seed}`);
@@ -125,7 +125,7 @@ test("Block list: a blocked listing is never drawn (200 draws), and if there are
   assert.equal(zuViel.status, 409); assert.match(zuViel.fehler, /26 available, 28 needed/);
 });
 
-// ---------- 4. nur Angebote, deren Titel sich ändern lässt ----------
+// ---------- 4. only listings whose title can be changed ----------
 test("Draw: a product without a running eBay listing (ebay_aktiv 0) is never drawn, unknown (null) counts", () => {
   const p = shop(); p[0].ebay_aktiv = 0; p[1].ebay_aktiv = null; p[2].ebay_aktiv = 1;
   const k = ex.kandidaten(appDb(), p, E, JETZT).map((x) => x.number);
@@ -142,8 +142,8 @@ test("ladeProdukte: ebay_aktiv from kanal (running with number = 1, ended withou
   assert.deepEqual(m, { A: 1, B: 0 });
 });
 
-// Scope nur eBay (Niko 20.11.): Verkäufe, Preis und letzter Verkauf kommen aus der eBay-Zeile, nie aus der Summe aller Kanäle.
-// Am 20.11. summierte produkt.units_90d noch Amazon (3.889) und eBay (3.583); die Problem-Seite rechnete damit Amazon mit.
+// Scope eBay only (Niko, 20 Nov): sales, price and last sale come from the eBay row, never from the sum of all channels.
+// On 20 Nov produkt.units_90d still added up Amazon (3,889) and eBay (3,583); the Problem page counted Amazon along because of that.
 test("ladeProdukte: sales only from eBay, other platforms do not count", async () => {
   const { ladeProdukte } = await import("./bewertung.mjs");
   const d = new Database(":memory:");
