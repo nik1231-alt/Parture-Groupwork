@@ -568,3 +568,15 @@ test("Keine Kundendaten: pm.db hat keine Spalten für Käufer, und der Export li
   const code = q.split(/\r?\n/).filter((z) => !/^\s*\/\//.test(z)).join("\n");
   assert.doesNotMatch(code, /buyer|shippingAddress|fulfillmentStartInstructions|contactAddress|email/i, "keine Käuferfelder im Export-Code");
 });
+
+// Wer die README befolgt, kopiert .env.beispiel nach .env. Steht dort ein Wert, gilt er: am 20.11. zeigte PM_DB=daten/pm.db auf eine
+// Datei, die es im frischen Klon nicht gibt, und die App blieb leer statt die Team-Kopie zu nehmen (Blindtest der README, #20).
+test(".env.beispiel: nach dem Kopieren startet die App mit der Team-Kopie, ohne Zugangsdaten und ohne Schreibschalter", async () => {
+  const fs = await import("node:fs");
+  const werte = Object.fromEntries(fs.readFileSync(new URL("../.env.beispiel", import.meta.url), "utf8").split(/\r?\n/)
+    .map((z) => z.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
+  assert.equal(werte.PM_DB, "", "PM_DB leer, sonst greift die Team-Kopie nicht");
+  for (const k of Object.keys(werte).filter((k) => /KEY|TOKEN|SECRET|CERT|APP_ID|DEV_ID|AUD/.test(k))) assert.equal(werte[k], "", k + " muss leer sein");
+  for (const k of ["EBAY_SCHREIBEN", "EBAY_WERBUNG", "EBAY_PREIS"]) assert.notEqual(werte[k], "an", k + " darf in der Vorlage nicht an sein");
+  assert.ok(fs.existsSync(new URL("../daten-team/pm.db", import.meta.url)), "die Team-Kopie liegt im Repo");
+});
