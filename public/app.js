@@ -538,103 +538,71 @@ async function ladeFreigaben() {
   } catch (e) { zeigeFehler(e, ladeFreigaben); }
 }
 
-// ======================================================= Results (ergebnisse.mjs): was jede Phase der Leiter an Impressionen gebracht hat
-const PHASE_URTEIL = { better: ["gut", "Clearly better"], no_difference: ["", "No difference proven"], worse: ["schlecht", "Worse"], too_few: ["warn", "Not enough data yet"] };
+// ======================================================= Results (ergebnisse.mjs): wie haben sich die Impressionen verändert, und ist es mehr als Zufall?
+const PHASE_URTEIL = { up: ["gut", "Clear increase"], down: ["schlecht", "Clear decrease"], unclear: ["", "No clear effect"], too_few: ["warn", "Too early"] };
 
 async function ladeErgebnisse() {
   const root = $("#ansicht-ergebnisse");
   try {
     const echt = await api("/api/ergebnisse");
     if (zustand.ergebnisBeispiel == null) zustand.ergebnisBeispiel = echt.leer;
-    const daten = zustand.ergebnisBeispiel ? await api("/api/ergebnisse/beispiel") : echt;
-    zeichneErgebnisse(daten, echt);
+    zeichneErgebnisse(zustand.ergebnisBeispiel ? await api("/api/ergebnisse/beispiel") : echt);
   } catch (e) { zeigeFehler(e, ladeErgebnisse); fuelle(root); }
 }
 
-// Ein Satz, der das Ergebnis einer Phase in Worten sagt
-function phasenSatz(p, skala) {
-  const n = p.mitKontrolle, pz = Diagramm.proz;
-  if (p.urteil === "too_few") return p.ausgewertet ? `Only ${n} of the ${skala.mindestAusgewertet} listings needed have a result with a control group. Too early to say anything.` : "No listing has finished this phase yet.";
-  const wirkung = `Compared with the control group, impressions changed by ${pz(p.netto)} (${n} listings).`;
-  if (p.urteil === "better") return `${wirkung} That is above the ${pz(skala.besserAb)} goal.`;
-  if (p.urteil === "worse") return `${wirkung} That is clearly below the control group.`;
-  return `${wirkung} That is within ±${pz(skala.besserAb, false)}, which can be chance, so the phase is not proven to help.`;
+// Ein Lauf in einem Satz: welche Phasen haben klar etwas bewirkt?
+function ergebnisSatz(lauf) {
+  const pz = Diagramm.proz, klar = lauf.phasen.filter((p) => p.urteil === "up" || p.urteil === "down");
+  if (klar.length) return klar.map((p) => `${p.name}: impressions are clearly ${p.urteil === "up" ? "higher" : "lower"} than in the control group (${pz(p.schaetzung.effekt)} for a typical listing).`).join(" ")
+    + (lauf.phasen.some((p) => p.urteil === "unclear") ? " The other phases show no clear difference yet." : "");
+  if (lauf.phasen.some((p) => p.urteil === "unclear")) return "No phase shows a clear effect: the differences to the control group could be chance.";
+  return "Too early to say anything: no phase has enough finished listings yet.";
 }
 
-function zeichneErgebnisse(d, echt) {
+function zeichneErgebnisse(d) {
   const root = $("#ansicht-ergebnisse"), beispiel = !!zustand.ergebnisBeispiel, pz = Diagramm.proz;
-  const wechsel = () => { zustand.ergebnisBeispiel = !zustand.ergebnisBeispiel; ladeErgebnisse(); };
-  const kopf = el("div", { class: "einstieg" }, el("h1", { text: "Results" }),
-    el("p", { class: "leise", text: "What each phase of the Funnel did to impressions, measured against the control group. If the whole shop gets busier, the control group rises too, so only the difference counts." }));
-  const knopf = el("button", { class: "knopf knopf-klein", type: "button", text: beispiel ? "Show real data" : "Show example with invented figures", onclick: wechsel });
+  const knopf = el("button", { class: "knopf knopf-klein", type: "button", text: beispiel ? "Show real data" : "Show example with invented figures", onclick: () => { zustand.ergebnisBeispiel = !zustand.ergebnisBeispiel; ladeErgebnisse(); } });
+  const kopf = el("div", { class: "einstieg" }, el("h1", { text: "Results" }), el("p", { class: "leise", text: "Pick a run (the listings you started on one day) to see how their impressions changed compared with the control group." }));
   if (!beispiel && d.leer) {
-    const enden = d.phasen.map((p) => p.naechstesEnde).filter(Boolean).sort();
+    const enden = d.laeufe[0].phasen.map((p) => p.naechstesEnde).filter(Boolean).sort(), laeuft = d.laeufe[0].phasen.reduce((s, p) => s + p.laeuft, 0);
     fuelle(root, kopf, el("section", { class: "panel" },
-      el("p", { class: "leere-hinweis leise", text: enden.length ? `No phase has finished its waiting time yet. The first result is due on ${datum(enden[0] + "T12:00:00Z")}, when the traffic data for that day is complete. ${d.laeuft} listing${d.laeuft === 1 ? " is" : "s are"} running now.` : "No phase is running yet. The first result comes one waiting time after the first approval in the Funnel." }),
+      el("p", { class: "leere-hinweis leise", text: enden.length ? `No phase has finished its waiting time yet. The first result is due on ${datum(enden[0] + "T12:00:00Z")}. ${laeuft} listing${laeuft === 1 ? " is" : "s are"} running now.` : "No phase is running yet. The first result comes one waiting time after the first approval in the Funnel." }),
       el("p", {}, knopf)));
     return;
   }
-  const kachel = (titel, wert, sub, klasse = "") => el("div", { class: "kachel " + klasse }, el("div", { class: "kachel-titel", text: titel }), el("div", { class: "kachel-wert", text: wert }), el("div", { class: "kachel-sub leise klein", text: sub }));
-  const k = d.kombiniert;
-  const kacheln = el("div", { class: "kacheln" },
-    kachel("Impressions, all phases combined", k == null ? "–" : pz(k), k == null ? "No phase has a result yet." : "Each phase is measured against the state right before it, so the effects multiply.", k == null ? "" : k >= d.skala.besserAb ? "gut" : k <= -d.skala.besserAb ? "schlecht" : ""),
-    kachel("Listings checked", zahl(d.ausgewertet), `${zahl(d.laeuft)} still running`),
-    kachel("Seen again", zahl(d.erholt), d.ausgewertet ? `${Math.round((100 * d.erholt) / d.ausgewertet)} % of the checks ended above the visibility limit` : "Listings back above the limit leave the Funnel."));
-  const block = (titel, erklaerung, inhalt) => el("div", { class: "d-block" }, el("h3", { text: titel }), erklaerung ? el("p", { class: "leise klein", text: erklaerung }) : null, inhalt);
-  const ueberblick = el("section", { class: "panel auswertung" }, el("h2", { text: "Which phase helps most?" }),
-    el("p", { class: "leise klein", text: `Net effect on impressions against the control group. Better from ${pz(d.skala.besserAb)}. A phase needs at least ${d.skala.mindestAusgewertet} checked listings before it gets a reading.` }),
-    el("div", { class: "d-rahmen" }, Diagramm.phasenBalken(d)));
-  const detailBox = el("div", {});
-  const gewaehlt = zustand.ergebnisPhase && d.phasen.some((p) => p.schluessel === zustand.ergebnisPhase) ? zustand.ergebnisPhase : (d.phasen.find((p) => p.ausgewertet) || d.phasen[0]).schluessel;
-  const tabs = el("div", { class: "tabs", role: "tablist", "aria-label": "Phase" });
-  const zeichneDetail = (schluessel) => {
-    zustand.ergebnisPhase = schluessel;
-    for (const t of tabs.children) t.setAttribute("aria-selected", t.dataset.phase === schluessel ? "true" : "false");
-    fuelle(detailBox, phasenDetail(d.phasen.find((p) => p.schluessel === schluessel), d, block));
+  const echteLaeufe = d.laeufe.slice(1), mitErgebnis = echteLaeufe.find((l) => l.phasen.some((p) => p.ausgewertet));
+  const gewaehlt = d.laeufe.find((l) => l.schluessel === zustand.ergebnisLauf) || mitErgebnis || d.laeufe[0];
+  const tabs = el("div", { class: "tabs", role: "tablist", "aria-label": "Run" });
+  const detail = el("div", {});
+  const zeige = (l) => {
+    zustand.ergebnisLauf = l.schluessel;
+    for (const t of tabs.children) t.setAttribute("aria-selected", t.dataset.lauf === l.schluessel ? "true" : "false");
+    fuelle(detail, laufAnsicht(l, d.skala));
   };
-  d.phasen.forEach((p, i) => tabs.append(el("button", { class: "tab", type: "button", role: "tab", "data-phase": p.schluessel, "aria-selected": "false", onclick: () => zeichneDetail(p.schluessel) },
-    `Phase ${i + 1} · ${p.name}`, el("span", { class: "zaehler", text: String(p.ausgewertet) }))));
-  fuelle(root, kopf,
-    beispiel ? el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. All figures below are invented to show how the page works and how to read it. They are not real results." }) : null,
-    kacheln, ueberblick,
-    el("section", { class: "panel auswertung" }, el("h2", { text: "Look at one phase" }), tabs, detailBox),
-    el("p", {}, knopf),
-    d.trafficBis ? el("p", { class: "leise klein", text: `Traffic data up to ${datum(d.trafficBis + "T12:00:00Z")}.` }) : null);
-  zeichneDetail(gewaehlt);
+  d.laeufe.forEach((l) => tabs.append(el("button", { class: "tab", type: "button", role: "tab", "data-lauf": l.schluessel, "aria-selected": "false", onclick: () => zeige(l) },
+    l.schluessel === "alle" ? "All runs" : `Run of ${datum(l.schluessel + "T12:00:00Z")}`, el("span", { class: "zaehler", text: String(l.angebote) }))));
+  fuelle(root, kopf, beispiel ? el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. All figures are invented to show how the page works. They are not real results." }) : null,
+    tabs, detail, el("p", {}, knopf));
+  zeige(gewaehlt);
 }
 
-function phasenDetail(p, d, block) {
-  const pz = Diagramm.proz, skala = d.skala;
-  const klasse = PHASE_URTEIL[p.urteil];
-  const kopf = el("div", { class: "phase-kopf" }, el("span", { class: "status " + klasse[0], text: klasse[1] }), el("p", { text: phasenSatz(p, skala) }));
-  if (!p.ausgewertet) return [kopf, p.laeuft ? el("p", { class: "leise", text: `${p.laeuft} listing${p.laeuft === 1 ? " is" : "s are"} in this phase now${p.naechstesEnde ? `; the first result is due on ${datum(p.naechstesEnde + "T12:00:00Z")}` : ""}.` }) : null];
-  const zeile = (name, wert) => el("tr", {}, el("td", { text: name }), el("td", { class: "zahl", text: wert }));
-  const neben = (v, n) => (p.mitKontrolle ? `${zahl(v)} → ${zahl(n)}` : "–");
-  const zahlen = rollbar(el("table", { class: "mini" }, el("tbody", {},
-    zeile("Listings checked", zahl(p.ausgewertet)), zeile("Seen again (above the visibility limit)", `${zahl(p.erholt)} of ${zahl(p.ausgewertet)}`),
-    zeile("Impressions per 90 days, listings", neben(p.vorher90, p.nachher90)), zeile("Impressions per 90 days, control group (same days)", neben(p.kontrolleVorher90, p.kontrolleNachher90)),
-    zeile("Net effect against the control group", p.netto == null ? "no control group" : pz(p.netto)), zeile("Typical listing (median net effect)", p.median == null ? "–" : pz(p.median)),
-    zeile("Listings that gained against the control group", p.anteilBesser == null ? "–" : pz(p.anteilBesser, false)))));
-  const sortiert = [...p.punkte].sort((a, b) => (b.netto ?? -Infinity) - (a.netto ?? -Infinity));
-  const liste = el("div", {}), mehr = el("div", { class: "mehr" });
-  const zeichneListe = (alle) => {
-    const teil = alle ? sortiert : sortiert.slice(0, 10);
-    fuelle(liste, rollbar(el("table", { class: "mini" },
-      el("thead", {}, el("tr", {}, ["Listing", "Before", "After", "Change", "Net effect", "Seen again"].map((t, i) => el("th", { class: i ? "zahl" : null, text: t })))),
-      el("tbody", {}, teil.map((q) => el("tr", {},
-        el("td", {}, el("a", { href: `#ladder/${encodeURIComponent(q.number)}`, text: "No. " + q.number }), q.title ? el("span", { class: "leise klein titel-kurz", text: " " + q.title }) : null),
-        el("td", { class: "zahl", text: zahl(q.vorher90) }), el("td", { class: "zahl", text: zahl(q.nachher90) }), el("td", { class: "zahl", text: aenderung(q.aenderung) }),
-        el("td", { class: "zahl", text: q.netto == null ? "no control" : aenderung(q.netto) }), el("td", { class: "zahl", text: q.erholt ? "yes" : "no" })))))));
-    fuelle(mehr, !alle && sortiert.length > 10 ? el("button", { class: "knopf knopf-klein", type: "button", text: `Show all ${sortiert.length}`, onclick: () => zeichneListe(true) }) : null);
+function laufAnsicht(l, skala) {
+  const pz = Diagramm.proz;
+  const zeile = (p) => {
+    const u = PHASE_URTEIL[p.urteil];
+    if (!p.ausgewertet) return el("tr", {}, el("td", { text: p.name }), el("td", { class: "zahl", text: "–" }), el("td", { colspan: "3", class: "leise", text: p.laeuft ? `${p.laeuft} running${p.naechstesEnde ? `, first result ${datum(p.naechstesEnde + "T12:00:00Z")}` : ""}` : "nothing finished yet" }));
+    const e = p.schaetzung;
+    return el("tr", {}, el("td", { text: p.name }), el("td", { class: "zahl", text: zahl(p.ausgewertet) }),
+      el("td", { class: "zahl", text: p.mitKontrolle ? `${zahl(p.vorher90)} → ${zahl(p.nachher90)} (${pz(p.aenderung)})` : "–" }),
+      el("td", { class: "zahl", text: p.mitKontrolle ? pz(p.kontrolleAenderung) : "–" }),
+      el("td", {}, el("span", { class: "status " + u[0], text: u[1] }), e && p.urteil !== "too_few" ? el("div", { class: "leise klein", text: `typical listing ${pz(e.effekt)}, likely ${pz(e.von)} to ${pz(e.bis)}` }) : null));
   };
-  zeichneListe(false);
-  const rahmen = (svg) => el("div", { class: "d-rahmen" }, svg);
-  return [kopf,
-    block("Impressions over time", "Index: 100 is the average of the 30 days before the phase started. The shaded part is the phase. If the listings line pulls away from the control line after the start, the phase did something.",
-      p.verlauf ? rahmen(Diagramm.verlauf(p.verlauf)) : el("p", { class: "leise", text: "No daily figures for this phase yet." })),
-    p.mitKontrolle ? block("Before and after", "Impressions before the phase = 100. The control group shows what happened in the shop in the meantime.", rahmen(Diagramm.indexSaeulen(p))) : null,
-    p.punkte.some((q) => q.netto != null) ? block("Every listing on its own", "Each dot is one listing, the line is the median. If most dots sit in the green area, the effect is broad and not just one lucky listing.", rahmen(Diagramm.punkteNetto(p, skala.besserAb))) : null,
-    block("Key figures", null, zahlen), block("Listings in this phase", "Sorted by net effect, best first.", [liste, mehr])];
+  return [
+    el("section", { class: "panel" }, el("p", { class: "ergebnis-satz", text: ergebnisSatz(l) }),
+      el("div", { class: "d-rahmen" }, Diagramm.phasenBalken(l.phasen, skala.mindestAusgewertet))),
+    el("section", { class: "panel" }, el("h2", { text: "Impressions per phase" }),
+      rollbar(el("table", { class: "mini" }, el("thead", {}, el("tr", {}, ["Phase", "Listings", "Impressions per 90 days, before → after", "Control group", "Result"].map((t, i) => el("th", { class: i && i < 4 ? "zahl" : null, text: t })))), el("tbody", {}, l.phasen.map(zeile)))),
+      el("p", { class: "leise klein", text: `Before = the 30 days before the phase started, after = the waiting time of the phase, both scaled to 90 days. The control group is the shop's listings that got no change: it shows what happened in the shop meanwhile. “Clear” means the whole range around the effect lies on one side of 0 %, so chance is unlikely. A phase needs at least ${skala.mindestAusgewertet} finished listings before it gets a result.` }))];
 }
 
 // ======================================================= Problem (problem.mjs): wie ungleich Sichtbarkeit und Verkäufe verteilt sind

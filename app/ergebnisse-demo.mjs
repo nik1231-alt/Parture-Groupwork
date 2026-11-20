@@ -1,13 +1,13 @@
-// Beispielansicht für die Seite Results: ERFUNDENE Angebote mit erfundenen Tageswerten, durch dieselbe Rechnung wie die echten Ergebnisse geschickt.
+// Beispielansicht für die Seite Results: ERFUNDENE Angebote (zwei Läufe) mit erfundenen Tageswerten, durch dieselbe Rechnung wie die echten Ergebnisse geschickt.
 // Ein echtes Ergebnis gibt es erst, wenn eine Prüfzeit (Standard 14 Tage) plus Datenverzug vorbei ist. Bis dahin zeigt die App damit,
-// wie die Diagramme aussehen und gelesen werden. Die Zahlen sind in der Oberfläche als Beispiel gekennzeichnet und berühren keine echten Daten.
+// wie die Seite aussieht und gelesen wird. Die Zahlen sind in der Oberfläche als Beispiel gekennzeichnet und berühren keine echten Daten.
 // Feste Startwerte: jeder Aufruf liefert dieselben Zahlen.
 import { baueErgebnisse, PHASEN } from "./ergebnisse.mjs";
 import { netto } from "./auswertung.mjs";
 
 const TRAFFIC_BIS = "2026-11-10", START = "2026-08-03", GRENZE90 = 170, ANZAHL = 24, KONTROLLE = 20;
 // Wirkung je Phase (Faktor auf die Impressionen) und Streuung zwischen den Angeboten: Titel kaum, Werbung deutlich, Preis kaum
-const WIRKUNG = { titel: [1.05, 0.5], werbung: [1.4, 0.5], preis: [0.97, 0.5] };
+const WIRKUNG = { titel: [0.99, 0.5], werbung: [1.4, 0.5], preis: [0.88, 0.5] };
 
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const hash = (s) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
@@ -31,11 +31,12 @@ export function baueDemoErgebnisse(einst) {
     const zufall = 0.85 + 0.3 * mulberry32(hash(n + datum))();
     return (l ? l.basis : 1.5) * f * wochentag * zufall;
   };
-  const tageswerte = (n, von, bis) => { const aus = {}; for (let d = von; d <= bis; d = plusTage(d, 1)) aus[d] = tagWert(n, d); return aus; };
-  const summe90 = (n, von, bis) => { let s = 0, k = 0; for (let d = von; d <= bis; d = plusTage(d, 1)) { s += tagWert(n, d); k++; } return Math.round((s / k) * 90); };
+    const summe90 = (n, von, bis) => { let s = 0, k = 0; for (let d = von; d <= bis; d = plusTage(d, 1)) { s += tagWert(n, d); k++; } return Math.round((s / k) * 90); };
   const gruppe90 = (von, bis) => kontrolle.reduce((s, n) => s + summe90(n, von, bis), 0);
 
-  let aktiv = listings.map((l, i) => ({ l, start: plusTage(START, i % 5) }));
+  // Zwei Starts: die ersten 14 Angebote am Anfang, die übrigen 10 eine Woche später
+  const lauf = (i) => (i < 14 ? 0 : 7);
+  let aktiv = listings.map((l, i) => ({ l, start: plusTage(START, lauf(i) + (i % 3)) }));
   for (const [stufe] of PHASEN) {
     const naechste = [];
     for (const { l, start } of aktiv) {
@@ -52,9 +53,9 @@ export function baueDemoErgebnisse(einst) {
     aktiv = naechste;
   }
   const angebote = [
-    ...listings.map((l) => ({ number: l.number, title: "Example listing " + l.number, stufe: l.stufe, phase: "fertig", ergebnis: l.ergebnis, verlauf: l.verlauf })),
-    ...kontrolle.map((n) => ({ number: n, title: "Example control " + n, stufe: "kontrolle", phase: "laeuft", ergebnis: null, verlauf: [] })),
+    ...listings.map((l, i) => ({ number: l.number, title: "Example listing " + l.number, stufe: l.stufe, phase: "fertig", ergebnis: l.ergebnis, eingestiegen_at: plusTage(START, lauf(i)) + "T06:00:00.000Z", verlauf: l.verlauf })),
+    ...kontrolle.map((n) => ({ number: n, title: "Example control " + n, stufe: "kontrolle", phase: "laeuft", ergebnis: null, eingestiegen_at: START + "T06:00:00.000Z", verlauf: [] })),
   ];
   const u = { angebote, tage, trafficBis: TRAFFIC_BIS };
-  return { ...baueErgebnisse(u, tageswerte, { besserAb: einst.besserAb, bis: TRAFFIC_BIS }), beispiel: true };
+  return { ...baueErgebnisse(u, { besserAb: einst.besserAb }), beispiel: true };
 }

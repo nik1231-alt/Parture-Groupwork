@@ -459,17 +459,8 @@ a.knopf { text-decoration: none; }
 .zs-netto { display: flex; align-items: center; gap: 8px; }
 
 /* Seite Results */
-.kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 12px; }
-.kachel { background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); padding: 14px 16px; }
-.kachel-titel { font-size: 12.5px; color: var(--leise); font-weight: 600; }
-.kachel-wert { font-family: var(--anzeige); font-size: 30px; font-weight: 650; letter-spacing: -.02em; margin: 2px 0; }
-.kachel.gut .kachel-wert { color: var(--gut); } .kachel.schlecht .kachel-wert { color: var(--schlecht); }
-.phase-kopf { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 8px; }
-.phase-kopf p { margin: 0; flex: 1 1 280px; }
-.titel-kurz { margin-left: 6px; display: inline-block; max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
-.d-matt { opacity: .45; }
-.d-flaeche { fill: var(--akzent-weich); opacity: .6; }
-.d-linie { stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
-.d-linie-test { stroke: var(--akzent); } .d-linie-kontrolle { stroke: var(--g-warten); stroke-dasharray: 5 4; }
-.d-gestrichelt { stroke-dasharray: 4 4; }
-.tab .zaehler { font-size: 12px; }
+.ergebnis-satz { font-size: 17px; font-weight: 550; margin: 0 0 10px; }
+.d-bereich { stroke-width: 3; stroke-linecap: round; stroke: var(--leise); }
+.d-effekt { fill: var(--leise); stroke: var(--karte); stroke-width: 2; }
+.d-up { stroke: var(--gut); } .d-effekt.d-up { fill: var(--gut); stroke: var(--karte); }
+.d-down { stroke: var(--schlecht); } .d-effekt.d-down { fill: var(--schlecht); stroke: var(--karte); }
