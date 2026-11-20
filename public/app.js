@@ -129,8 +129,8 @@ async function ladeZaehler() {
 let ersterAufruf = true;
 function route() {
   const [seite, arg] = location.hash.replace(/^#/, "").split("/");
-  const ansicht = ["problem", "tests", "ladder", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
-  for (const a of ["listings", "problem", "tests", "ladder", "settings", "approvals", "team", "log", "account"]) {
+  const ansicht = ["problem", "ergebnisse", "tests", "ladder", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
+  for (const a of ["listings", "problem", "ergebnisse", "tests", "ladder", "settings", "approvals", "team", "log", "account"]) {
     $("#ansicht-" + a).hidden = a !== ansicht;
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
@@ -139,6 +139,7 @@ function route() {
   if (ansicht === "listings" && !ersterAufruf) laden();
   ersterAufruf = false;
   if (ansicht === "problem") ladeProblem();
+  if (ansicht === "ergebnisse") ladeErgebnisse();
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
   if (ansicht === "ladder") { if (arg && FUNNEL_TABS.includes(arg)) zustand.funnelTab = arg; else if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; zustand.funnelTab = "all"; } ladeLeiter(); }
   if (ansicht === "settings") ladeEinstellungen();
@@ -535,6 +536,101 @@ async function ladeFreigaben() {
       el("h2", { text: "History", style: "margin: 22px 0 10px" }), ...gruppiert(false));
     ladeZaehler();
   } catch (e) { zeigeFehler(e, ladeFreigaben); }
+}
+
+// ======================================================= Results (ergebnisse.mjs): wie haben sich die Impressionen verändert, und ist es mehr als Zufall?
+const PHASE_URTEIL = { up: ["gut", "Clear increase"], down: ["schlecht", "Clear decrease"], unclear: ["", "No clear effect"], too_few: ["warn", "Too early"] };
+
+async function ladeErgebnisse() {
+  const root = $("#ansicht-ergebnisse");
+  try {
+    const echt = await api("/api/ergebnisse");
+    if (zustand.ergebnisBeispiel == null) zustand.ergebnisBeispiel = echt.leer;
+    zeichneErgebnisse(zustand.ergebnisBeispiel ? await api("/api/ergebnisse/beispiel") : echt);
+  } catch (e) { zeigeFehler(e, ladeErgebnisse); fuelle(root); }
+}
+
+const LAUF_TEXT = (l) => (l.schluessel === "alle" ? "All runs" : datum(l.schluessel + "T12:00:00Z")) + ` · ${zahl(l.angebote)} listing${l.angebote === 1 ? "" : "s"}` + (l.phasen.some((p) => p.ausgewertet) ? "" : " · no results yet");
+
+function zeichneErgebnisse(d) {
+  const root = $("#ansicht-ergebnisse"), beispiel = !!zustand.ergebnisBeispiel;
+  const knopf = el("button", { class: "knopf knopf-klein", type: "button", text: beispiel ? "Show real data" : "Show example with invented figures", onclick: () => { zustand.ergebnisBeispiel = !zustand.ergebnisBeispiel; ladeErgebnisse(); } });
+  const kopf = el("div", { class: "einstieg" }, el("h1", { text: "Results" }), el("p", { class: "leise", text: "How did impressions change compared with the control group? Pick a run: the listings you started on one day." }));
+  if (!beispiel && d.leer) {
+    const enden = d.laeufe[0].phasen.map((p) => p.naechstesEnde).filter(Boolean).sort(), laeuft = d.laeufe[0].phasen.reduce((s, p) => s + p.laeuft, 0);
+    fuelle(root, kopf, el("section", { class: "panel" },
+      el("p", { class: "leere-hinweis leise", text: enden.length ? `No phase has finished its waiting time yet. The first result is due on ${datum(enden[0] + "T12:00:00Z")}. ${laeuft} listing${laeuft === 1 ? " is" : "s are"} running now.` : "No phase is running yet. The first result comes one waiting time after the first approval in the Funnel." }),
+      el("p", {}, knopf)));
+    return;
+  }
+  const mitErgebnis = d.laeufe.slice(1).find((l) => l.phasen.some((p) => p.ausgewertet));
+  let aktuell = d.laeufe.findIndex((l) => l.schluessel === zustand.ergebnisLauf);
+  if (aktuell < 0) aktuell = d.laeufe.indexOf(mitErgebnis || d.laeufe[0]);
+  // Auswahl als Liste mit Vor/Zurück: bleibt übersichtlich, auch wenn es 50 Läufe sind
+  const auswahl = el("select", { class: "lauf-liste", "aria-label": "Run", onchange: () => zeige(auswahl.selectedIndex) },
+    d.laeufe.map((l) => el("option", { value: l.schluessel, text: LAUF_TEXT(l) })));
+  const zurueck = el("button", { class: "knopf knopf-klein", type: "button", "aria-label": "Previous run in the list", text: "‹", onclick: () => zeige(auswahl.selectedIndex - 1) });
+  const weiter = el("button", { class: "knopf knopf-klein", type: "button", "aria-label": "Next run in the list", text: "›", onclick: () => zeige(auswahl.selectedIndex + 1) });
+  const stand = el("span", { class: "leise klein" });
+  const detail = el("div", {});
+  const zeige = (i) => {
+    i = Math.max(0, Math.min(d.laeufe.length - 1, i));
+    auswahl.selectedIndex = i; zustand.ergebnisLauf = d.laeufe[i].schluessel;
+    zurueck.disabled = i === 0; weiter.disabled = i === d.laeufe.length - 1;
+    stand.textContent = i === 0 ? `${d.laeufe.length - 1} run${d.laeufe.length === 2 ? "" : "s"}` : `run ${i} of ${d.laeufe.length - 1}, newest first`;
+    fuelle(detail, laufAnsicht(d.laeufe[i], d.skala));
+  };
+  fuelle(root, kopf, beispiel ? el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. All figures are invented to show how the page works. They are not real results." }) : null,
+    el("div", { class: "lauf-waehler" }, el("label", { class: "leise klein", text: "Run" }), zurueck, auswahl, weiter, stand, el("span", { class: "abstand" }), knopf), detail);
+  zeige(aktuell);
+}
+
+// Funnel-Überblick eines Laufs: wie viele Angebote sind in jeder Phase angekommen und was ist aus ihnen geworden
+function flussPanel(l) {
+  const f = l.fluss, gesamt = l.angebote;
+  if (!gesamt) return null;
+  const teil = (n, text) => (n ? `${zahl(n)} ${text}` : null);
+  const zeile = (name, balken, erreicht, teile, kopf = false) => el("div", { class: "fluss-zeile" + (kopf ? " fluss-kopf" : "") },
+    el("div", { class: "fluss-name" }, el("strong", { text: name }), el("span", { class: "leise klein", text: erreicht })),
+    el("div", { class: "fluss-balken" }, balken), el("div", { class: "fluss-text leise klein", text: teile.filter(Boolean).join(" · ") || "–" }));
+  const zeilen = [zeile("Started", Diagramm.flussBalken({ weiter: gesamt }, gesamt), `${zahl(gesamt)} listings`, [])];
+  f.stufen.forEach((z, i) => zeilen.push(zeile(`Phase ${i + 1} · ${z.name}`, Diagramm.flussBalken(z, gesamt), `${zahl(z.erreicht)} reached`,
+    [teil(z.erholt, "seen again"), teil(z.weiter, i === 2 ? "to manual review" : "passed on"), teil(z.uebersprungen, "skipped"), teil(z.laeuft, "running"), teil(z.wartet, "waiting for approval"), teil(z.entfernt, "removed by hand")])));
+  const p = f.pruefung;
+  zeilen.push(zeile("Manual review", Diagramm.flussBalken(p, gesamt), `${zahl(p.erreicht)} reached`, [teil(p.offen, "waiting for a decision"), teil(p.behalten, "kept"), teil(p.ueberarbeiten, "to rework"), teil(p.offline, "taken offline")]));
+  const benutzt = Diagramm.FLUSS_TEIL.filter(([k]) => zeilen.length && (f.stufen.some((z) => z[k]) || p[k]));
+  return el("section", { class: "panel" }, el("h2", { text: "Where did the listings go?" }), zeilen,
+    benutzt.length ? el("div", { class: "fluss-legende" }, benutzt.map(([k, b]) => el("span", { class: "leise klein" }, el("i", { class: "fluss-punkt d-f-" + k }), b))) : null);
+}
+
+// Oben je Phase eine Zeile mit der Grafik (alle Zeilen auf derselben Skala), darunter die Tabelle mit allen Zahlen.
+function laufAnsicht(l, skala) {
+  const pz = Diagramm.proz, a = Diagramm.achse(l.phasen);
+  const zeile = (p) => {
+    const u = PHASE_URTEIL[p.urteil], e = p.schaetzung, fertig = p.ausgewertet > 0;
+    return el("div", { class: "phase-zeile" },
+      el("div", { class: "phase-name" }, el("strong", { text: p.name }), el("span", { class: "leise klein", text: fertig ? `${zahl(p.ausgewertet)} listing${p.ausgewertet === 1 ? "" : "s"}` : p.laeuft ? `${p.laeuft} running${p.naechstesEnde ? `, due ${datum(p.naechstesEnde + "T12:00:00Z")}` : ""}` : "nothing finished" })),
+      el("div", { class: "phase-grafik" }, Diagramm.phasenZeile(p, a)),
+      el("div", { class: "phase-ergebnis" }, el("span", { class: "status " + u[0], text: u[1] }), e && p.urteil !== "too_few" ? el("span", { class: "leise klein", text: `${pz(e.effekt)} (${pz(e.von, false)} to ${pz(e.bis)})` }) : null));
+  };
+  const zahlenZeile = (p) => {
+    const e = p.schaetzung, mit = p.ausgewertet > 0 && p.mitKontrolle > 0, zeigen = e && p.urteil !== "too_few";
+    return el("tr", {}, el("td", { text: p.name }), el("td", { class: "zahl", text: p.ausgewertet ? zahl(p.ausgewertet) : "–" }),
+      el("td", { class: "zahl", text: mit ? zahl(p.vorher90) : "–" }), el("td", { class: "zahl", text: mit ? zahl(p.nachher90) : "–" }), el("td", { class: "zahl", text: mit ? pz(p.aenderung) : "–" }),
+      el("td", { class: "zahl", text: mit ? pz(p.kontrolleAenderung) : "–" }), el("td", { class: "zahl", text: zeigen ? pz(e.effekt) : "–" }), el("td", { class: "zahl", text: zeigen ? `${pz(e.von, false)} to ${pz(e.bis)}` : "–" }));
+  };
+  return [
+    flussPanel(l),
+    el("section", { class: "panel phasen" },
+      el("div", { class: "phase-zeile phase-kopfzeile" }, ["Phase", "Effect compared with control group", "Result"].map((t) => el("div", { text: t }))),
+      l.phasen.map(zeile),
+      el("div", { class: "phase-zeile phase-achse" }, el("div"), el("div", { class: "phase-grafik" }, Diagramm.phasenAchse(a)), el("div")),
+      el("p", { class: "leise klein phasen-hinweis", text: `Dot = effect for a typical listing, line = the range it most likely lies in (95 %). Clear = the whole line is on one side of 0 %, otherwise it could be chance. At least ${skala.mindestAusgewertet} finished listings are needed.` })),
+    el("section", { class: "panel" }, el("h2", { text: "The numbers" }),
+      rollbar(el("table", { class: "mini" },
+        el("thead", {}, el("tr", {}, ["Phase", "Listings", "Impressions before", "after", "Change", "Control group", "Effect", "Likely range"].map((t, i) => el("th", { class: i ? "zahl" : null, text: t })))),
+        el("tbody", {}, l.phasen.map(zahlenZeile)))),
+      el("p", { class: "leise klein", text: "Impressions are per 90 days: the 30 days before a phase against the waiting time of the phase, scaled up. The control group is the shop's listings that got no change; it shows what happened in the shop meanwhile. Effect and range are for a typical listing compared with the control group." }))];
 }
 
 // ======================================================= Problem (problem.mjs): wie ungleich Sichtbarkeit und Verkäufe verteilt sind
