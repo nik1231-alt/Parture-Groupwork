@@ -36,6 +36,7 @@ test("Auswertung: Felder gesehen × verkauft zählen nur aktive eBay-Angebote, S
   assert.equal(a.produkte, 6); assert.equal(a.ebayAktiv, 5);
   assert.deepEqual(a.felder, { gesehenVerkauft: 1, gesehenNichtVerkauft: 1, kaumGesehenVerkauft: 1, kaumGesehenNichtVerkauft: 2 });
   assert.equal(a.kaumGesehen, 3); assert.equal(a.ohneImpressionen, 1);
-  assert.equal(a.ohneVerkauf, 3); assert.equal(a.ebayOhneVerkauf, 3);
-  assert.equal(a.verkaeufe.summe, 61, "Verkäufe zählen über alle Produkte, auch ohne eBay-Angebot");
+  assert.equal(a.ohneVerkauf, 3, "nur aktive eBay-Angebote");
+  assert.equal(a.verkaeufe.summe, 11, "Scope nur eBay: das Produkt ohne eBay-Angebot (50 Verkäufe) zählt nicht mit");
+  assert.equal(a.verkaeufe.anzahl, 5);
 });
