@@ -129,8 +129,8 @@ async function ladeZaehler() {
 let ersterAufruf = true;
 function route() {
   const [seite, arg] = location.hash.replace(/^#/, "").split("/");
-  const ansicht = ["tests", "ladder", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
-  for (const a of ["listings", "tests", "ladder", "settings", "approvals", "team", "log", "account"]) {
+  const ansicht = ["problem", "tests", "ladder", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
+  for (const a of ["listings", "problem", "tests", "ladder", "settings", "approvals", "team", "log", "account"]) {
     $("#ansicht-" + a).hidden = a !== ansicht;
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
@@ -138,6 +138,7 @@ function route() {
   // Die Listings immer frisch laden: Tests und Einstellungen verändern, welche Angebote wo stehen
   if (ansicht === "listings" && !ersterAufruf) laden();
   ersterAufruf = false;
+  if (ansicht === "problem") ladeProblem();
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
   if (ansicht === "ladder") { if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; } ladeLeiter(); }
   if (ansicht === "settings") ladeEinstellungen();
@@ -536,6 +537,103 @@ async function ladeFreigaben() {
   } catch (e) { zeigeFehler(e, ladeFreigaben); }
 }
 
+// ======================================================= Problem (problem.mjs): wie ungleich Sichtbarkeit und Verkäufe verteilt sind
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs = {}, ...kinder) {
+  const n = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) if (v != null && v !== false) n.setAttribute(k, String(v));
+  for (const k of kinder.flat()) if (k != null) n.append(k);
+  return n;
+}
+const svgText = (x, y, t, klasse = "", anker = "start") => { const n = svg("text", { x, y, class: "d-text " + klasse, "text-anchor": anker }); n.textContent = t; return n; };
+const pz = (v, stellen = 0) => (v == null ? "–" : (100 * v).toLocaleString(LOCALE, { maximumFractionDigits: stellen }) + " %");
+
+async function ladeProblem() {
+  const root = $("#ansicht-problem");
+  try { zeichneProblem(await api("/api/problem")); } catch (e) { zeigeFehler(e, ladeProblem); fuelle(root); }
+}
+
+function zeichneProblem(d) {
+  const kachel = (titel, wert, unter, klasse = "") => el("div", { class: "kpi " + klasse }, el("div", { class: "kpi-titel", text: titel }), el("div", { class: "kpi-wert", text: wert }), unter ? el("div", { class: "kpi-unter", text: unter }) : null);
+  const v80 = d.verkaeufe.fuer80, i80 = d.impressionen.fuer80;
+  fuelle($("#ansicht-problem"),
+    el("div", { class: "einstieg" }, el("h1", { text: "Problem" }),
+      el("p", { class: "leise", text: "Live from the shop's own numbers (last 90 days): a few products carry almost all sales, while a long tail of listings is hardly ever shown to buyers. This page is the reason the Funnel exists." })),
+    el("div", { class: "kpis" },
+      kachel("Products", zahl(d.produkte), `${zahl(d.ebayAktiv)} active on eBay`),
+      kachel("Sold nothing", zahl(d.ohneVerkauf), `${pz(d.ohneVerkauf / d.produkte)} of all products, last 90 days`, "warn"),
+      kachel("Barely seen on eBay", zahl(d.kaumGesehen), `${pz(d.kaumGesehen / d.ebayAktiv)} of eBay listings under ${zahl(d.grenze90)} impressions`, "offen"),
+      kachel("Never shown", zahl(d.ohneImpressionen), "eBay listings with 0 impressions in 90 days", "grau")),
+    el("div", { class: "aussagen" },
+      aussage(pz(v80?.anteil, 1), "of the products bring 80 % of the sales", `${zahl(v80?.anzahl)} of ${zahl(d.verkaeufe.anzahl)} products · the best 10 % bring ${pz(d.verkaeufe.top10)}`, "phase"),
+      aussage(pz(i80?.anteil), "of the eBay listings get 80 % of the impressions", `${zahl(i80?.anzahl)} of ${zahl(d.impressionen.anzahl)} listings · the best 10 % get ${pz(d.impressionen.top10)}`, "kontrolle")),
+    el("section", { class: "panel" },
+      el("h2", { text: "Where sales and visibility come from" }),
+      el("p", { class: "leise klein", text: "Products sorted from best to worst. The curve shows how much of the total the best x % bring. The higher and steeper it rises, the more the total depends on a few products. The dashed line would be a shop where every product does equally well." }),
+      konzentrationsBild(d)),
+    el("div", { class: "problem-raster" },
+      el("section", { class: "panel" }, el("h2", { text: "Seen × sold" }),
+        el("p", { class: "leise klein", text: `Every active eBay listing in one of four fields. “Seen” means at least ${zahl(d.grenze90)} impressions in 90 days, the limit of the diagnosis.` }),
+        vierFelder(d)),
+      el("section", { class: "panel" }, el("h2", { text: "How often buyers see a listing" }),
+        el("p", { class: "leise klein", text: "eBay listings by impressions in 90 days. The orange columns are under the limit: that is where the Funnel starts." }),
+        stufenBild(d))),
+    el("div", { class: "panel kopf-zeile weiter" },
+      el("div", {}, el("h2", { text: "What we do about it" }), el("p", { class: "leise klein", text: `The ${zahl(d.kaumGesehen)} barely seen listings go into the Funnel: new title, then ads, then a lower price, each step measured against a control group.` })),
+      el("a", { class: "knopf knopf-akzent", href: "#ladder", text: "Open the Funnel →" })));
+}
+
+function aussage(gross, satz, unter, klasse) {
+  return el("div", { class: "aussage " + klasse }, el("div", { class: "aussage-zahl", text: gross }), el("div", { class: "aussage-satz", text: satz }), el("div", { class: "leise klein", text: unter }));
+}
+
+// Konzentrationskurve: x = Anteil der Produkte (beste zuerst), y = Anteil der Summe; Markierung beim 80-%-Punkt
+function konzentrationsBild(d) {
+  const B = 720, H = 330, l = 48, r = 20, o = 18, u = 42, w = B - l - r, h = H - o - u;
+  const x = (p) => l + w * p, y = (a) => o + h * (1 - a);
+  const pfad = (kurve) => kurve.map((pt, i) => `${i ? "L" : "M"}${x(pt.produkte).toFixed(1)},${y(pt.anteil).toFixed(1)}`).join(" ");
+  const gitter = [0, 0.2, 0.4, 0.6, 0.8, 1].flatMap((t) => [svg("line", { x1: l, x2: B - r, y1: y(t), y2: y(t), class: "d-gitter" }), svgText(l - 8, y(t) + 4, pz(t), "d-klein", "end"),
+    svg("line", { x1: x(t), x2: x(t), y1: o, y2: o + h, class: "d-gitter" }), svgText(x(t), H - u + 18, pz(t), "d-klein", "middle")]);
+  const marke = (pt, klasse, text, unten) => pt ? [svg("line", { x1: x(pt.anteil), x2: x(pt.anteil), y1: y(0.8), y2: o + h, class: "k-hilfslinie " + klasse }),
+    svg("circle", { cx: x(pt.anteil), cy: y(0.8), r: 5, class: "k-punkt " + klasse }), svgText(x(pt.anteil) + (unten ? 10 : 16), y(0.8) + (unten ? 20 : -14), text, "d-wert " + klasse)] : [];
+  return el("div", { class: "d-rahmen" }, svg("svg", { viewBox: `0 0 ${B} ${H}`, class: "diagramm", role: "img", "aria-label": `80 % of sales come from ${pz(d.verkaeufe.fuer80?.anteil, 1)} of the products, 80 % of impressions from ${pz(d.impressionen.fuer80?.anteil)} of the eBay listings` },
+    ...gitter,
+    svg("line", { x1: x(0), y1: y(0), x2: x(1), y2: y(1), class: "k-gleich" }),
+    svg("line", { x1: l, x2: B - r, y1: y(0.8), y2: y(0.8), class: "k-achtzig" }), svgText(B - r, y(0.8) - 6, "80 %", "d-klein", "end"),
+    svg("path", { d: pfad(d.impressionen.kurve), class: "k-kurve kontrolle" }),
+    svg("path", { d: pfad(d.verkaeufe.kurve), class: "k-kurve phase" }),
+    ...marke(d.verkaeufe.fuer80, "phase", `Sales: ${pz(d.verkaeufe.fuer80?.anteil, 1)} of products`, false),
+    ...marke(d.impressionen.fuer80, "kontrolle", `Impressions: ${pz(d.impressionen.fuer80?.anteil)}`, true),
+    svgText(l + w / 2, H - 6, "Share of products, best first", "d-klein", "middle")),
+    el("div", { class: "legende" }, el("span", { class: "leg phase", text: "Sales (all products)" }), el("span", { class: "leg kontrolle", text: "Impressions (eBay listings)" }), el("span", { class: "leg gleich", text: "Every product equal" })));
+}
+
+// Vier Felder gesehen × verkauft: Fläche je Feld nach Anzahl, das Ziel des Funnels ist markiert
+function vierFelder(d) {
+  const f = d.felder, summe = Math.max(1, f.gesehenVerkauft + f.gesehenNichtVerkauft + f.kaumGesehenVerkauft + f.kaumGesehenNichtVerkauft);
+  const feld = (n, titel, unter, klasse) => el("div", { class: "feld4 " + klasse },
+    el("div", { class: "feld4-zahl", text: zahl(n) }), el("div", { class: "feld4-titel", text: titel }), el("div", { class: "feld4-unter", text: `${pz(n / summe)} · ${unter}` }),
+    el("div", { class: "feld4-balken" }, el("i", { style: `width:${(100 * n) / summe}%` })));
+  return el("div", { class: "felder4" },
+    el("div", {}), el("div", { class: "feld4-kopf", text: "sold" }), el("div", { class: "feld4-kopf", text: "not sold" }),
+    el("div", { class: "feld4-seite", text: "seen" }),
+    feld(f.gesehenVerkauft, "Works", "keep it as it is", "gut"),
+    feld(f.gesehenNichtVerkauft, "Seen, not bought", "price, photos or fit", "warn"),
+    el("div", { class: "feld4-seite", text: "barely seen" }),
+    feld(f.kaumGesehenVerkauft, "Sells despite few views", "more visibility pays off first", "ziel"),
+    feld(f.kaumGesehenNichtVerkauft, "Invisible", "the Funnel's main target", "ziel"));
+}
+
+// Säulen der Impressions-Stufen; Stufen unter der Grenze sind orange
+function stufenBild(d) {
+  const max = Math.max(1, ...d.stufen.map((s) => s.anzahl));
+  const name = (s) => s.bis === 0 ? "0" : s.bis == null ? `${zahl(s.von)}+` : `${zahl(s.von)}–${zahl(s.bis)}`;
+  return el("div", { class: "stufen-bild" }, d.stufen.map((s) => el("div", { class: "stufe-saeule" + (s.unterGrenze ? " unter" : "") },
+    el("div", { class: "stufe-wert", text: zahl(s.anzahl) }),
+    el("div", { class: "stufe-balken" }, el("i", { style: `height:${Math.max(2, (100 * s.anzahl) / max)}%` })),
+    el("div", { class: "stufe-name", text: name(s) }))));
+}
+
 // ======================================================= Leiter (Titel -> Werbung -> Preis -> manuelle Prüfung)
 const STUFE_TEXT = { titel: "1 · New title", werbung: "2 · Ads", preis: "3 · Lower price", pruefung: "4 · Manual check", kontrolle: "Control group", raus: "Done" };
 const ERGEBNIS_LEITER = { erholt: "Seen again", ueberarbeiten: "Rework", offline: "Take offline", behalten: "Keep as is", abgebrochen: "Taken off", kontrolle: "Control time over" };
@@ -570,18 +668,26 @@ function zeichneLeiter(l) {
   const warten = l.angebote.filter((a) => a.phase === "vorschlag" || a.phase === "offen");
   const laufen = l.angebote.filter((a) => a.phase === "laeuft");
   const fertig = l.angebote.filter((a) => a.stufe === "raus" && a.ergebnis !== "kontrolle");
-  const laufKnopf = istAdmin() ? el("button", { class: "knopf knopf-akzent", type: "button", disabled: st.laeuft, text: st.laeuft ? "Running …" : "Run the ladder now",
-    onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/lauf", {}, (r) => `Done: ${r.aufgenommen} on the ladder, ${r.kontrolle ?? 0} in the control group, ${r.ausgewertet} checked (${r.erholt} seen again), ${r.titelVorschlaege} title suggestions.`); } }) : null;
+  // Bewegung von Hand (Standard): Aufnehmen per Los und KI-Titel holen sind zwei Knöpfe; automatisch: ein Knopf für den ganzen Lauf
+  const vonHand = l.bewegung !== "automatisch";
+  const knopf = (text, pfad, meldungText, akzent = true) => el("button", { class: "knopf" + (akzent ? " knopf-akzent" : ""), type: "button", disabled: st.laeuft, text: st.laeuft ? "Running …" : text,
+    onclick: (ev) => { ev.target.disabled = true; ev.target.textContent = "Working …"; leiterAktion(pfad, {}, meldungText); } });
+  const laufKnopf = !istAdmin() ? null : vonHand
+    ? el("div", { class: "aktionen", style: "margin-top:0" },
+      knopf("Draw listings by lot", "/api/leiter/ziehen", (r) => `Drawn: ${r.aufgenommen} on the ladder, ${r.kontrolle ?? 0} in the control group, ${r.titelVorschlaege} AI titles.`),
+      knopf("Get AI titles", "/api/leiter/lauf", (r) => `${r.titelVorschlaege} new AI titles${r.ohneVorschlag ? `, ${r.ohneVorschlag} without a suggestion` : ""}.`, false))
+    : knopf("Run the ladder now", "/api/leiter/lauf", (r) => `Done: ${r.aufgenommen} on the ladder, ${r.kontrolle ?? 0} in the control group, ${r.ausgewertet} checked (${r.erholt} seen again), ${r.titelVorschlaege} title suggestions.`);
   const schalter = (name, an, text) => el("li", {}, name + ":", el("span", { class: an ? "an" : "aus", text }));
   const abschnitt = (titel, n) => el("div", { class: "abschnitt-kopf" }, el("h2", {}, titel, el("span", { class: "zahl-pille", text: String(n) })));
   fuelle(root,
     el("div", { class: "einstieg" }, el("h1", { text: "Funnel" }),
-      el("p", { class: "leise", text: `Every product passes the same checks. Products that buyers rarely see (under ${zahl(f.kpi.grenze90)} impressions in 90 days) and that can be changed on eBay are eligible. The daily run draws them by lot: half climb the ladder (new title, then ads, then a lower price), half stay unchanged as the control group. After each phase the app compares the listing with the control group over the same days, so a busy season does not count as success. Nothing changes on eBay without an admin's approval.` })),
+      el("p", { class: "leise", text: `Every product passes the same checks. Products that buyers rarely see (under ${zahl(f.kpi.grenze90)} impressions in 90 days) and that can be changed on eBay are eligible. ${l.bewegung === "automatisch" ? "The daily run draws them by lot" : "An admin draws them by lot"}: half climb the ladder (new title, then ads, then a lower price), half stay unchanged as the control group. After each phase the app compares the listing with the control group over the same days, so a busy season does not count as success.${l.bewegung === "automatisch" ? "" : " Products only move when an admin clicks."} Nothing changes on eBay without an admin's approval.` })),
     kpiLeiste(l),
     trichterBild(l),
     wirkungTabelle(l),
     istAdmin() ? el("div", { class: "panel kopf-zeile" },
       el("ul", { class: "leiter-status", "aria-label": "Ladder status" },
+        schalter("Movement", true, vonHand ? "by hand (buttons)" : "automatic (daily run)"),
         schalter("Titles", st.ki, st.ki ? `AI (${st.kiModell}) + rule check` : "title help, no AI key"),
         schalter("Control group", l.kontrolleAn, l.kontrolleAn ? `on · ${l.tage.kontrolle} days` : "off"),
         schalter("Ads on eBay", st.werbungAn, st.werbungAn ? "on" : "dry run"),
@@ -618,27 +724,49 @@ function kpiLeiste(l) {
     kachel("Seen again", zahl(l.raus.erholt), "left the ladder with enough impressions", "gut"));
 }
 
-// Der Funnel als Bild: jede Zeile ist ein Status, die Länge des Balkens ist die Zahl der Produkte. Klick filtert die Tabelle unten.
+// Der Funnel als Bild (Niko 20.11.: visuell statt Text, Methodik unverändert):
+//   1. alle Produkte als ein gestapelter Balken nach Status, 2. warum nicht geeignet: je Grund "x von N" als Balken,
+//   3. die Leiter als Fluss: geeignet → Los → Phase 1 … 4 → wieder gesehen, Abzweig Kontrollgruppe; Kreisfläche ~ Anzahl.
+// Ein Klick auf jeden Teil filtert die Tabelle aller Produkte unten.
 function trichterBild(l) {
-  const f = l.trichter, max = Math.max(1, f.kpi.produkte);
-  const zeile = (status, titel, n, unter, ebene = 0) => el("button", { class: "fz ebene-" + ebene, type: "button", title: "Show these products in the table below",
-    onclick: () => { zustand.funnelFilter = status; zustand.funnelSichtbar = 50; zeichneStatusTabelle(f); $("#funnel-tabelle").scrollIntoView({ behavior: "smooth", block: "start" }); } },
-    el("span", { class: "fz-name" }, el("strong", { text: titel }), unter ? el("small", { text: unter }) : null),
-    el("span", { class: "fz-balken" }, el("i", { class: STATUS_KLASSE[status] || "alle", style: `width:${n ? Math.max(1.5, 100 * n / max) : 0}%` })),
-    el("span", { class: "fz-zahl", text: zahl(n) }));
-  const gruende = Object.entries(f.gruende).filter(([, n]) => n).map(([a, n]) => `${GRUND_TEXT[a]} ${zahl(n)}`).join(" · ");
+  const f = l.trichter, N = Math.max(1, f.kpi.produkte);
+  const filtern = (status) => { zustand.funnelFilter = status; zustand.funnelSichtbar = 50; zeichneStatusTabelle(f); $("#funnel-tabelle").scrollIntoView({ behavior: "smooth", block: "start" }); };
+  const anteil = (n) => pz(n / N, n && n / N < 0.01 ? 1 : 0);
+  const seg = STATUS_REIHE.filter((s) => f.zahl[s] > 0).map((s) => el("button", { class: "fb-seg " + (STATUS_KLASSE[s] || ""), type: "button", style: `flex-grow:${f.zahl[s]}`,
+    title: `${STATUS_TEXT[s]}: ${zahl(f.zahl[s])} of ${zahl(N)} (${anteil(f.zahl[s])})`, "aria-label": `${STATUS_TEXT[s]}: ${zahl(f.zahl[s])}`, onclick: () => filtern(s) },
+    f.zahl[s] / N >= 0.06 ? el("span", { text: zahl(f.zahl[s]) }) : null));
+  const legende = STATUS_REIHE.map((s) => el("button", { class: "fb-leg", type: "button", onclick: () => filtern(s) },
+    el("span", { class: "punkt status-punkt " + (STATUS_KLASSE[s] || "") }), el("span", { text: STATUS_TEXT[s] }), el("strong", { text: zahl(f.zahl[s] || 0) })));
+  const gruende = Object.entries(f.gruende).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).map(([a, n]) => el("button", { class: "gr-zeile", type: "button", onclick: () => filtern("nicht_geeignet") },
+    el("span", { class: "gr-name", text: GRUND_TEXT[a] || a }),
+    el("span", { class: "gr-balken" }, el("i", { style: `width:${(100 * n) / N}%` })),
+    el("span", { class: "gr-wert" }, el("strong", { text: zahl(n) }), ` of ${zahl(N)} · ${anteil(n)}`)));
+  const maxP = Math.max(1, f.zahl.geeignet, f.zahl.kontrolle, f.zahl.titel, f.zahl.werbung, f.zahl.preis, f.zahl.pruefung, f.zahl.erholt);
+  const knoten = (status, titel, unter) => {
+    const n = f.zahl[status] || 0, d = Math.round(46 + 50 * Math.sqrt(n / maxP));
+    return el("button", { class: "pl-knoten " + (STATUS_KLASSE[status] || "") + (n ? "" : " leer"), type: "button", onclick: () => filtern(status), title: `${STATUS_TEXT[status]}: ${zahl(n)}` },
+      el("span", { class: "pl-kreis", style: `width:${d}px;height:${d}px` }, el("span", { text: zahl(n) })),
+      el("strong", { text: titel }), el("small", { text: unter }));
+  };
+  const pfeil = (text) => el("span", { class: "pl-pfeil", "aria-hidden": "true" }, text ? el("small", { text }) : null);
   return el("section", { class: "panel trichter-bild", "aria-label": "Funnel" },
-    el("h2", { text: "Where every product stands" }),
-    zeile("alle", "All products", f.kpi.produkte, "every product in the catalogue"),
-    zeile("nicht_geeignet", "Not eligible", f.zahl.nicht_geeignet, gruende || "none", 1),
-    zeile("geeignet", "Eligible", f.zahl.geeignet, "low impressions, active on eBay, free: waiting for a place", 1),
-    zeile("kontrolle", "Control group", f.zahl.kontrolle, `drawn by lot, stays unchanged for ${l.tage.kontrolle} days`, 2),
-    zeile("titel", "Phase 1 · New title", f.zahl.titel, `AI title + rule check · ${l.tage.titel} days`, 2),
-    zeile("werbung", "Phase 2 · Ads", f.zahl.werbung, `Promoted Listings ${Math.round(l.werbesatz * 100)} % · ${l.tage.werbung} days`, 2),
-    zeile("preis", "Phase 3 · Lower price", f.zahl.preis, `−${Math.round(l.preisSchritt * 100)} % · ${l.tage.preis} days`, 2),
-    zeile("pruefung", "Phase 4 · Manual check", f.zahl.pruefung, "an admin decides: rework, take offline or keep", 2),
-    zeile("erholt", "Seen again", f.zahl.erholt, "enough impressions after a phase", 3),
-    zeile("raus", "Left, pausing", f.zahl.raus, "decided, taken off or control time over; 90 days pause", 3));
+    el("div", { class: "kopf-zeile" }, el("h2", { text: "Where every product stands" }), el("span", { class: "leise klein", text: "Click any part to list those products below." })),
+    el("div", { class: "fb", role: "group", "aria-label": "All products by status" }, ...seg),
+    el("div", { class: "fb-legende" }, ...legende),
+    el("div", { class: "tb-teil" }, el("h3", { text: `Why ${zahl(f.zahl.nicht_geeignet)} of ${zahl(N)} products are not eligible` }), el("div", { class: "gruende" }, ...gruende)),
+    el("div", { class: "tb-teil" }, el("h3", { text: "The ladder" }),
+      el("div", { class: "pipeline" },
+        knoten("geeignet", "Eligible", "low impressions, free"),
+        pfeil("drawn by lot"),
+        el("div", { class: "pl-gabel" },
+          el("div", { class: "pl-reihe" },
+            knoten("titel", "Phase 1", `New title · ${l.tage.titel} d`), pfeil(),
+            knoten("werbung", "Phase 2", `Ads ${Math.round(l.werbesatz * 100)} % · ${l.tage.werbung} d`), pfeil(),
+            knoten("preis", "Phase 3", `Price −${Math.round(l.preisSchritt * 100)} % · ${l.tage.preis} d`), pfeil(),
+            knoten("pruefung", "Phase 4", "Manual check"), pfeil(),
+            knoten("erholt", "Seen again", "left the ladder")),
+          el("div", { class: "pl-reihe pl-kontrolle" }, knoten("kontrolle", "Control group", `unchanged · ${l.tage.kontrolle} d`),
+            el("span", { class: "leise klein pl-erklaerung", text: "Half of every draw stays unchanged, so each phase is measured against listings that got nothing." }))))));
 }
 
 // Wirkung je Phase gegen die Kontrollgruppe (leiter.wirkung): erst wenn eine Prüfzeit vorbei ist, gibt es Zahlen
@@ -722,7 +850,26 @@ function leiterLaeuft(a) {
   const s = a.stand;
   const anteil = Math.min(1, s.gelaufen / s.tage);
   return [el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(anteil * 100)}%` })),
-    el("p", { class: "leise klein", text: `Day ${s.gelaufen} of ${s.tage} (with finished traffic data; checked on ${datum(s.ende + "T12:00:00Z")} or later). Before: ${zahl(s.vorher90)} impressions per 90 days${s.jetzt90 != null ? ` · so far: ${zahl(s.jetzt90)} per 90 days` : ""}.` })];
+    el("p", { class: "leise klein", text: `Day ${s.gelaufen} of ${s.tage} (with finished traffic data; checked on ${datum(s.ende + "T12:00:00Z")} or later). Before: ${zahl(s.vorher90)} impressions per 90 days${s.jetzt90 != null ? ` · so far: ${zahl(s.jetzt90)} per 90 days` : ""}.` }),
+    zwischenstand(s),
+    // Bewegung von Hand: der Admin entscheidet mit dem Zwischenstand, ob das Angebot weiter muss oder wieder gesehen wird
+    istAdmin() ? el("div", { class: "aktionen" },
+      zweiStufig(el("button", { class: "knopf knopf-akzent", type: "button", text: `Next phase → ${STUFE_TEXT[naechsteStufe(a.stufe)] || ""}` }), "Really move on?", () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "weiter" }, (r) => `Moved to ${STUFE_TEXT[r.stufe] || r.stufe}.`)),
+      zweiStufig(el("button", { class: "knopf", type: "button", text: "Seen again ✓ leave the ladder" }), "Really mark as seen again?", () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "erholt" }, "Marked as seen again; the listing left the ladder."))) : null];
+}
+const naechsteStufe = (s) => ({ titel: "werbung", werbung: "preis", preis: "pruefung" })[s];
+
+// Zwischenstand der laufenden Prüfzeit als kleine Balken: Angebot vorher/jetzt und Kontrollgruppe vorher/jetzt, dazu der Nettoeffekt
+function zwischenstand(s) {
+  if (s.jetzt90 == null) return el("p", { class: "leise klein", text: "No traffic data since the start yet, so nothing to compare." });
+  const k = s.kontrolle, max = Math.max(1, s.vorher90, s.jetzt90, k?.vorher90 || 0, k?.nachher90 || 0);
+  const balken = (name, v, klasse) => el("div", { class: "zs-zeile" }, el("span", { class: "zs-name", text: name }),
+    el("span", { class: "zs-balken" }, el("i", { class: klasse, style: `width:${(100 * v) / max}%` })), el("span", { class: "zs-wert", text: zahl(v) }));
+  return el("div", { class: "zwischenstand" },
+    el("div", { class: "zs-gruppe" }, el("div", { class: "zs-titel", text: "This listing, impressions per 90 days" }), balken("before", s.vorher90, "vorher"), balken("so far", s.jetzt90, "phase")),
+    k ? el("div", { class: "zs-gruppe" }, el("div", { class: "zs-titel", text: `Control group (${k.anzahl}), same days` }), balken("before", k.vorher90, "vorher"), balken("so far", k.nachher90, "kontrolle"))
+      : el("div", { class: "zs-gruppe leise klein", text: "No control group covers these days." }),
+    s.netto != null ? el("div", { class: "zs-netto" }, el("span", { class: "leise klein", text: "Net effect so far" }), el("span", { class: "status " + (s.netto >= 0.2 ? "gut" : s.netto <= -0.2 ? "schlecht" : "grau"), text: aenderung(s.netto) })) : null);
 }
 
 function leiterVorschlag(a) {

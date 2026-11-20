@@ -270,10 +270,11 @@ function weiter(db, z, einst, kontext, jetzt) {
 
 // Täglicher Schritt: jede Stufe, deren Prüfzeit vollständig in den Daten liegt, wird ausgewertet.
 // trafficBis: letzter Tag mit fertigen Traffic-Daten. grenze90: die Grenze der Diagnose (Impressionen in 90 Tagen).
-export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN, fuer = null }, jetzt = new Date()) {
+// nurKontrolle: Stufen nicht bewerten (Bewegung von Hand), nur Kontrollangebote freigeben, deren Zeit um ist.
+export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN, fuer = null, nurKontrolle = false }, jetzt = new Date()) {
   const ergebnisse = [];
   if (!trafficBis) return ergebnisse;
-  for (const z of db.prepare("SELECT * FROM leiter WHERE phase = 'laeuft' ORDER BY number").all()) {
+  for (const z of nurKontrolle ? [] : db.prepare("SELECT * FROM leiter WHERE phase = 'laeuft' ORDER BY number").all()) {
     const tage = pruefTage(z.stufe, einst);
     const ende = plusTage(z.stufe_start, tage);
     if (trafficBis < ende) continue;
@@ -359,6 +360,31 @@ const PHASE_GRUND = { vorschlag: "A suggestion is ready and waits for an admin's
 const ERGEBNIS_GRUND = { ueberarbeiten: "Decided after the manual check: rework the listing", offline: "Decided after the manual check: take it offline", behalten: "Decided after the manual check: keep it as it is", abgebrochen: "Taken off the ladder by an admin", kontrolle: "Was in the control group" };
 
 // Admin entscheidet nach der manuellen Prüfung. Die App ändert dabei nichts bei eBay: "offline" ist ein Auftrag an den Admin.
+// Bewegung von Hand (Niko 20.11.: Produkte wandern nur per Knopf): ein Admin schiebt ein Angebot aus der laufenden Prüfzeit
+// in die nächste Phase (ziel "weiter") oder nimmt es als wieder gesehen von der Leiter (ziel "erholt"). Gemessen wird wie im
+// automatischen Lauf, nur über die Tage, die bis jetzt in den Daten liegen; die Messung steht als "ausgewertet" im Lebenslauf
+// (mit vonHand), damit die Wirkung je Phase weiter gegen die Kontrollgruppe gerechnet wird.
+export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN, fuer = null }, jetzt = new Date()) {
+  if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can move a listing in the funnel.");
+  if (!["weiter", "erholt"].includes(ziel)) return fehler(400, "Unknown move.");
+  const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "laeuft"); if (f) return f;
+  const tage = pruefTage(z.stufe, einst), ende = plusTage(z.stufe_start, tage);
+  const bis = trafficBis && trafficBis < ende ? trafficBis : ende;
+  const gemessen = trafficBis ? Math.max(0, Math.round((Date.parse(bis) - Date.parse(z.stufe_start)) / 864e5)) : 0;
+  const vorher90 = Math.round((z.basis_imp_tag ?? 0) * 90);
+  const nachher90 = gemessen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null;
+  const kontrolle = gemessen > 0 ? kontrollVergleich(db, impTag, z.stufe_start, bis, einst) : null;
+  const nettoEffekt = kontrolle && nachher90 != null ? netto({ vorher: vorher90, nachher: nachher90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
+  const details = { tage, gemessenTage: gemessen, vorher90, nachher90, grenze90: Math.round(grenze90 ?? 0), erholt: ziel === "erholt", kontrolle, netto: nettoEffekt, vonHand: true };
+  db.transaction(() => {
+    verlauf(db, z.number, z.stufe, "ausgewertet", details, nutzer.name, jetzt);
+    if (ziel === "erholt") setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "erholt" }, jetzt);
+    else weiter(db, z, einst, { fuer }, jetzt);
+  })();
+  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_moved", objekt: "product " + z.number, details: { stufe: z.stufe, ziel, gemessenTage: gemessen, netto: nettoEffekt } }, jetzt);
+  return ok({ number: z.number, ziel, stufe: ziel === "erholt" ? "raus" : naechste(z.stufe), messung: details });
+}
+
 export function entscheide(db, nutzer, number, entscheidung, notiz, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can decide after the manual check.");
   if (!ENTSCHEIDUNGEN.includes(entscheidung)) return fehler(400, "Unknown decision.");
@@ -398,6 +424,10 @@ export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst =
       const bis = trafficBis && trafficBis < ende ? trafficBis : ende;
       const gelaufen = trafficBis ? Math.max(0, Math.round((Date.parse(bis) - Date.parse(z.stufe_start)) / 864e5)) : 0;
       stand = { tage, gelaufen, ende, jetzt90: gelaufen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null, vorher90: Math.round((z.basis_imp_tag ?? 0) * 90) };
+      // Zwischenstand gegen die Kontrollgruppe über dieselben Tage: Grundlage für "Next phase" / "Seen again" von Hand
+      const k = gelaufen > 0 ? kontrollVergleich(db, impTag, z.stufe_start, bis, einst) : null;
+      stand.kontrolle = k;
+      stand.netto = k && stand.jetzt90 != null ? netto({ vorher: stand.vorher90, nachher: stand.jetzt90 }, { vorher: k.vorher90, nachher: k.nachher90 }) : null;
     }
     const x = p.get(z.number) || {};
     return { number: z.number, title: x.title ?? null, image_url: x.image_url ?? null, units_90d: x.units_90d ?? null, impressionen_90d: x.impressionen_90d ?? null,
@@ -406,6 +436,6 @@ export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst =
   const zahl = Object.fromEntries([...STUFEN, KONTROLLE, "raus"].map((s) => [s, zeilen.filter((z) => z.stufe === s).length]));
   const raus = Object.fromEntries(["erholt", ...ENTSCHEIDUNGEN, "abgebrochen", KONTROLLE].map((e) => [e, zeilen.filter((z) => z.ergebnis === e).length]));
   return { zahl, raus, grenze90: Math.round(grenze90), trafficBis, max: einst.leiterMax, tage: { titel: einst.leiterTageTitel, werbung: einst.leiterTageWerbung, preis: einst.leiterTagePreis, kontrolle: kontrollTage(einst) },
-    kontrolleAn: !!einst.leiterKontrolle, werbesatz: einst.werbesatz, preisSchritt: einst.preisSchritt, wirkung: wirkung(db), angebote: zeilen };
+    kontrolleAn: !!einst.leiterKontrolle, bewegung: einst.leiterBewegung === "automatisch" ? "automatisch" : "hand", werbesatz: einst.werbesatz, preisSchritt: einst.preisSchritt, wirkung: wirkung(db), angebote: zeilen };
 }
 export const anzahlKontrolle = (db) => db.prepare("SELECT COUNT(*) n FROM leiter WHERE stufe = 'kontrolle'").get().n;
