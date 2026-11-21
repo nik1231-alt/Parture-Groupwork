@@ -76,7 +76,8 @@ test("Whole path without recovery: title -> ads -> price -> manual review -> dec
   assert.equal(leiter.entscheide(d, ADMIN, "A", "offline", "Passt seit dem Modellwechsel nicht mehr.").ok, true);
   assert.equal(zeile(d, "A").ergebnis, "offline");
   const ereignisse = d.prepare("SELECT ereignis FROM leiter_verlauf WHERE number = 'A' ORDER BY id").all().map((r) => r.ereignis);
-  assert.deepEqual(ereignisse, ["aufgenommen", "vorschlag", "freigegeben", "gestartet", "ausgewertet", "vorschlag", "freigegeben", "gestartet", "ausgewertet", "vorschlag", "freigegeben", "gestartet", "ausgewertet", "pruefung", "entschieden"]);
+  // "stand" after the title and the price change: what eBay should show from then on (F6); the ad changes neither
+  assert.deepEqual(ereignisse, ["aufgenommen", "vorschlag", "freigegeben", "stand", "gestartet", "ausgewertet", "vorschlag", "freigegeben", "gestartet", "ausgewertet", "vorschlag", "freigegeben", "stand", "gestartet", "ausgewertet", "pruefung", "entschieden"]);
 });
 
 test("Recovery: enough impressions again after the waiting time -> leaves the ladder, room for the next listing", async () => {
@@ -378,4 +379,66 @@ test("raeumeVerkaufteAb: sold ones without eBay change go down (no pause), chang
   assert.match(d.prepare("SELECT details FROM leiter_verlauf WHERE number = 'A' AND ereignis = 'zurueckgesetzt'").get().details, /Already sold on eBay/);
   assert.deepEqual(leiter.raeumeVerkaufteAb(d, shop(), en, T0), [], "second run: nothing left to do");
   assert.deepEqual(leiter.raeumeVerkaufteAb(d, shop(), E, T0), [], "rule off: nothing");
+});
+
+// ---------- F6: changes made outside the app ----------
+test("Outside changes (F6): first check notes the state; a control changed from outside is marked once and drops out of the control group", () => {
+  const d = neueDb(), e = { ...EK, leiterMax: 1 };
+  const [nr] = leiter.nimmAuf(d, shop(), e, T0, { seed: 7 });
+  const ktr = d.prepare("SELECT number FROM leiter WHERE stufe = 'kontrolle'").get().number;
+  const katalog = new Map([[nr, { titel: "Halter " + nr, preis: 9.99 }], [ktr, { titel: "Halter " + ktr, preis: 7.5 }]]);
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, katalog, tag(1)), [], "first check: only notes the state");
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM leiter_verlauf WHERE ereignis = 'stand'").get().n, 2);
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, katalog, tag(2)), [], "nothing changed: nothing marked");
+  // Someone lowers the price of the control listing on eBay
+  katalog.set(ktr, { titel: "Halter " + ktr, preis: 6.99 });
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, katalog, tag(3)), [ktr]);
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, katalog, tag(4)), [], "marked only once while eBay shows the same");
+  assert.ok(leiter.fremdSeit(d, ktr)); assert.equal(leiter.fremdSeit(d, nr), null);
+  const f = JSON.parse(d.prepare("SELECT details FROM leiter_verlauf WHERE number = ? AND ereignis = 'fremd'").get(ktr).details);
+  assert.deepEqual(f.abweichungen, [{ feld: "preis", erwartet: 7.5, ebay: 6.99 }]);
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ladder_outside_change'").get().n, 1);
+  // The test listing runs; its interim has no control group any more, because the only control was changed from outside
+  leiter.setzeTitelVorschlag(d, BUILDER, nr, titelVorschlag, T0);
+  leiter.starteVonHand(d, ADMIN, nr, { impTag: impVon() }, T0);
+  const u = leiter.uebersicht(d, shop(), daten({}, "2026-11-27", { einst: e }), tag(7));
+  assert.equal(u.angebote.find((a) => a.number === nr).stand.kontrolle, null, "the changed control listing dropped out");
+  assert.ok(u.angebote.find((a) => a.number === ktr).fremdSeit, "the overview carries the mark");
+});
+
+test("Outside changes (F6): after an app change the old value counts for 2 days, a third value or a later old value is marked", async () => {
+  const d = neueDb(), s = schreiber();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
+  const r = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
+  assert.equal(r.wert.ausgang, "angewendet");
+  const stand = JSON.parse(d.prepare("SELECT details FROM leiter_verlauf WHERE number = 'A' AND ereignis = 'stand'").get().details);
+  assert.equal(stand.titel, "Wandhalter passend für A"); assert.equal(stand.vorher.titel, "Halter A"); assert.equal(stand.preis, 9.99);
+  // The catalogue still shows the old title the next day: not an outside change
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, new Map([["A", { titel: "Halter A", preis: 9.99 }]]), tag(1)), []);
+  // Now it shows the new title: fine
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, new Map([["A", { titel: "Wandhalter passend für A", preis: 9.99 }]]), tag(1)), []);
+  // Three days later it shows the old title again: someone undid it on eBay
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, new Map([["A", { titel: "Halter A", preis: 9.99 }]]), tag(3)), ["A"]);
+  // A completely different title right away is marked too
+  const d2 = neueDb();
+  leiter.nimmAuf(d2, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.setzeTitelVorschlag(d2, ADMIN, "A", titelVorschlag, T0);
+  await leiter.gibFrei(d2, ADMIN, "A", { items: ITEMS, schreiber: schreiber(), impTag: impVon() }, T0);
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d2, new Map([["A", { titel: "Ganz anderer Titel", preis: 9.99 }]]), tag(1)), ["A"]);
+  // The evaluation of that listing notes it
+  const m = leiter.schiebeVonHand(d2, ADMIN, "A", "weiter", daten({}, "2026-11-27", { einst: E }), tag(8), { vorzeitigBestaetigt: true });
+  assert.ok(m.wert.messung.fremdSeit, "the evaluation carries fremdSeit");
+});
+
+test("Outside changes (F6): a step done by hand on eBay notes the new state from the catalogue after 2 days instead of raising an alarm", () => {
+  const d = neueDb();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
+  leiter.starteVonHand(d, ADMIN, "A", { impTag: impVon() }, T0);
+  const k = new Map([["A", { titel: "Von Hand neu", preis: 9.99 }]]);
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, k, tag(1)), [], "within 2 days: waits for the catalogue");
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, k, tag(3)), [], "then notes it as the new expected state");
+  assert.equal(JSON.parse(d.prepare("SELECT details FROM leiter_verlauf WHERE number = 'A' AND ereignis = 'stand' ORDER BY id DESC LIMIT 1").get().details).titel, "Von Hand neu");
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, new Map([["A", { titel: "Noch mal anders", preis: 9.99 }]]), tag(4)), ["A"], "a change after that is marked");
 });

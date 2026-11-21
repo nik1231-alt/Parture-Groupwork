@@ -108,6 +108,11 @@ All products
    `EBAY_WERBUNG=an` for ads and `EBAY_PREIS=an` for prices (they cost money). Otherwise the approval is a **dry run**:
    checked and logged, nothing changed.
 5. If eBay refuses, eBay's message is shown at the listing and in the log, and the step stays open.
+6. **Changes made outside the app are noticed.** The app notes which title and price every listing on the ladder (and in the
+   control group) should show, and compares that every 15 minutes with the hub's catalogue (updated at least daily, no eBay
+   calls). A difference the app did not make is marked on the card, in the funnel tree, the history and the log; the evaluation
+   of that listing carries the mark, and a control listing changed from outside drops out of the control group. Right after an
+   app change the catalogue may show the old value for up to 2 days; that does not count.
 
 **AI titles:** Google Gemini suggests three titles; the **rule check** (`app/titel-regeln.mjs`) lets only safe ones through:
 no superlatives, seals or price promises, never "Original"; brands only as "passend für …" and only if the old title had
