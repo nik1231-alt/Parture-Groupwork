@@ -545,12 +545,34 @@ async function ladeErgebnisse() {
   const root = $("#ansicht-ergebnisse");
   try {
     const echt = await api("/api/ergebnisse");
-    if (zustand.ergebnisBeispiel == null) zustand.ergebnisBeispiel = echt.leer;
+    // The example only opens by itself while nothing runs at all; a running phase shows its real interim
+    if (zustand.ergebnisBeispiel == null) zustand.ergebnisBeispiel = echt.leer && !echt.live;
+    const y = window.scrollY;
     zeichneErgebnisse(zustand.ergebnisBeispiel ? await api("/api/ergebnisse/beispiel") : echt);
+    if (zustand.ergebnisNeu) window.scrollTo(0, y);
+    // Live view: while a phase runs, the page reloads itself every 10 minutes (the hub exports new eBay figures every hour)
+    clearTimeout(zustand.ergebnisTimer); zustand.ergebnisNeu = false;
+    if (!zustand.ergebnisBeispiel && echt.live) zustand.ergebnisTimer = setTimeout(() => { if (!root.hidden) { zustand.ergebnisNeu = true; ladeErgebnisse(); } }, 10 * 60e3);
   } catch (e) { zeigeFehler(e, ladeErgebnisse); fuelle(root); }
 }
 
-const LAUF_TEXT = (l) => (l.schluessel === "alle" ? "All runs" : datum(l.schluessel + "T12:00:00Z")) + ` · ${zahl(l.angebote)} listing${l.angebote === 1 ? "" : "s"}` + (l.phasen.some((p) => p.ausgewertet) ? "" : " · no results yet");
+const LAUF_TEXT = (l) => (l.schluessel === "alle" ? "All runs" : datum(l.schluessel + "T12:00:00Z")) + ` · ${zahl(l.angebote)} listing${l.angebote === 1 ? "" : "s"}` +
+  (l.phasen.some((p) => p.ausgewertet) ? "" : l.phasen.some((p) => p.zwischenstand) ? " · interim (live)" : " · no results yet");
+
+// A phase as the page shows it: finished figures if there are any, otherwise the live interim of the running listings (marked vorlaeufig)
+const phasenSicht = (p) => (p.ausgewertet > 0 || !p.zwischenstand ? p : { ...p, ...p.zwischenstand, vorlaeufig: true });
+
+// Band above a live run: how far the waiting time is, up to which day the eBay figures go, and that it is not a result yet
+function liveBand(d) {
+  const z = d.laeufe[0].phasen.map((p) => p.zwischenstand).filter(Boolean), p = d.laeufe[0].phasen.find((x) => x.zwischenstand);
+  if (!z.length) return null;
+  const bis = d.trafficBis ? datum(d.trafficBis + "T12:00:00Z") : "–", ende = p.naechstesEnde ? datum(p.naechstesEnde + "T12:00:00Z") : "–";
+  const tag = Math.max(...z.map((x) => x.gelaufen)), tage = Math.max(...z.map((x) => x.tage));
+  return el("div", { class: "hinweis live-band" }, el("strong", { text: "LIVE · interim with real eBay figures. " }),
+    tag > 0
+      ? `Day ${tag} of ${tage} of the waiting time is in the data (eBay figures up to ${bis}). The figures change every day and are not a result yet; the waiting time ends on ${ende}. The page updates itself.`
+      : `The waiting time started, but the first day after the start is not in the data yet (eBay figures up to ${bis}; the start day itself never counts). Until then you see the real figures before the start. The page updates itself.`);
+}
 
 // Second part of the page Results (from #48, Elias): every phase day by day against the control group (public/dashboard.js, /api/dashboard)
 function tagFuerTag() { queueMicrotask(() => Dashboard.lade()); return el("div", { id: "ansicht-dashboard", class: "tag-fuer-tag" }); }
@@ -559,14 +581,14 @@ function zeichneErgebnisse(d) {
   const root = $("#ansicht-ergebnisse"), beispiel = !!zustand.ergebnisBeispiel;
   const knopf = el("button", { class: "knopf knopf-klein", type: "button", text: beispiel ? "Show real data" : "Show example with invented figures", onclick: () => { zustand.ergebnisBeispiel = !zustand.ergebnisBeispiel; ladeErgebnisse(); } });
   const kopf = el("div", { class: "einstieg" }, el("h1", { text: "Results" }), el("p", { class: "leise", text: "How did impressions change compared with the control group? Pick a run: the listings you started on one day." }));
-  if (!beispiel && d.leer) {
+  if (!beispiel && d.leer && !d.live) {
     const enden = d.laeufe[0].phasen.map((p) => p.naechstesEnde).filter(Boolean).sort(), laeuft = d.laeufe[0].phasen.reduce((s, p) => s + p.laeuft, 0);
     fuelle(root, kopf, el("section", { class: "panel" },
       el("p", { class: "leere-hinweis leise", text: enden.length ? `No phase has finished its waiting time yet. The first result is due on ${datum(enden[0] + "T12:00:00Z")}. ${laeuft} listing${laeuft === 1 ? " is" : "s are"} running now.` : "No phase is running yet. The first result comes one waiting time after the first approval in the Funnel." }),
       el("p", {}, knopf)));
     return;
   }
-  const mitErgebnis = d.laeufe.slice(1).find((l) => l.phasen.some((p) => p.ausgewertet));
+  const mitErgebnis = d.laeufe.slice(1).find((l) => l.phasen.some((p) => p.ausgewertet)) || d.laeufe.slice(1).find((l) => l.phasen.some((p) => p.zwischenstand));
   let aktuell = d.laeufe.findIndex((l) => l.schluessel === zustand.ergebnisLauf);
   if (aktuell < 0) aktuell = d.laeufe.indexOf(mitErgebnis || d.laeufe[0]);
   // Selection as a list with previous/next: stays clear even with 50 runs
@@ -583,7 +605,7 @@ function zeichneErgebnisse(d) {
     stand.textContent = i === 0 ? `${d.laeufe.length - 1} run${d.laeufe.length === 2 ? "" : "s"}` : `run ${i} of ${d.laeufe.length - 1}, newest first`;
     fuelle(detail, laufAnsicht(d.laeufe[i], d.skala));
   };
-  fuelle(root, kopf, beispiel ? el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. All figures are invented to show how the page works. They are not real results." }) : null,
+  fuelle(root, kopf, beispiel ? el("p", { class: "hinweis hinweis-warnung", text: "EXAMPLE. All figures are invented to show how the page works. They are not real results." }) : liveBand(d),
     el("div", { class: "lauf-waehler" }, el("label", { class: "leise klein", text: "Run" }), zurueck, auswahl, weiter, stand, el("span", { class: "abstand" }), knopf), detail,
     beispiel ? null : tagFuerTag());
   zeige(aktuell);
@@ -609,32 +631,44 @@ function flussPanel(l) {
 
 // At the top one row per phase with the graphic (all rows on the same scale), below it the table with all figures.
 function laufAnsicht(l, skala) {
-  const pz = Diagramm.proz, a = Diagramm.achse(l.phasen);
+  const alle = l.phasen.map(phasenSicht), live = alle.some((p) => p.vorlaeufig);
+  // Phases that have not started at all are left out of the effect rows and the table; one line names them
+  const begonnen = (p) => p.ausgewertet > 0 || p.vorlaeufig || p.laeuft > 0;
+  const phasen = alle.some(begonnen) ? alle.filter(begonnen) : alle, offen = alle.filter((p) => !phasen.includes(p));
+  const pz = Diagramm.proz, a = Diagramm.achse(phasen);
   const zeile = (p) => {
     const u = PHASE_URTEIL[p.urteil], e = p.schaetzung, fertig = p.ausgewertet > 0;
-    return el("div", { class: "phase-zeile" },
-      el("div", { class: "phase-name" }, el("strong", { text: p.name }), el("span", { class: "leise klein", text: fertig ? `${zahl(p.ausgewertet)} listing${p.ausgewertet === 1 ? "" : "s"}` : p.laeuft ? `${p.laeuft} running${p.naechstesEnde ? `, due ${datum(p.naechstesEnde + "T12:00:00Z")}` : ""}` : "nothing finished" })),
+    const unter = fertig ? `${zahl(p.ausgewertet)} listing${p.ausgewertet === 1 ? "" : "s"}`
+      : p.vorlaeufig ? `${p.anzahl} running · day ${p.gelaufen} of ${p.tage}`
+      : p.laeuft ? `${p.laeuft} running${p.naechstesEnde ? `, due ${datum(p.naechstesEnde + "T12:00:00Z")}` : ""}` : "nothing finished";
+    const chip = p.vorlaeufig ? [u[0], p.mitDaten ? "Interim: " + u[1].toLowerCase() : "Waiting for the first day"] : u;
+    return el("div", { class: "phase-zeile" + (p.vorlaeufig ? " vorlaeufig" : "") },
+      el("div", { class: "phase-name" }, el("strong", { text: p.name }), el("span", { class: "leise klein", text: unter })),
       el("div", { class: "phase-grafik" }, Diagramm.phasenZeile(p, a)),
-      el("div", { class: "phase-ergebnis" }, el("span", { class: "status " + u[0], text: u[1] }), e && p.urteil !== "too_few" ? el("span", { class: "leise klein", text: `${pz(e.effekt)} (${pz(e.von, false)} to ${pz(e.bis)})` }) : null));
+      el("div", { class: "phase-ergebnis" }, el("span", { class: "status " + chip[0], text: chip[1] }), e && p.urteil !== "too_few" ? el("span", { class: "leise klein", text: `${pz(e.effekt)} (${pz(e.von, false)} to ${pz(e.bis)})` }) : null));
   };
   const zahlenZeile = (p) => {
-    const e = p.schaetzung, mit = p.ausgewertet > 0 && p.mitKontrolle > 0, zeigen = e && p.urteil !== "too_few";
-    return el("tr", {}, el("td", { text: p.name }), el("td", { class: "zahl", text: p.ausgewertet ? zahl(p.ausgewertet) : "–" }),
-      el("td", { class: "zahl", text: mit ? zahl(p.vorher90) : "–" }), el("td", { class: "zahl", text: mit ? zahl(p.nachher90) : "–" }), el("td", { class: "zahl", text: mit ? pz(p.aenderung) : "–" }),
+    const e = p.schaetzung, mit = p.mitKontrolle > 0 && (p.ausgewertet > 0 || p.vorlaeufig), zeigen = e && p.urteil !== "too_few";
+    const vorher = mit || p.vorlaeufig ? zahl(p.vorher90) : "–", nachher = mit ? zahl(p.nachher90) : p.vorlaeufig && p.nachher90 != null ? zahl(p.nachher90) : "–";
+    return el("tr", { class: p.vorlaeufig ? "vorlaeufig" : null }, el("td", { text: p.name + (p.vorlaeufig ? " (interim)" : "") }),
+      el("td", { class: "zahl", text: p.ausgewertet ? zahl(p.ausgewertet) : p.vorlaeufig ? `${zahl(p.anzahl)} running` : "–" }),
+      el("td", { class: "zahl", text: vorher }), el("td", { class: "zahl", text: nachher }), el("td", { class: "zahl", text: mit ? pz(p.aenderung) : "–" }),
       el("td", { class: "zahl", text: mit ? pz(p.kontrolleAenderung) : "–" }), el("td", { class: "zahl", text: zeigen ? pz(e.effekt) : "–" }), el("td", { class: "zahl", text: zeigen ? `${pz(e.von, false)} to ${pz(e.bis)}` : "–" }));
   };
   return [
     flussPanel(l),
     el("section", { class: "panel phasen" },
       el("div", { class: "phase-zeile phase-kopfzeile" }, ["Phase", "Effect compared with control group", "Result"].map((t) => el("div", { text: t }))),
-      l.phasen.map(zeile),
+      phasen.map(zeile),
       el("div", { class: "phase-zeile phase-achse" }, el("div"), el("div", { class: "phase-grafik" }, Diagramm.phasenAchse(a)), el("div")),
+      offen.length ? el("p", { class: "leise klein", text: `Not started yet in this run: ${offen.map((p) => p.name).join(", ")}.` }) : null,
       el("p", { class: "leise klein phasen-hinweis", text: `Dot = effect for a typical listing, line = the range it most likely lies in (95 %). Clear = the whole line is on one side of 0 %, otherwise it could be chance. At least ${skala.mindestAusgewertet} finished listings are needed.` })),
     el("section", { class: "panel" }, el("h2", { text: "The numbers" }),
       rollbar(el("table", { class: "mini" },
         el("thead", {}, el("tr", {}, ["Phase", "Listings", "Impressions before", "after", "Change", "Control group", "Effect", "Likely range"].map((t, i) => el("th", { class: i ? "zahl" : null, text: t })))),
-        el("tbody", {}, l.phasen.map(zahlenZeile)))),
-      el("p", { class: "leise klein", text: "Impressions are per 90 days: the 30 days before a phase against the waiting time of the phase, scaled up. The control group is the shop's listings that got no change; it shows what happened in the shop meanwhile. Effect and range are for a typical listing compared with the control group." }))];
+        el("tbody", {}, phasen.map(zahlenZeile)))),
+      el("p", { class: "leise klein", text: "Impressions are per 90 days: the 30 days before a phase against the waiting time of the phase, scaled up. The control group is the shop's listings that got no change; it shows what happened in the shop meanwhile. Effect and range are for a typical listing compared with the control group." +
+        (live ? " Interim rows: “after” covers only the days of the waiting time that are in the data so far, so they change every day until the waiting time is over." : "") }))];
 }
 
 // ======================================================= Problem (calculation: problem.mjs, interface: public/problem.js)
@@ -949,56 +983,70 @@ function kpiLeiste(l) {
     kachel("Seen again", zahl(l.raus.erholt), "left the ladder with enough impressions", "gut"));
 }
 
-// The funnel as a picture (Niko, 20 Nov: visual instead of text, method unchanged):
-//   1. all products as one stacked bar by status, 2. why not eligible: per reason "x of N" as a bar,
-//   3. the ladder as a flow: eligible → draw → phase 1 … 4 → seen again, branch to the control group; circle area ~ count.
-// A click on any part filters the table of all products below.
+// The funnel as a tree (Niko, 21 Nov: "clearer, rather as a tree in the funnel"): every product appears exactly once and the branches
+// add up to their parent. "Not eligible" splits into its reasons; the drawn listings split into the control group and the test group,
+// which runs through the phases. A running phase shows its live interim against the control group (server: zwischenstand).
+// A click on a step of the ladder opens it below (draw, approve, decide); a click on any other branch lists those products.
 function trichterBild(l, arbeit = null) {
-  const f = l.trichter, N = Math.max(1, f.kpi.produkte);
+  const f = l.trichter, z = f.zahl, N = Math.max(1, f.kpi.produkte);
   const filtern = (status) => { zustand.funnelFilter = status; zustand.funnelSichtbar = 50; zustand.funnelTab = "all"; zeichneLeiter(l); $("#funnel-tabelle")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
-  const anteil = (n) => pz(n / N, n && n / N < 0.01 ? 1 : 0);
-  const seg = STATUS_REIHE.filter((s) => f.zahl[s] > 0).map((s) => el("button", { class: "fb-seg " + (STATUS_KLASSE[s] || ""), type: "button", style: `flex-grow:${f.zahl[s]}`,
-    title: `${STATUS_TEXT[s]}: ${zahl(f.zahl[s])} of ${zahl(N)} (${anteil(f.zahl[s])})`, "aria-label": `${STATUS_TEXT[s]}: ${zahl(f.zahl[s])}`, onclick: () => filtern(s) },
-    f.zahl[s] / N >= 0.06 ? el("span", { text: zahl(f.zahl[s]) }) : null));
-  const legende = STATUS_REIHE.map((s) => el("button", { class: "fb-leg", type: "button", onclick: () => filtern(s) },
-    el("span", { class: "punkt status-punkt " + (STATUS_KLASSE[s] || "") }), el("span", { text: STATUS_TEXT[s] }), el("strong", { text: zahl(f.zahl[s] || 0) })));
-  const gruende = Object.entries(f.gruende).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).map(([a, n]) => el("button", { class: "gr-zeile", type: "button", onclick: () => filtern("nicht_geeignet") },
-    el("span", { class: "gr-name", text: GRUND_TEXT[a] || a }),
-    el("span", { class: "gr-balken" }, el("i", { style: `width:${(100 * n) / N}%` })),
-    el("span", { class: "gr-wert" }, el("strong", { text: zahl(n) }), ` of ${zahl(N)} · ${anteil(n)}`)));
-  const maxP = Math.max(1, f.zahl.geeignet, f.zahl.kontrolle, f.zahl.titel, f.zahl.werbung, f.zahl.preis, f.zahl.pruefung, f.zahl.erholt);
-  // With work (funnel page): the circles of the ladder choose the step below and carry a badge "N to approve / to decide"
-  const knoten = (status, titel, unter) => {
-    const n = f.zahl[status] || 0, d = Math.round(46 + 50 * Math.sqrt(n / maxP));
-    const w = arbeit && ARBEIT_STUFEN.includes(status) ? arbeit[status] : null, gewaehlt = !!w && zustand.funnelStufe === status;
-    const abzeichen = !w ? null : status === "geeignet" ? (istAdmin() && n ? "draw" : null)
-      : w.vorschlag.length && istAdmin() ? `${zahl(w.vorschlag.length)} to approve` : w.entscheiden.length && istAdmin() ? `${zahl(w.entscheiden.length)} to decide` : w.warten.length ? `${zahl(w.warten.length)} waiting` : null;
-    const waehle = () => { zustand.funnelStufe = status; zeichneLeiter(l); $("#stufe")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
-    return el("button", { class: "pl-knoten " + (STATUS_KLASSE[status] || "") + (n ? "" : " leer") + (gewaehlt ? " gewaehlt" : ""), type: "button", onclick: w ? waehle : () => filtern(status),
-      "aria-pressed": w ? String(gewaehlt) : null, title: w ? `${STATUS_TEXT[status]}: ${zahl(n)}. Click to work on this step.` : `${STATUS_TEXT[status]}: ${zahl(n)}. Click to list them.` },
-      el("span", { class: "pl-kreis", style: `width:${d}px;height:${d}px` }, el("span", { text: zahl(n) })),
-      el("strong", { text: titel }), el("small", { text: unter }),
-      abzeichen ? el("span", { class: "pl-todo" + (w.todo || status === "geeignet" ? " dringend" : ""), text: abzeichen }) : null);
+  const waehle = (status) => { zustand.funnelStufe = status; zeichneLeiter(l); $("#stufe")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  // What waits at a step of the ladder (only with work, i.e. on the funnel page)
+  const abzeichen = (status) => {
+    const w = arbeit && ARBEIT_STUFEN.includes(status) ? arbeit[status] : null;
+    if (!w) return null;
+    if (status === "geeignet") return istAdmin() && z.geeignet ? ["draw", true] : null;
+    if (w.vorschlag.length && istAdmin()) return [`${zahl(w.vorschlag.length)} to approve`, true];
+    if (w.entscheiden.length && istAdmin()) return [`${zahl(w.entscheiden.length)} to decide`, true];
+    return w.warten.length ? [`${zahl(w.warten.length)} waiting`, false] : null;
   };
-  const pfeil = (text) => el("span", { class: "pl-pfeil", "aria-hidden": "true" }, text ? el("small", { text }) : null);
+  // Live interim of a running phase: day x of y and, once there is data, the change against the control group
+  const live = (s) => {
+    const x = l.zwischen?.[s];
+    if (!x) return null;
+    if (!x.mitDaten) return `day 0 of ${x.tage} · first figures after the start day`;
+    const wert = x.urteil !== "too_few" && x.schaetzung ? x.schaetzung.effekt : x.netto;
+    return `day ${x.gelaufen} of ${x.tage}` + (wert != null ? ` · interim ${wert >= 0 ? "+" : ""}${pz(wert)} vs. control${x.urteil === "too_few" ? " (too early to judge)" : ""}` : "");
+  };
+  // One branch: dot in the status colour, name, count, share of the parent as a thin bar, a note, a badge, and its children
+  const ast = ({ status = null, name, n, von = N, notiz = null, kinder = [], klasse = STATUS_KLASSE[status] ?? "", klick, statisch = false, klappe = null }) => {
+    const arbeitsStufe = !!arbeit && ARBEIT_STUFEN.includes(status), gewaehlt = arbeitsStufe && zustand.funnelStufe === status, a = abzeichen(status);
+    const inhalt = [el("span", { class: "punkt status-punkt " + klasse }), el("span", { class: "baum-name", text: name }), el("strong", { class: "baum-zahl", text: zahl(n) }),
+      von ? el("span", { class: "baum-anteil", title: `${zahl(n)} of ${zahl(von)}`, "aria-hidden": "true" }, el("i", { class: klasse, style: `width:${n ? Math.max(2, (100 * n) / Math.max(1, von)) : 0}%` })) : null,
+      notiz ? el("span", { class: "baum-notiz", text: notiz }) : null,
+      a ? el("span", { class: "pl-todo" + (a[1] ? " dringend" : ""), text: a[0] }) : null];
+    const knoten = statisch ? el("div", { class: "baum-knoten statisch" + (n ? "" : " leer") }, inhalt)
+      : el("button", { class: "baum-knoten" + (n ? "" : " leer") + (gewaehlt ? " gewaehlt" : ""), type: "button", onclick: klick || (arbeitsStufe ? () => waehle(status) : () => filtern(status)),
+        "aria-pressed": arbeitsStufe ? String(gewaehlt) : null, title: arbeitsStufe ? `${name}: ${zahl(n)}. Click to work on this step.` : `${name}: ${zahl(n)}. Click to list them.` }, inhalt);
+    const k = kinder.filter(Boolean), auf = !klappe || !!zustand[klappe];
+    // A long list of children (the reasons) stays folded until asked for, so the tree fits on one screen
+    const schalter = klappe && k.length ? el("button", { class: "baum-klappe", type: "button", "aria-expanded": String(auf), onclick: () => { zustand[klappe] = !auf; zeichneLeiter(l); },
+      text: auf ? "hide reasons" : `show ${k.length} reasons` }) : null;
+    return el("li", {}, schalter ? el("div", { class: "baum-zeile" }, knoten, schalter) : knoten, k.length && auf ? el("ul", {}, k) : null);
+  };
+  const gruende = Object.entries(f.gruende).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
+    .map(([g, n]) => ast({ status: "nicht_geeignet", name: GRUND_TEXT[g] || g, n, von: z.nicht_geeignet, klasse: "grau" }));
+  const test = z.titel + z.werbung + z.preis + z.pruefung + z.erholt, gezogen = z.kontrolle + test;
+  const phase = (status, name, notiz) => ast({ status, name, n: z[status], von: test, notiz: live(status) || notiz });
   return el("section", { class: "panel trichter-bild", "aria-label": "Funnel" },
-    el("div", { class: "kopf-zeile" }, el("h2", { text: "Where every product stands" }), el("span", { class: "leise klein", text: arbeit ? "Click a circle of the ladder to work on it; click the bar or a reason to list those products." : "Click any part to list those products below." })),
-    el("div", { class: "fb", role: "group", "aria-label": "All products by status" }, ...seg),
-    el("div", { class: "fb-legende" }, ...legende),
-    el("div", { class: "tb-teil" }, el("h3", { text: `Why ${zahl(f.zahl.nicht_geeignet)} of ${zahl(N)} products are not eligible` }), el("div", { class: "gruende" }, ...gruende)),
-    el("div", { class: "tb-teil" }, el("h3", { text: "The ladder" }),
-      el("div", { class: "pipeline" },
-        knoten("geeignet", "Eligible", "low impressions, free"),
-        pfeil("drawn by lot"),
-        el("div", { class: "pl-gabel" },
-          el("div", { class: "pl-reihe" },
-            knoten("titel", "Phase 1", `New title · ${l.tage.titel} d`), pfeil(),
-            knoten("werbung", "Phase 2", `Ads ${Math.round(l.werbesatz * 100)} % · ${l.tage.werbung} d`), pfeil(),
-            knoten("preis", "Phase 3", `Price −${Math.round(l.preisSchritt * 100)} % · ${l.tage.preis} d`), pfeil(),
-            knoten("pruefung", "Phase 4", "Manual check"), pfeil(),
-            knoten("erholt", "Seen again", "left the ladder")),
-          el("div", { class: "pl-reihe pl-kontrolle" }, knoten("kontrolle", "Control group", `unchanged · ${l.tage.kontrolle} d`),
-            el("span", { class: "leise klein pl-erklaerung", text: "Half of every draw stays unchanged, so each phase is measured against listings that got nothing." }))))));
+    el("div", { class: "kopf-zeile" }, el("h2", { text: "Where every product stands" }),
+      el("span", { class: "leise klein", text: arbeit ? "Every product is in exactly one branch. Click a step of the ladder to work on it, any other branch to list its products." : "Every product is in exactly one branch. Click a branch to list its products." })),
+    el("ul", { class: "baum" },
+      ast({ name: "All products", n: N, von: 0, notiz: "active eBay catalogue", klasse: "", klick: () => filtern(null), kinder: [
+        ast({ status: "nicht_geeignet", name: "Not eligible", n: z.nicht_geeignet, kinder: gruende, klappe: "baumGruende" }),
+        ast({ status: "geeignet", name: "Eligible, not drawn yet", n: z.geeignet, notiz: "low impressions, never sold on eBay, free" }),
+        ast({ name: "Drawn by lot", n: gezogen, statisch: true, klasse: "phase", notiz: "half stays unchanged, half gets one change at a time", kinder: [
+          ast({ status: "kontrolle", name: "Control group", n: z.kontrolle, von: gezogen, notiz: `unchanged for ${l.tage.kontrolle} days, the yardstick for every phase` }),
+          ast({ name: "Test group", n: test, von: gezogen, statisch: true, klasse: "phase", kinder: [
+            phase("titel", "Phase 1 · New title", `${l.tage.titel} days`),
+            phase("werbung", `Phase 2 · Ads ${Math.round(l.werbesatz * 100)} %`, `${l.tage.werbung} days`),
+            phase("preis", `Phase 3 · Price −${Math.round(l.preisSchritt * 100)} %`, `${l.tage.preis} days`),
+            phase("pruefung", "Phase 4 · Manual check", "an admin decides"),
+            ast({ status: "erholt", name: "Seen again", n: z.erholt, von: test, notiz: "left the ladder with enough impressions" }),
+          ] }),
+        ] }),
+        ast({ status: "raus", name: "Left the ladder, pausing", n: z.raus, notiz: "taken off or decided; can be drawn again after the pause" }),
+      ] })));
 }
 
 // Effect per phase against the control group (leiter.wirkung): only once a waiting time is over are there figures
