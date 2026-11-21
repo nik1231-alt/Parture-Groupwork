@@ -120,7 +120,7 @@ async function freigeben(ctx, nr) {
       }
     }
   }
-  return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag }));
+  return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag, einst: einst() }));
 }
 const leiterDaten = (produkte = produkteLaden()) => ({ impTag, trafficBis: trafficBis(), grenze90: leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d, einst: einst(), fuer: leiterKontext });
 // AI title suggestion for a product in step 1 (goes through the rule checker, see ki-titel.mjs)

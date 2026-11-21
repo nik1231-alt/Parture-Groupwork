@@ -67,7 +67,7 @@ test("Whole path without recovery: title -> ads -> price -> manual review -> dec
   assert.deepEqual(s.auf[1], ["werbung", "123456789012", 0.1]);
   leiter.werteAus(d, daten({}, "2026-12-20", { fuer: () => ({ kanaele: ITEMS, varianten: [] }) }), tag(30));
   assert.equal(zeile(d, "A").stufe, "preis");
-  assert.deepEqual(JSON.parse(zeile(d, "A").vorschlag), { alt: 9.99, neu: 8.99, schritt: 0.1 });
+  assert.deepEqual(JSON.parse(zeile(d, "A").vorschlag), { alt: 9.99, neu: 8.99, schritt: 0.1, minimum: 2.99 });
   await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, tag(30));
   assert.deepEqual(s.auf[2], ["preis", "123456789012", 8.99]);
   leiter.werteAus(d, daten({}, "2027-01-15"), tag(56));
@@ -123,7 +123,23 @@ test("Do not overwrite: different title or price on eBay -> failed, nothing chan
 test("Price suggestion: variants with different prices are not lowered", () => {
   const v = leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 8 }], varianten: [{ price: 8 }, { price: 14 }] });
   assert.match(v.nichtMoeglich, /different prices/);
-  assert.deepEqual(leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 4.99 }], varianten: [{ price: 4.99 }] }), { alt: 4.99, neu: 4.49, schritt: 0.1 });
+  assert.deepEqual(leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 4.99 }], varianten: [{ price: 4.99 }] }), { alt: 4.99, neu: 4.49, schritt: 0.1, minimum: E.preisMinimum });
+});
+
+test("Price floor (F3): the step never goes below the lowest price, and an approval below it is refused even for an older suggestion", async () => {
+  // 3.29 − 10 % = 2.96 < 2.99 → not possible, skip to the manual check
+  const v = leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 3.29 }], varianten: [] });
+  assert.match(v.nichtMoeglich, /lowest price the app may set \(2\.99 €/); assert.equal(v.neu, 2.96);
+  assert.equal(leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 3.33 }], varianten: [] }).neu, 2.99, "exactly on the floor is allowed");
+  assert.equal(leiter.baueVorschlag("preis", { ...E, preisMinimum: 0 }, { kanaele: [{ preis_aktuell: 1 }], varianten: [] }).neu, 0.9, "0 switches the floor off");
+  // Suggestion made at 9.99 → 8.99, then the floor is raised to 9.50: the approval is refused and nothing is written
+  const d = neueDb(), s = schreiber();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.ueberspringe(d, ADMIN, "A", "", E, {}, T0); leiter.ueberspringe(d, ADMIN, "A", "", E, { fuer: () => ({ kanaele: ITEMS, varianten: [] }) }, T0);
+  assert.equal(JSON.parse(zeile(d, "A").vorschlag).neu, 8.99);
+  const f = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon(), einst: { ...E, preisMinimum: 9.5 } }, T0);
+  assert.equal(f.status, 409); assert.match(f.fehler, /below the lowest price/); assert.equal(s.auf.length, 0, "nothing was written to eBay");
+  assert.equal(zeile(d, "A").phase, "vorschlag", "the step stays open");
 });
 
 test("A title that failed the rule checker cannot go to approval", () => {
