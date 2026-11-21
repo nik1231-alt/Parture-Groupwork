@@ -72,6 +72,24 @@ test("Draw: groups equally large, with an odd number at most 1 difference", () =
 });
 
 // ---------- 3. no listing twice ----------
+// ---------- 2b. balanced groups (F5, matched pairs) ----------
+test("Draw in pairs (F5): neighbours by impressions are split, so the groups are balanced, reproducibly", () => {
+  // Very uneven candidates: one listing with 5,000 impressions and many small ones
+  const ungleich = shop(20).map((p, i) => ({ ...p, impressionen_90d: i === 0 ? 5000 : i === 1 ? 4800 : 10 + i }));
+  for (const seed of [1, 2, 3, 42, 4711]) {
+    const { test: t, kontrolle: k } = ex.ziehe(ungleich, 20, seed);
+    const gruppe = new Map([...t.map((x) => [x.number, "t"]), ...k.map((x) => [x.number, "k"])]);
+    const sortiert = [...t, ...k].sort((a, b) => b.impressionen_90d - a.impressionen_90d || (a.number < b.number ? -1 : 1));
+    for (let i = 0; i < sortiert.length; i += 2) assert.notEqual(gruppe.get(sortiert[i].number), gruppe.get(sortiert[i + 1].number), `pair ${i / 2} split (seed ${seed})`);
+    // the two big ones are a pair, so they never end up in the same group
+    assert.notEqual(gruppe.get("P00"), gruppe.get("P01"));
+    const summe = (g) => g.reduce((s, x) => s + x.impressionen_90d, 0);
+    const paarAbstand = sortiert.reduce((s, x, i) => (i % 2 ? s + (sortiert[i - 1].impressionen_90d - x.impressionen_90d) : s), 0);
+    assert.ok(Math.abs(summe(t) - summe(k)) <= paarAbstand, "the difference of the groups is at most the sum of the pair differences");
+  }
+  assert.deepEqual(ex.ziehe(ungleich, 20, 9), ex.ziehe([...ungleich].reverse(), 20, 9), "same seed, same split, whatever the input order");
+});
+
 test("Draw: no listing twice, neither within one test (even with duplicate candidates) nor across two tests", () => {
   const doppelt = [...shop(), ...shop().slice(0, 10)];
   for (const seed of [1, 7, 123, 99999]) {

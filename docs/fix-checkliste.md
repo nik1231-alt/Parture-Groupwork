@@ -90,18 +90,19 @@ Today `baueVorschlag("preis")` lowers by the price step (10 %) and rounds to .49
 
 **Done when:** a new title with an English word that was not there before cannot be approved.
 
-### F5 · Balanced draw (matched pairs)
+### F5 · Balanced draw (matched pairs) ✅ (PR #63)
 **Question:** "With 10 against 10, one group can be stronger by chance. How do you know the split is fair?"
 
 Today `ziehe` (experimente.mjs) shuffles with a stored seed and splits in half. The ladder draws the top 2n of the sorted
 candidates and splits them.
 
-- [ ] `ziehe` sorts the 2n drawn listings by impressions in 90 days, forms neighbouring pairs, and a seeded coin decides
+- [x] `ziehe` sorts the 2n drawn listings by impressions in 90 days, forms neighbouring pairs, and a seeded coin decides
       per pair which one goes to the test group. Same seed + same candidates = same split (as before).
-- [ ] Odd number: the last one goes by coin.
-- [ ] Results show the balance before the start: impressions per 90 days of test vs. control for every run.
-- [ ] Docs: README "The lot", walkthrough (why pairs).
-- [ ] Tests: deterministic, every listing exactly once, the difference of the group sums is at most the sum of the pair
+- [x] Odd number: the last one goes to the control group, as before (keeps the tested group sizes unchanged).
+- [x] Results show the balance before the start: impressions per 90 days of test vs. control for every run.
+      *Computed from the daily traffic over the 30 days before the draw day, so the tranche of 20 Nov shows it too.*
+- [x] Docs: README "The lot", walkthrough (why pairs). *(walkthrough in F9)*
+- [x] Tests: deterministic, every listing exactly once, the difference of the group sums is at most the sum of the pair
       differences (strictly more balanced than the worst case), old title tests (`experimente`) keep working.
 
 **Done when:** new draws are paired and the balance is visible. (The running tranche of 20 Nov stays as it is.)
