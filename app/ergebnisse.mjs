@@ -46,6 +46,8 @@ function phase(angebote, stufe, name) {
   const laufend = angebote.filter((a) => a.phase === "laeuft" && a.stufe === stufe);
   return {
     schluessel: stufe, name, ausgewertet: aus.length, mitKontrolle: mit.length, erholt: aus.filter((d) => d.erholt).length,
+    // ended before the waiting time was complete (F2): count and the shortest measurement
+    vorzeitig: aus.filter((d) => d.vorzeitig).length, kuerzesteTage: aus.filter((d) => d.vorzeitig && Number.isFinite(d.gemessenTage)).reduce((m, d) => (m == null ? d.gemessenTage : Math.min(m, d.gemessenTage)), null),
     vorher90: s.v, nachher90: s.n, aenderung: mit.length ? aenderung(s.v, s.n) : null, kontrolleAenderung: mit.length ? aenderung(s.kv, s.kn) : null,
     netto: mit.length ? netto({ vorher: s.v, nachher: s.n }, { vorher: s.kv, nachher: s.kn }) : null,
     schaetzung, urteil: urteil(schaetzung, mit.length),

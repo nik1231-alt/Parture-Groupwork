@@ -251,8 +251,13 @@ test("Move on by hand: admin only, only during a running waiting time, measures 
   leiter.starteVonHand(d, ADMIN, nr, { impTag }, T0);
   assert.equal(leiter.schiebeVonHand(d, BUILDER, nr, "weiter", daten, tag(8)).status, 403);
   assert.equal(leiter.schiebeVonHand(d, ADMIN, nr, "irgendwohin", daten, tag(8)).status, 400);
-  const r = leiter.schiebeVonHand(d, ADMIN, nr, "weiter", daten, tag(8));
+  const frueh = leiter.schiebeVonHand(d, ADMIN, nr, "weiter", daten, tag(8));
+  assert.equal(frueh.status, 409, "7 of 14 days: ending early needs a confirmation (F2)"); assert.match(frueh.fehler, /7 of 14 data days/);
+  assert.equal(zeile(d, nr).stufe, "titel", "without the confirmation nothing moved");
+  const r = leiter.schiebeVonHand(d, ADMIN, nr, "weiter", daten, tag(8), { vorzeitigBestaetigt: true });
   assert.equal(r.ok, true); assert.equal(r.wert.stufe, "werbung");
+  assert.equal(r.wert.messung.vorzeitig, true); assert.equal(r.wert.messung.geplantesEnde, "2026-12-04");
+  assert.equal(JSON.parse(d.prepare("SELECT details FROM protokoll WHERE aktion = 'ladder_moved'").get().details).vorzeitig, true, "the protocol says it too");
   assert.equal(r.wert.messung.gemessenTage, 7, "20 Nov to 27 Nov are in the data");
   assert.equal(r.wert.messung.netto, 1, "listing 3 → 6, control stays 3: +100 %");
   assert.equal(r.wert.messung.datenBis, "2026-11-27", "the evaluation stores the last data day it used (F1)");
@@ -269,7 +274,7 @@ test("End as seen again by hand; the automatic part evaluates no step when only 
   assert.deepEqual(leiter.werteAus(d, daten({}, "2026-12-10", { einst: e, nurKontrolle: true }), tag(21)), []);
   assert.equal(zeile(d, nr).phase, "laeuft");
   const r = leiter.schiebeVonHand(d, ADMIN, nr, "erholt", daten({}, "2026-12-10", { einst: e }), tag(21));
-  assert.equal(r.ok, true);
+  assert.equal(r.ok, true); assert.equal(r.wert.messung.vorzeitig, false, "after the full waiting time no confirmation is needed and nothing is marked");
   assert.equal(zeile(d, nr).stufe, "raus"); assert.equal(zeile(d, nr).ergebnis, "erholt");
   assert.equal(d.prepare("SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ladder_moved'").get().n, 1);
 });

@@ -381,7 +381,9 @@ const ERGEBNIS_GRUND = { ueberarbeiten: "Decided after the manual check: rework 
 // into the next phase (ziel "weiter") or takes it off the ladder as seen again (ziel "erholt"). It is measured as in the
 // automatic run, only over the days that are in the data so far; the measurement is in the history as "ausgewertet"
 // (with vonHand), so that the effect per phase continues to be calculated against the control group.
-export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN, fuer = null }, jetzt = new Date()) {
+// Before the waiting time is complete in the data the move ends it early (F2, no silent peeking): it needs vorzeitigBestaetigt,
+// and the evaluation stores vorzeitig with the planned end, so Results and the history show it.
+export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN, fuer = null }, jetzt = new Date(), { vorzeitigBestaetigt = false } = {}) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can move a listing in the funnel.");
   if (!["weiter", "erholt"].includes(ziel)) return fehler(400, "Unknown move.");
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "laeuft"); if (f) return f;
@@ -391,14 +393,16 @@ export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, g
   const vorher90 = Math.round((z.basis_imp_tag ?? 0) * 90);
   const nachher90 = gemessen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null;
   const kontrolle = gemessen > 0 ? kontrollVergleich(db, impTag, z.stufe_start, bis, einst) : null;
+  const vorzeitig = gemessen < tage;
+  if (vorzeitig && !vorzeitigBestaetigt) return fehler(409, `The waiting time is not over: ${gemessen} of ${tage} data days. Moving on now ends it early; this is recorded and shown in Results. Confirm to continue.`);
   const nettoEffekt = kontrolle && nachher90 != null ? netto({ vorher: vorher90, nachher: nachher90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
-  const details = { tage, gemessenTage: gemessen, vorher90, nachher90, grenze90: Math.round(grenze90 ?? 0), erholt: ziel === "erholt", kontrolle, netto: nettoEffekt, vonHand: true, datenBis: gemessen > 0 ? bis : null };
+  const details = { tage, gemessenTage: gemessen, vorzeitig, geplantesEnde: ende, vorher90, nachher90, grenze90: Math.round(grenze90 ?? 0), erholt: ziel === "erholt", kontrolle, netto: nettoEffekt, vonHand: true, datenBis: gemessen > 0 ? bis : null };
   db.transaction(() => {
     verlauf(db, z.number, z.stufe, "ausgewertet", details, nutzer.name, jetzt);
     if (ziel === "erholt") setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "erholt" }, jetzt);
     else weiter(db, z, einst, { fuer }, jetzt);
   })();
-  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_moved", objekt: "product " + z.number, details: { stufe: z.stufe, ziel, gemessenTage: gemessen, netto: nettoEffekt } }, jetzt);
+  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_moved", objekt: "product " + z.number, details: { stufe: z.stufe, ziel, gemessenTage: gemessen, vorzeitig, netto: nettoEffekt } }, jetzt);
   return ok({ number: z.number, ziel, stufe: ziel === "erholt" ? "raus" : naechste(z.stufe), messung: details });
 }
 
