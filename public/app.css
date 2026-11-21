@@ -381,40 +381,6 @@ a.knopf { text-decoration: none; }
 /* Funnel as a picture: stacked bar of all products, reasons as bars, ladder as a flow with circles */
 .trichter-bild { display: grid; gap: 14px; }
 .trichter-bild h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--leise); margin-bottom: 8px; }
-.fb { display: flex; height: 46px; border-radius: 10px; overflow: hidden; gap: 2px; background: var(--karte-leise); }
-.fb-seg { border: 0; min-width: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; padding: 0; transition: filter .12s; background: var(--linie-stark); }
-.fb-seg:hover, .fb-seg:focus-visible { filter: brightness(1.12); }
-.fb-seg.grau { background: #9aa3b2; } .fb-seg.offen { background: var(--g-sichtbarkeit); } .fb-seg.kontrolle { background: var(--s-kontrolle); }
-.fb-seg.phase { background: var(--akzent); } .fb-seg.warn { background: var(--warn); } .fb-seg.gut { background: var(--gut); }
-.fb-legende { display: flex; flex-wrap: wrap; gap: 4px 6px; }
-.fb-leg { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--linie); background: var(--karte); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; color: var(--text); }
-.fb-leg:hover { border-color: var(--linie-stark); } .fb-leg strong { font-variant-numeric: tabular-nums; }
-.gruende { display: grid; gap: 6px; }
-.gr-zeile { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr) minmax(130px, auto); gap: 12px; align-items: center; border: 0; background: transparent; padding: 4px 6px; border-radius: 6px; cursor: pointer; text-align: left; color: var(--text); }
-.gr-zeile:hover { background: var(--karte-hover); }
-.gr-name { font-size: 13.5px; font-weight: 550; }
-.gr-balken { height: 14px; background: var(--karte-leise); border-radius: 99px; overflow: hidden; }
-.gr-balken i { display: block; height: 100%; background: #9aa3b2; border-radius: 99px; }
-.gr-wert { font-size: 13px; color: var(--leise); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.gr-wert strong { color: var(--text); font-size: 15px; }
-.pipeline { display: flex; align-items: flex-start; gap: 4px; overflow-x: auto; padding: 6px 2px 4px; }
-.pl-gabel { display: grid; gap: 14px; min-width: 0; }
-.pl-reihe { display: flex; align-items: flex-start; gap: 4px; }
-.pl-kontrolle { align-items: center; gap: 14px; padding-top: 10px; border-top: 1px dashed var(--linie-stark); }
-.pl-erklaerung { max-width: 46ch; }
-.pl-knoten { display: grid; justify-items: center; gap: 3px; width: 112px; flex: none; border: 0; background: transparent; cursor: pointer; color: var(--text); padding: 4px 2px; border-radius: 10px; text-align: center; }
-.pl-knoten:hover { background: var(--karte-hover); }
-.pl-kreis { display: grid; place-items: center; border-radius: 50%; color: #fff; font-family: var(--anzeige); font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums; background: var(--linie-stark); box-shadow: 0 0 0 4px var(--karte); }
-.pl-knoten.offen .pl-kreis { background: var(--g-sichtbarkeit); } .pl-knoten.kontrolle .pl-kreis { background: var(--s-kontrolle); }
-.pl-knoten.phase .pl-kreis { background: var(--akzent); } .pl-knoten.warn .pl-kreis { background: var(--warn); } .pl-knoten.gut .pl-kreis { background: var(--gut); }
-.pl-knoten.leer .pl-kreis { background: var(--karte-leise); color: var(--leise); border: 2px dashed var(--linie-stark); }
-.pl-knoten strong { font-size: 13.5px; } .pl-knoten small { font-size: 11.5px; color: var(--leise); line-height: 1.3; }
-.pl-pfeil { flex: 0 0 34px; height: 96px; display: grid; place-items: center; position: relative; color: var(--leise); }
-.pl-pfeil::before { content: ""; position: absolute; left: 2px; right: 8px; top: 48px; height: 2px; background: var(--linie-stark); }
-.pl-pfeil::after { content: ""; position: absolute; right: 3px; top: 44px; border: 5px solid transparent; border-left: 7px solid var(--linie-stark); border-right: 0; }
-.pl-pfeil small { position: relative; top: -14px; font-size: 10.5px; white-space: nowrap; background: var(--karte); padding: 0 3px; }
-.pipeline > .pl-pfeil { flex-basis: 64px; }
-@media (max-width: 860px) { .gr-zeile { grid-template-columns: minmax(0, 1fr) auto; } .gr-balken { grid-column: 1 / -1; grid-row: 2; } }
 
 /* Interim state of a running waiting time: bars listing and control group, net effect */
 .zwischenstand { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 22px; align-items: end; margin: 6px 0 2px; padding: 10px 12px; background: var(--karte-leise); border-radius: var(--radius-klein); }
@@ -568,7 +534,6 @@ a.knopf { text-decoration: none; }
 .tag-fuer-tag { margin-top: 28px; }
 
 /* Funnel: choose the step in the picture, work below (Niko, 20 Nov: follow the overview) */
-.pl-knoten.gewaehlt { background: var(--karte-hover); box-shadow: inset 0 0 0 2px var(--akzent); }
 .pl-todo { margin-top: 2px; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--karte-leise); color: var(--leise); white-space: nowrap; }
 .pl-todo.dringend { background: var(--akzent); color: #fff; }
 .stufe-panel { scroll-margin-top: 16px; }
@@ -646,3 +611,30 @@ a.knopf { text-decoration: none; }
   .p-teil > div b { font-size: 18px; }
   .p-vergleich { grid-template-columns: 1fr; }
 }
+/* Funnel as a tree (trichterBild): every product in exactly one branch, elbows drawn with borders */
+.baum, .baum ul { list-style: none; margin: 0; padding: 0; }
+.baum ul { margin-left: 13px; }
+.baum ul > li { position: relative; padding-left: 18px; border-left: 1px solid var(--linie-stark); }
+.baum ul > li:last-child { border-left-color: transparent; }
+.baum ul > li::before { content: ""; position: absolute; left: -1px; top: 0; width: 16px; height: 20px; border-left: 1px solid var(--linie-stark); border-bottom: 1px solid var(--linie-stark); border-bottom-left-radius: 7px; }
+.baum-knoten { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; width: 100%; min-height: 40px; margin: 1px 0; padding: 6px 10px; border: 0; border-radius: var(--radius-klein); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.baum-knoten:hover { background: var(--karte-hover); }
+.baum-knoten.statisch { cursor: default; } .baum-knoten.statisch:hover { background: transparent; }
+.baum-knoten.gewaehlt { background: var(--karte-hover); box-shadow: inset 0 0 0 2px var(--akzent); }
+.baum-knoten.leer { opacity: .55; }
+.baum-name { font-weight: 600; }
+.baum-zahl { font-variant-numeric: tabular-nums; }
+.baum-anteil { width: 80px; height: 6px; border-radius: 99px; background: var(--karte-leise); overflow: hidden; flex: none; }
+.baum-anteil i { display: block; height: 100%; border-radius: 99px; background: #9aa3b2; }
+.baum-anteil i.phase { background: var(--akzent); } .baum-anteil i.kontrolle { background: var(--s-kontrolle); } .baum-anteil i.offen { background: var(--g-sichtbarkeit); }
+.baum-anteil i.warn { background: var(--warn); } .baum-anteil i.gut { background: var(--gut); }
+.baum-notiz { color: var(--leise); font-size: 13px; }
+.baum .pl-todo { margin-top: 0; }
+.status-punkt.grau { background: #9aa3b2; }
+@media (max-width: 860px) { .baum ul { margin-left: 6px; } .baum ul > li { padding-left: 12px; } .baum ul > li::before { width: 10px; } .baum-anteil { width: 48px; } .baum-notiz { flex-basis: 100%; } }
+/* Results: live interim */
+.live-band { border-left: 4px solid var(--akzent); }
+.phase-zeile.vorlaeufig .phase-name strong::after { content: " · live"; color: var(--akzent); font-weight: 600; font-size: 12px; }
+.baum-zeile { display: flex; align-items: center; gap: 6px; } .baum-zeile > .baum-knoten { flex: 1; min-width: 0; }
+.baum-klappe { flex: none; border: 1px solid var(--linie); background: var(--karte); color: var(--akzent); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.baum-klappe:hover { border-color: var(--akzent-linie); }

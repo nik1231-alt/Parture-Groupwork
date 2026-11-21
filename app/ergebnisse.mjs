@@ -50,6 +50,27 @@ function phase(angebote, stufe, name) {
     netto: mit.length ? netto({ vorher: s.v, nachher: s.n }, { vorher: s.kv, nachher: s.kn }) : null,
     schaetzung, urteil: urteil(schaetzung, mit.length),
     laeuft: laufend.length, naechstesEnde: laufend.map((a) => a.stand?.ende).filter(Boolean).sort()[0] ?? null,
+    zwischenstand: zwischenstand(laufend),
+  };
+}
+
+// Interim (live) for the listings still in their waiting time: the same figures as a finished phase, but only over the days that are in
+// the data so far (leiter.uebersicht → stand). Before the first day after the start there are only the real "before" figures.
+// It is never a result: the verdict uses the same rule, but the page shows it as interim.
+export function zwischenstand(laufend) {
+  if (!laufend.length) return null;
+  const mitDaten = laufend.filter((a) => a.stand?.gelaufen > 0 && a.stand.jetzt90 != null);
+  const mit = mitDaten.filter((a) => a.stand.kontrolle);
+  const basis = mitDaten.length ? mitDaten : laufend;
+  const s = mit.reduce((t, a) => ({ v: t.v + a.stand.vorher90, n: t.n + a.stand.jetzt90, kv: t.kv + a.stand.kontrolle.vorher90, kn: t.kn + a.stand.kontrolle.nachher90 }), { v: 0, n: 0, kv: 0, kn: 0 });
+  const schaetzung = schaetze(mit.map((a) => a.stand.netto));
+  return {
+    anzahl: laufend.length, mitDaten: mitDaten.length, mitKontrolle: mit.length,
+    gelaufen: Math.max(0, ...laufend.map((a) => a.stand?.gelaufen ?? 0)), tage: Math.max(0, ...laufend.map((a) => a.stand?.tage ?? 0)),
+    vorher90: basis.reduce((t, a) => t + (a.stand?.vorher90 ?? 0), 0), nachher90: mitDaten.length ? mitDaten.reduce((t, a) => t + a.stand.jetzt90, 0) : null,
+    aenderung: mit.length ? aenderung(s.v, s.n) : null, kontrolleAenderung: mit.length ? aenderung(s.kv, s.kn) : null,
+    netto: mit.length ? netto({ vorher: s.v, nachher: s.n }, { vorher: s.kv, nachher: s.kn }) : null,
+    schaetzung, urteil: urteil(schaetzung, mit.length),
   };
 }
 
@@ -96,5 +117,7 @@ export function baueErgebnisse(u, { besserAb = 0.2 } = {}) {
   return {
     laeufe, kontrollgruppe: u.angebote.length - getestet.length, trafficBis: u.trafficBis ?? null,
     skala: { besserAb, mindestAusgewertet: MIN_AUSGEWERTET }, leer: laeufe[0].phasen.every((p) => p.ausgewertet === 0),
+    // live: at least one phase is in its waiting time, so the page shows the interim with real figures instead of the example
+    live: laeufe[0].phasen.some((p) => p.zwischenstand),
   };
 }

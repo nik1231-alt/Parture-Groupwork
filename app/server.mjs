@@ -15,7 +15,7 @@ import * as rollen from "./rollen.mjs";
 import * as protokoll from "./protokoll.mjs";
 import * as freigabe from "./freigabe.mjs";
 import * as ebaySchreiben from "./ebay-schreiben.mjs";
-import { baueErgebnisse } from "./ergebnisse.mjs";
+import { baueErgebnisse, zwischenstand } from "./ergebnisse.mjs";
 import { baueDemoErgebnisse } from "./ergebnisse-demo.mjs";
 import { baueDemo } from "./demo.mjs";
 import * as titelhilfe from "./titelhilfe.mjs";
@@ -402,6 +402,8 @@ const ROUTEN = {
     for (const a of ue.angebote) a.ebay_id = ebayNr[a.number] || null;
     return { ...ue, kandidaten: k.length, status: leiterStatus(),
       kandidatenListe: k.map((p) => ({ number: p.number, title: p.title ?? null, impressionen_90d: p.impressionen_90d ?? null, units_90d: p.units_90d ?? null, beworben: beworben(p.number) })),
+      // live interim of every running phase against the control group (the funnel tree shows it at the phase)
+      zwischen: Object.fromEntries(["titel", "werbung", "preis"].map((s) => [s, zwischenstand(ue.angebote.filter((a) => a.phase === "laeuft" && a.stufe === s))])),
       trichter: tr, werbung: { stand: werbungStand.at ? new Date(werbungStand.at).toISOString() : null, anzahl: Object.keys(werbungStand.nummern).length, fehler: werbungStand.fehler },
       schreiben: { titel: schreiber.konfiguriert() && schreiber.schreibenAn(), werbung: schreiber.konfiguriert() && schreiber.schreibenAn() && schreiber.werbungAn(), preis: schreiber.konfiguriert() && schreiber.schreibenAn() && schreiber.preisAn() } };
   },
