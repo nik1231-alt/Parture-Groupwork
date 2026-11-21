@@ -150,3 +150,23 @@ test("Example view: invented figures, always the same, two runs plus all, ads cl
   const w = a.laeufe[0].fluss.stufen[1];
   assert.deepEqual([w.laeuft, w.wartet], [2, 1], "the example also shows running and waiting listings");
 });
+
+test("Live interim: before the first day only the real 'before' figures, no verdict; with days in the data the same net-effect rule as a finished phase", () => {
+  const K2 = (v, n) => ({ anzahl: 10, vorher90: v, nachher90: n });
+  const laeuft = (nr, stand) => ({ number: nr, stufe: "titel", phase: "laeuft", eingestiegen_at: "2026-11-20T16:43:00.000Z", verlauf: [], stand });
+  // Start day = last data day: gelaufen 0, nothing after the start yet
+  const frisch = baueErgebnisse(uebersicht([1, 2, 3].map((i) => laeuft("F" + i, { tage: 14, gelaufen: 0, ende: "2026-12-04", jetzt90: null, vorher90: 300, kontrolle: null, netto: null }))));
+  assert.equal(frisch.leer, true, "nothing finished"); assert.equal(frisch.live, true, "but a phase runs: the page shows real figures, not the example");
+  const z0 = frisch.laeufe[0].phasen[0].zwischenstand;
+  assert.deepEqual([z0.anzahl, z0.mitDaten, z0.gelaufen, z0.tage, z0.vorher90, z0.nachher90, z0.urteil], [3, 0, 0, 14, 900, null, "too_few"]);
+  assert.equal(frisch.laeufe[0].phasen[1].zwischenstand, null, "a phase without running listings has no interim");
+  // Day 4 of 14: six listings, all doubled while the control group stayed flat → +100 % per listing, a clear increase (interim)
+  const sechs = Array.from({ length: 6 }, (_, i) => laeuft("D" + i, { tage: 14, gelaufen: 4, ende: "2026-12-04", jetzt90: 600, vorher90: 300, kontrolle: K2(1000, 1000), netto: 1 }));
+  const z = baueErgebnisse(uebersicht(sechs)).laeufe[0].phasen[0].zwischenstand;
+  assert.deepEqual([z.mitDaten, z.mitKontrolle, z.gelaufen, z.vorher90, z.nachher90], [6, 6, 4, 1800, 3600]);
+  nahe(z.aenderung, 1); nahe(z.kontrolleAenderung, 0); nahe(z.netto, 1); nahe(z.schaetzung.effekt, 1);
+  assert.equal(z.urteil, "up");
+  // Fewer than the minimum: the figures are there, the verdict waits
+  const zwei = baueErgebnisse(uebersicht(sechs.slice(0, 2))).laeufe[0].phasen[0].zwischenstand;
+  assert.equal(zwei.urteil, "too_few"); nahe(zwei.netto, 1);
+});
