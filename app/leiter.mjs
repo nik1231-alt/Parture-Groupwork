@@ -133,6 +133,11 @@ function kontrollGruppe(db, von, bis, einst) {
   return db.prepare("SELECT number, stufe_start FROM leiter WHERE (stufe = 'kontrolle' OR ergebnis = 'kontrolle') AND stufe_start IS NOT NULL").all()
     .filter((z) => z.stufe_start <= von && plusTage(z.stufe_start, kontrollTage(einst)) >= bis && !fremd.has(z.number)).map((z) => z.number);
 }
+// F11 (review 21 Nov): the "before" of a listing is computed with the data of NOW, over the same 30 days as the control group's
+// "before", not taken from basis_imp_tag. basis_imp_tag is what was known at the start; on 20 Nov the hub's traffic still lacked the
+// last days (eBay request limit), so the stored value was about 8 % too low, while the control group was computed later with the
+// complete data. That mismatch alone would have shown up as +9 % "effect". basis_imp_tag stays in the history for the record.
+const vorher90Von = (z, impTag) => Math.round(impTag(z.number, plusTage(z.stufe_start, -BASIS_TAGE - 1), plusTage(z.stufe_start, -1)) * 90);
 // Impressions per day of the control group before (30 days) and during a time window, as the sum of the group
 function kontrollVergleich(db, impTag, von, bis, einst) {
   const nr = kontrollGruppe(db, von, bis, einst);
@@ -309,7 +314,7 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
     const jeTag = impTag(z.number, z.stufe_start, ende);
     const hoch90 = Math.round(jeTag * 90);
     const erholt = hoch90 >= grenze90;
-    const vorher90 = Math.round((z.basis_imp_tag ?? 0) * 90);
+    const vorher90 = vorher90Von(z, impTag);
     // The same days on the control group: net effect = (listing after/before) / (control after/before) − 1
     const kontrolle = kontrollVergleich(db, impTag, z.stufe_start, ende, einst);
     const nettoEffekt = kontrolle ? netto({ vorher: vorher90, nachher: hoch90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
@@ -439,7 +444,7 @@ export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, g
   const tage = pruefTage(z.stufe, einst), ende = plusTage(z.stufe_start, tage);
   const bis = trafficBis && trafficBis < ende ? trafficBis : ende;
   const gemessen = trafficBis ? Math.max(0, Math.round((Date.parse(bis) - Date.parse(z.stufe_start)) / 864e5)) : 0;
-  const vorher90 = Math.round((z.basis_imp_tag ?? 0) * 90);
+  const vorher90 = vorher90Von(z, impTag);
   const nachher90 = gemessen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null;
   const kontrolle = gemessen > 0 ? kontrollVergleich(db, impTag, z.stufe_start, bis, einst) : null;
   const vorzeitig = gemessen < tage;
@@ -608,7 +613,7 @@ export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst =
       const tage = pruefTage(z.stufe, einst), ende = plusTage(z.stufe_start, tage);
       const bis = trafficBis && trafficBis < ende ? trafficBis : ende;
       const gelaufen = trafficBis ? Math.max(0, Math.round((Date.parse(bis) - Date.parse(z.stufe_start)) / 864e5)) : 0;
-      stand = { tage, gelaufen, ende, jetzt90: gelaufen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null, vorher90: Math.round((z.basis_imp_tag ?? 0) * 90) };
+      stand = { tage, gelaufen, ende, jetzt90: gelaufen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null, vorher90: vorher90Von(z, impTag) };
       // Interim state against the control group over the same days: basis for "Next phase" / "Seen again" by hand
       const k = gelaufen > 0 ? kontrollVergleich(db, impTag, z.stufe_start, bis, einst) : null;
       stand.kontrolle = k;
