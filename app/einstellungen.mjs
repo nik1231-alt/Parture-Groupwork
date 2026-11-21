@@ -49,6 +49,8 @@ export const SCHEMA = [
     hilfe: "eBay Promoted Listings (standard): the fee is only due when an item sells after a click on the ad." },
   { key: "preisSchritt", abschnitt: "leiter", typ: "zahl", label: "Price step", einheit: "% lower", faktor: 100, min: 0.02, max: 0.2, schritt: 1,
     hilfe: "The price is lowered once by this share. The app does not know the costs, so the admin checks the new price before approving." },
+  { key: "preisMinimum", abschnitt: "leiter", typ: "zahl", label: "Lowest price the app may set", einheit: "€", min: 0.5, max: 500, schritt: 0.5,
+    hilfe: "A guard, not a margin check: the price step never goes below this price, and an approval below it is refused. Set it at least as high as the cheapest price that still pays off." },
 ];
 
 export const STANDARD = Object.fromEntries(SCHEMA.map((f) => [f.key, EINSTELLUNGEN[f.key]]));

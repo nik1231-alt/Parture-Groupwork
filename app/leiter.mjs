@@ -163,8 +163,10 @@ export function baueVorschlag(stufe, einst, { kanaele = [], varianten = [] } = {
     const preise = [...new Set([...kanaele.map((k) => Number(k.preis_aktuell)), ...varianten.map((v) => Number(v.price))].filter((x) => x > 0))];
     if (!kanaele.length || !preise.length) return { nichtMoeglich: "The current eBay price is not known." };
     if (preise.length > 1) return { nichtMoeglich: `The variants have different prices (${preise.map((p) => p.toFixed(2)).join(" / ")} €). One step down would break the price ladder, please decide by hand.` };
-    const alt = preise[0];
-    return { alt, neu: Math.floor(alt * (1 - einst.preisSchritt) * 100) / 100, schritt: einst.preisSchritt };
+    const alt = preise[0], neu = Math.floor(alt * (1 - einst.preisSchritt) * 100) / 100, minimum = einst.preisMinimum;
+    // F3: never below the lowest price the app may set (the step is skipped to the manual check instead)
+    if (minimum > 0 && neu < minimum) return { nichtMoeglich: `One step down (${neu.toFixed(2)} €) would go below the lowest price the app may set (${minimum.toFixed(2)} €, Settings). Skip this step to the manual check, or change the price by hand.`, alt, neu, minimum };
+    return { alt, neu, schritt: einst.preisSchritt, minimum };
   }
   return null;
 }
@@ -228,7 +230,7 @@ export async function fuehreAus(stufe, v, items, schreiber) {
 const norm = (s) => String(s ?? "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
 // An admin approves the running step: the app changes eBay, after that the waiting time runs. impTag(number, von, bis): impressions per day.
-export async function gibFrei(db, nutzer, number, { items, schreiber, impTag }, jetzt = new Date()) {
+export async function gibFrei(db, nutzer, number, { items, schreiber, impTag, einst = EINSTELLUNGEN }, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can approve a ladder step.");
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "vorschlag"); if (f) return f;
   const v = json(z.vorschlag);
@@ -239,6 +241,8 @@ export async function gibFrei(db, nutzer, number, { items, schreiber, impTag }, 
     const p = pruefeTitel(v.titel, v.alt);
     if (!p.ok) return fehler(409, "This title breaks a rule that was tightened after it was suggested: " + p.verstoesse.map((x) => x.text).join(" ") + " Ask the AI again or enter a title by hand.");
   }
+  // F3: the floor as it is set now, also for a suggestion made before it was raised
+  if (z.stufe === "preis" && einst.preisMinimum > 0 && !(v.neu >= einst.preisMinimum)) return fehler(409, `The new price ${Number(v.neu).toFixed(2)} € is below the lowest price the app may set (${einst.preisMinimum.toFixed(2)} €). Nothing was changed. Skip this step or change the price by hand.`);
   let r;
   try { r = await fuehreAus(z.stufe, v, items, schreiber); } catch (e) { r = { ausgang: "fehlgeschlagen", text: "Error while talking to eBay: " + e.message }; }
   const ereignis = r.ausgang === "angewendet" ? "freigegeben" : r.ausgang;

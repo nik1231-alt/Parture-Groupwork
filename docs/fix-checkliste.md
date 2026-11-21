@@ -57,19 +57,19 @@ Today "Next phase →" and "Seen again ✓" work at any time. `schiebeVonHand` a
 
 **Done when:** an early move cannot happen without the user seeing it, and it is visible afterwards.
 
-### F3 · Price floor
+### F3 · Price floor ✅ (PR #61)
 **Question:** "The app knows no costs. What stops Phase 3 from selling below cost?"
 
 Today `baueVorschlag("preis")` lowers by the price step (10 %) and rounds to .49/.99; the admin checks the margin.
 
-- [ ] New setting "Lowest price the app may set" (euros, default 2.99, admin only, with help text).
-- [ ] The price suggestion never goes below it. If the step would fall below, the suggestion says so and the listing can
+- [x] New setting "Lowest price the app may set" (euros, default 2.99, admin only, with help text).
+- [x] The price suggestion never goes below it. If the step would fall below, the suggestion says so and the listing can
       only be skipped to the manual check, not approved.
-- [ ] Right before writing, `fuehreAus` checks the floor again (a setting changed after the suggestion must still hold).
-- [ ] The approval card shows old price, new price and the floor.
-- [ ] Tests: suggestion respects the floor, variants with several prices, approval refused below the floor, setting
+- [x] Right before writing, the approval (`gibFrei`) checks the floor again (a setting changed after the suggestion must still hold).
+- [x] The approval card shows old price, new price and the floor.
+- [x] Tests: suggestion respects the floor, variants with several prices, approval refused below the floor, setting
       limits (validation).
-- [ ] Docs: README (Limits, Changes on eBay), Settings description.
+- [x] Docs: README (Limits, Changes on eBay), Settings description.
 
 **Done when:** no code path can write a price below the floor.
 

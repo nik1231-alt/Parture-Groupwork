@@ -153,6 +153,8 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
 ## Limits
 
 - The app knows no costs, so it cannot tell whether a lower price still pays off; the admin checks that before approving.
+  As a guard the price step never goes below *Settings → Lowest price the app may set* (default 2.99 €), and an approval
+  below it is refused, also for a suggestion made before the floor was raised.
 - Waiting times are 4 days per phase since 21 Nov 2026, so the listings pass several phases before the presentation. Four days of
   impressions are noisy: a phase shows an interim and usually "too early to judge". For a real measurement set 14 / 14 / 21 days in
   *Settings* (the earlier defaults); the control group always lasts all three waiting times plus 7 days.
