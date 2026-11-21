@@ -151,6 +151,14 @@ test("Example view: invented figures, always the same, two runs plus all, ads cl
   assert.deepEqual([w.laeuft, w.wartet], [2, 1], "the example also shows running and waiting listings");
 });
 
+test("Ended early (F2): a phase counts its early evaluations and the shortest measurement", () => {
+  const früh = (nr, tage) => { const a = angebot(nr, "titel", 100, 150, K(1000, 1000)); Object.assign(a.verlauf[0].details, { vorzeitig: true, gemessenTage: tage, tage: 14 }); return a; };
+  const p = baueErgebnisse(uebersicht([früh("E1", 4), früh("E2", 6), angebot("V1", "titel", 100, 150, K(1000, 1000))])).laeufe[0].phasen[0];
+  assert.equal(p.vorzeitig, 2); assert.equal(p.kuerzesteTage, 4);
+  const ohne = baueErgebnisse(uebersicht([angebot("V2", "titel", 100, 150, K(1000, 1000))])).laeufe[0].phasen[0];
+  assert.equal(ohne.vorzeitig, 0); assert.equal(ohne.kuerzesteTage, null);
+});
+
 test("Live interim: before the first day only the real 'before' figures, no verdict; with days in the data the same net-effect rule as a finished phase", () => {
   const K2 = (v, n) => ({ anzahl: 10, vorher90: v, nachher90: n });
   const laeuft = (nr, stand) => ({ number: nr, stufe: "titel", phase: "laeuft", eingestiegen_at: "2026-11-20T16:43:00.000Z", verlauf: [], stand });

@@ -642,7 +642,7 @@ function laufAnsicht(l, skala) {
   const pz = Diagramm.proz, a = Diagramm.achse(phasen);
   const zeile = (p) => {
     const u = PHASE_URTEIL[p.urteil], e = p.schaetzung, fertig = p.ausgewertet > 0;
-    const unter = fertig ? `${zahl(p.ausgewertet)} listing${p.ausgewertet === 1 ? "" : "s"}`
+    const unter = fertig ? `${zahl(p.ausgewertet)} listing${p.ausgewertet === 1 ? "" : "s"}` + (p.vorzeitig ? ` · ${zahl(p.vorzeitig)} ended early (shortest ${p.kuerzesteTage} days)` : "")
       : p.vorlaeufig ? `${p.anzahl} running · day ${p.gelaufen} of ${p.tage}`
       : p.laeuft ? `${p.laeuft} running${p.naechstesEnde ? `, due ${datum(p.naechstesEnde + "T12:00:00Z")}` : ""}` : "nothing finished";
     const chip = p.vorlaeufig ? [u[0], p.mitDaten ? "Interim: " + u[1].toLowerCase() : "Waiting for the first day"] : u;
@@ -891,9 +891,11 @@ function leiterZeile(a, l) {
     mitte = el("div", {}, el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(Math.min(1, s.gelaufen / s.tage) * 100)}%` })),
       el("p", { class: "leise klein", text: `Started ${datum(a.stufe_start + "T12:00:00Z")} · data day ${s.gelaufen} of ${s.tage} · due ${datum(s.ende + "T12:00:00Z")}` }),
       e ? el("p", { class: "empfehlung " + e.klasse, text: e.text }) : null);
+    // Before the waiting time is complete the confirmation says that it ends early and that this is recorded (F2)
+    const frueh = s.gelaufen < s.tage, frage = (normal) => (frueh ? `End early after ${s.gelaufen} of ${s.tage} days? (recorded)` : normal);
     if (istAdmin()) haupt = el("span", { class: "knopf-paar" },
-      zweiStufig(el("button", { class: "knopf knopf-klein" + (e?.ziel === "weiter" ? " knopf-akzent" : ""), type: "button", text: `Next phase →` }), "Really move on?", () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "weiter" }, (r) => r.werbungUebersprungen ? `Already advertised (${r.werbungUebersprungen.join(", ")}): moved straight to the price step.` : `Moved to ${STUFE_TEXT[r.stufe] || r.stufe}.`)),
-      zweiStufig(el("button", { class: "knopf knopf-klein" + (e?.ziel === "erholt" ? " knopf-akzent" : ""), type: "button", text: "Seen again ✓" }), "Really mark as seen again?", () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "erholt" }, "Marked as seen again; the listing left the ladder.")));
+      zweiStufig(el("button", { class: "knopf knopf-klein" + (e?.ziel === "weiter" ? " knopf-akzent" : ""), type: "button", text: `Next phase →` }), frage("Really move on?"), () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "weiter", vorzeitig: frueh }, (r) => r.werbungUebersprungen ? `Already advertised (${r.werbungUebersprungen.join(", ")}): moved straight to the price step.` : `Moved to ${STUFE_TEXT[r.stufe] || r.stufe}.`)),
+      zweiStufig(el("button", { class: "knopf knopf-klein" + (e?.ziel === "erholt" ? " knopf-akzent" : ""), type: "button", text: "Seen again ✓" }), frage("Really mark as seen again?"), () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "erholt", vorzeitig: frueh }, "Marked as seen again; the listing left the ladder.")));
   } else if (a.phase === "offen") {
     mitte = el("p", { class: "klein", text: "Title, ads and price did not bring the impressions back. Open the row to decide: rework, take offline or keep." });
   }
@@ -1164,7 +1166,7 @@ function lebenslauf(a) {
   if (!a.verlauf.length) return null;
   const zeile = (e) => {
     const d = e.details || {};
-    const extra = e.ereignis === "ausgewertet" ? ` ${zahl(d.vorher90)} → ${zahl(d.nachher90)} impressions per 90 days (limit ${zahl(d.grenze90)}): ${d.erholt ? "seen again" : "still too few"}${d.kontrolle ? `; control group ${zahl(d.kontrolle.vorher90)} → ${zahl(d.kontrolle.nachher90)}, net effect ${aenderung(d.netto)}` : ""}`
+    const extra = e.ereignis === "ausgewertet" ? (d.vorzeitig ? ` Ended early after ${d.gemessenTage} of ${d.tage} days.` : "") + ` ${zahl(d.vorher90)} → ${zahl(d.nachher90)} impressions per 90 days (limit ${zahl(d.grenze90)}): ${d.erholt ? "seen again" : "still too few"}${d.kontrolle ? `; control group ${zahl(d.kontrolle.vorher90)} → ${zahl(d.kontrolle.nachher90)}, net effect ${aenderung(d.netto)}` : ""}`
       : e.ereignis === "vorschlag" && d.titel ? ` “${d.titel}”` : d.text ? " " + d.text : d.grund ? " " + d.grund : d.notiz ? ` ${ERGEBNIS_LEITER[d.entscheidung] || ""}: ${d.notiz}` : "";
     return el("li", { text: `${zeitpunkt(e.at)} · ${STUFE_TEXT[e.stufe] || e.stufe} · ${EREIGNIS_TEXT[e.ereignis] || e.ereignis}${extra}${e.benutzer !== "system" ? ` (${e.benutzer})` : ""}` });
   };

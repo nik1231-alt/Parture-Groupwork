@@ -544,7 +544,7 @@ const POST_ROUTEN = {
   "/api/leiter/schieben": async (req, ctx) => {
     adminNoetig(ctx);
     const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
-    const r = antwort(leiter.schiebeVonHand(appDb(), ctx, nr, b?.ziel, leiterDaten(produkteLaden())));
+    const r = antwort(leiter.schiebeVonHand(appDb(), ctx, nr, b?.ziel, leiterDaten(produkteLaden()), undefined, { vorzeitigBestaetigt: b?.vorzeitig === true }));
     const sprung = r.stufe === "werbung" ? await werbungSpruenge([nr]) : [];
     return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null };
   },

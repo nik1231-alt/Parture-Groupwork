@@ -42,17 +42,18 @@ The app's own import (`app/traffic.mjs`, `VERZOEGERUNG_STANDARD`) is not what PR
 
 **Done when:** `grep -rn "3 days"` shows no contradiction to what the app does, and the rule is visible in the app.
 
-### F2 · Early move is visible and recorded (no silent peeking)
+### F2 · Early move is visible and recorded (no silent peeking) ✅ (PR #60)
 **Question:** "You look at the live numbers every day. What stops you from moving on when the numbers look good?"
 
 Today "Next phase →" and "Seen again ✓" work at any time. `schiebeVonHand` already stores `gemessenTage`.
 
-- [ ] Before the waiting time is over, the buttons ask once: "This ends the waiting time early after X of Y days. It is
-      recorded and shown in Results." (second click confirms, like Approve).
-- [ ] The evaluation stores `vorzeitig: true` and the planned end day.
-- [ ] Results and the history show "ended early: X of Y days" at the phase and the listing.
-- [ ] Protocol entry `ladder_moved` carries `vorzeitig`.
-- [ ] Tests: early move → `vorzeitig` true with the measured days; move after the end → false.
+- [x] Before the waiting time is over, the buttons ask once: "This ends the waiting time early after X of Y days. It is
+      recorded and shown in Results." (second click confirms, like Approve). *The server refuses an early move without the
+      confirmation (409), so it also holds for direct API calls.*
+- [x] The evaluation stores `vorzeitig: true` and the planned end day.
+- [x] Results and the history show "ended early: X of Y days" at the phase and the listing.
+- [x] Protocol entry `ladder_moved` carries `vorzeitig`.
+- [x] Tests: early move → `vorzeitig` true with the measured days; move after the end → false. *(test-leiter, test-ergebnisse)*
 
 **Done when:** an early move cannot happen without the user seeing it, and it is visible afterwards.
 

@@ -76,7 +76,9 @@ All products
 - **The lot** uses a stored seed, so the same candidates and the same seed always give the same split (`ziehe` in `app/experimente.mjs`).
 - **Movement by hand** (default, *Settings → Funnel movement*): products only move when an admin clicks. *Draw listings by
   lot* takes new listings (with control group); on a running card, *Next phase →* or *Seen again ✓* end the waiting time,
-  measured up to that day against the control group and kept in the history. The daily run from 6:00 only fetches AI titles.
+  measured up to that day against the control group and kept in the history. Before the waiting time is complete the button asks
+  "End early after X of Y days? (recorded)": the evaluation is marked as ended early and Results show it, so nobody can quietly
+  move on when the numbers happen to look good. The daily run from 6:00 only fetches AI titles.
 - **Automatic movement** (optional): the daily run also evaluates finished waiting times, releases controls and draws new
   listings. Neither mode ever changes eBay without an approval.
 - **Data:** the company hub exports the catalogue and eBay traffic to the app every hour (whitelist only, see *Data*).
