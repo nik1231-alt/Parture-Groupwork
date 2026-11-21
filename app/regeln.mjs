@@ -29,9 +29,11 @@ export const EINSTELLUNGEN = {
   besserAb: 0.2,             // Target mark: the test group must have at least 20 % more impressions than the control group (the only place; the interface reads it from the evaluation)
   schutzGrenze: 0.2,         // the sales of the test group may fall by at most 20 % compared with the control group
   // Ladder (see leiter.mjs): waiting time per step, how many listings at the same time, ad rate and price step
-  leiterTageTitel: 14,       // for so long the new title runs before the impressions are checked again
-  leiterTageWerbung: 14,     // waiting time after switching on the ads
-  leiterTagePreis: 21,       // waiting time after the price cut (sales react more slowly)
+  // Niko 21.11.: 4 days per phase, so the listings pass several phases before the presentation on 04.12. Short waits give
+  // noisy figures; for a real measurement raise them in Settings (14 / 14 / 21 days were the earlier defaults).
+  leiterTageTitel: 4,        // for so long the new title runs before the impressions are checked again
+  leiterTageWerbung: 4,      // waiting time after switching on the ads
+  leiterTagePreis: 4,        // waiting time after the price cut
   leiterMax: 20,             // at most so many listings are on the ladder at the same time
   leiterNurOhneVerkauf: "ja", // Niko 20.11.: Angebote, die bei eBay schon verkauft haben, nicht anfassen ("nein" = auch verkaufte)
   leiterBewegung: "hand",    // Niko 20.11.: erst einmal nur per Knopf; "automatisch" = der Tageslauf zieht und bewertet selbst
