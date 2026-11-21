@@ -414,7 +414,7 @@ const ROUTEN = {
     return { number: nr, leiter: zeile, verlauf, protokoll: eintraege };
   },
   // Page Problem: how unevenly visibility and sales are spread (problem.mjs), live from the same product list
-  "/api/problem": () => { const produkte = produkteLaden(); return problem.auswerten(produkte, leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d); },
+  "/api/problem": () => { const produkte = produkteLaden(), e = einst(); return { ...problem.auswerten(produkte, leiteSchwellenAb(produkte, e, new Date()).wenigImpressionen90d), werbesatz: e.werbesatz, preisSchritt: e.preisSchritt }; },
   // Page Results, section "Day by day": effect of each phase against the control group, with a daily curve (dashboard.mjs)
   "/api/dashboard": () => dashboardDaten(),
   // Page Results: effect of each phase of the ladder on the impressions, per run and in total (ergebnisse.mjs); the example has invented figures
