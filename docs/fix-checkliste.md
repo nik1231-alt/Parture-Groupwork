@@ -150,21 +150,29 @@ The eBay writer can set a title, a price and switch an ad on, not off.
 
 **Done when:** every change the app can make on eBay can be undone through the app, with approval and a record.
 
-### F8 · Limits written down honestly
+### F8 · Limits written down honestly ✅ (PR #66)
 **Question:** "What are the limits of your method?"
 
-- [ ] README "Limits" and `docs/tests.md` name: 4-day waiting times are noisy; carry-over (a title can still work when the
+- [x] README "Limits" and `docs/tests.md` name: 4-day waiting times are noisy; carry-over (a title can still work when the
       ads start); spill-over (test listings could take impressions from others, unlikely with 10 of 760 but unproven);
       only listings that never sold; the top of the eligible list is drawn, not a random sample of all eligible ones;
       one server; the app knows no costs (floor from F3 is a guard, not a margin check).
-- [ ] Each limit has one sentence on what we would do with more time.
+- [x] Each limit has one sentence on what we would do with more time.
 
-### F9 · Walkthrough with the hard questions
+### F9 · Walkthrough with the hard questions ✅ (PR #66)
 **Question:** all of the above, asked to any member.
 
-- [ ] `docs/walkthrough.md`: the professor's questions from the review, grouped by angle, each with the short answer and
+- [x] `docs/walkthrough.md`: the professor's questions from the review, grouped by angle, each with the short answer and
       the honest limit, pointing to the file that shows it.
-- [ ] Written last, so it describes the final state after F1–F8.
+- [x] Written last, so it describes the final state after F1–F8. *(Also fixed: "every night" → every hour, 193 → 253 tests.)*
+
+### F10 · One eBay write per listing at a time ✅ (PR #66)
+**Question:** "Two admins click Approve at the same time?" Found while writing F9: the funnel had no lock (only the old
+title tests had one), so two clicks during the eBay call could both write.
+
+- [x] `mitSperre` in `app/server.mjs`: Approve, Approve all and Undo share one lock per listing; a second request gets 409.
+- [x] Walkthrough answer corrected.
+- [ ] Test: not automated — it needs an eBay call slow enough to overlap; with the recorded writer the call returns at once.
 
 ---
 

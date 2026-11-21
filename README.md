@@ -170,7 +170,22 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
 - Waiting times are 4 days per phase since 21 Nov 2026, so the listings pass several phases before the presentation. Four days of
   impressions are noisy: a phase shows an interim and usually "too early to judge". For a real measurement set 14 / 14 / 21 days in
   *Settings* (the earlier defaults); the control group always lasts all three waiting times plus 7 days.
-- With only a few listings per phase the net effect is noisy; it gets reliable as more listings pass through.
+- With only a few listings per phase the net effect is noisy; it gets reliable as more listings pass through. *With more time:*
+  more draws, and a pre-set number of listings per phase before anyone reads a verdict.
+- **Carry-over:** a new title can still be working when the ads start, so part of its effect is counted for the ads. Each phase is
+  measured against its own 30 days before, so it shows what was added on top. *With more time:* a pause between phases, or a
+  second control group that gets only the title.
+- **Spill-over:** a test listing could take impressions from other listings of the shop. With 10 of about 760 listings in
+  different categories this is unlikely, but it is not proven. *With more time:* compare the control group with the rest of the shop.
+- **Who is drawn:** only listings that never sold on eBay, and the top of the eligible list (sorted by impressions), not a random
+  sample of all eligible ones. The split into test and control is random (in pairs), so the comparison is fair, but a result
+  speaks for this kind of listing only. *With more time:* draw randomly from the whole eligible list.
+- **Data corrections:** the hub fetches every eBay day once, the day after; whether eBay still adjusts a day later is not measured.
+  Every evaluation stores the data day it used. *With more time:* fetch one past day again and compare.
+- **Changes from outside** are noticed through the hub's catalogue, which is updated at least once a day, so a change can stay
+  unnoticed for up to a day. *With more time:* read the listings on the ladder from eBay directly once a day.
+- **One server:** PROD and PREVIEW run on one Windows laptop of the company, with a watcher, daily backups and a tested restore,
+  but no second machine. *With more time:* a second machine or a hosted database.
 - Only eBay. Sales and traffic from other marketplaces (shop, Amazon, Etsy) are out of scope on purpose: the hub does not export
   them in new exports. Older catalogues may still show other channels as labelled reference details; these never enter analysis. All performance metrics use eBay only.
 

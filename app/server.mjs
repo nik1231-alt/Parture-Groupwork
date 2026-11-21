@@ -108,7 +108,16 @@ async function werbungSpruenge(nummern = null) {
 }
 // Approval of a ladder step. Phase 2 only if eBay confirms that the listing is not advertised yet; otherwise it jumps to
 // the price step. If this cannot be checked (no access, eBay error), nothing is approved.
-async function freigeben(ctx, nr) {
+// One eBay write per listing at a time (review 21 Nov): a second click or a second admin during the eBay call gets 409 instead of
+// writing twice. Approve, Approve all and Undo share the lock.
+const ebayLaeuft = new Set();
+async function mitSperre(nr, aufgabe) {
+  if (ebayLaeuft.has(nr)) throw Object.assign(new Error("This listing is being changed on eBay right now. Wait a moment and reload."), { status: 409 });
+  ebayLaeuft.add(nr);
+  try { return await aufgabe(); } finally { ebayLaeuft.delete(nr); }
+}
+const freigeben = (ctx, nr) => mitSperre(nr, () => freigebenOhneSperre(ctx, nr));
+async function freigebenOhneSperre(ctx, nr) {
   const z = appDb().prepare("SELECT stufe, phase FROM leiter WHERE number = ?").get(nr);
   if (z?.stufe === "werbung" && z.phase === "vorschlag") {
     for (const it of leiterKontext(nr).kanaele) {
@@ -573,7 +582,7 @@ const POST_ROUTEN = {
   "/api/leiter/rueckgaengig": async (req, ctx) => {
     adminNoetig(ctx);
     const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
-    return antwort(await leiter.macheRueckgaengig(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber }));
+    return antwort(await mitSperre(nr, () => leiter.macheRueckgaengig(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber })));
   },
   "/api/leiter/abbrechen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.brichAb(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund)); },
   // Builder and admin: enter a title by hand (it must pass the rule checker) or ask the AI again
