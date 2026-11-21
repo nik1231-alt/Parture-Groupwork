@@ -29,7 +29,7 @@ test touches `pm.db` or `app.db`: each one builds a throwaway database in memory
 | The real eBay API | a test must never change a real listing | read call against PROD on 20.11. (listing 406390008472, status Active); writes only in a supervised dry run |
 | The real Gemini API | costs money and the answer changes every time | one live call on 20.11. (HTTP 200); the parser is tested with recorded answers |
 | Layout in the browser (phone width, dark mode) | no browser in CI | screenshots with headless Chrome at 1280 and 400 px, light and dark |
-| Whether a phase really brings impressions back | needs weeks of real traffic | that is what the control group on PROD will show; the first result is due 14 days after the first approval |
+| Whether a phase really brings impressions back | needs weeks of real traffic | that is what the control group on PROD will show; the first result is due one waiting time (4 days since 21 Nov) after the first approval, but four days are noisy |
 | Load with many users at once | four users | not tested |
 
 `benutzer.mjs` has no test of its own: it is a thin command line over `login.mjs` and `rollen.mjs`, whose logic is tested.

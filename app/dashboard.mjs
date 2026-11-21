@@ -12,6 +12,7 @@
 // eBay data only (Niko, 20 Nov 2026), no costs, fees or revenue.
 import { netto } from "./auswertung.mjs";
 import { EINSTELLUNGEN } from "./regeln.mjs";
+import { kontrollTage } from "./leiter.mjs";
 
 export const PHASEN = ["titel", "werbung", "preis"];
 export const BASIS_TAGE = 30;   // as in leiter.mjs: the comparison value is the 30 days before the start
@@ -21,7 +22,7 @@ export const SCHWELLE_EINZELN = 0.1; // a single listing counts as better / wors
 const plusTage = (t, n) => new Date(Date.parse(t + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 const tageZwischen = (von, bis) => Math.round((Date.parse(bis + "T12:00:00Z") - Date.parse(von + "T12:00:00Z")) / 864e5);
 const pruefTage = (stufe, einst) => ({ titel: einst.leiterTageTitel, werbung: einst.leiterTageWerbung, preis: einst.leiterTagePreis })[stufe];
-const kontrollTage = (einst) => einst.leiterTageTitel + einst.leiterTageWerbung + einst.leiterTagePreis;
+// Same control time as the ladder (waiting times plus buffer), from one place
 const leer = () => ({ imp: 0, auf: 0, trans: 0 });
 const plus = (a, b) => ({ imp: a.imp + b.imp, auf: a.auf + b.auf, trans: a.trans + b.trans });
 const mal = (a, f) => ({ imp: a.imp * f, auf: a.auf * f, trans: a.trans * f });

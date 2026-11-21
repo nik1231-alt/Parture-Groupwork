@@ -58,7 +58,7 @@ the reason, the next run tries again, or a title can be typed by hand. → `READ
 Costs. So it cannot judge whether a lower price still pays off: the admin checks that before approving the price step.
 
 **How long until you know whether it works?**
-One waiting time: 14 days for the title, plus the 3-day data lag. Few listings per phase make the first numbers noisy.
+One waiting time: 4 days per phase since 21 Nov (to reach several phases before the presentation), plus one day until the eBay figures of the last day are in. Four days and few listings per phase make the numbers noisy, so the app shows an interim and "too early to judge"; 14 / 14 / 21 days in Settings measure more reliably. The control group lasts all three waiting times plus 7 days, because each next phase starts only when an admin decides.
 
 ## How could it change?
 

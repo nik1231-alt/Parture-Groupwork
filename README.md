@@ -63,10 +63,10 @@ All products
  ├─ Not eligible ── with the reason: enough impressions · too new or no data · no active eBay listing · blocked by a price test · already sold on eBay
  └─ Eligible ────── low impressions (bottom quarter of the shop), active on eBay, never sold on eBay, free
       │  "Draw listings by lot": 2 × free places, split in half
-      ├─ Control group ── stays unchanged for 49 days (all three waiting times together)
-      └─ Phase 1  new title (AI + rule check) ── 14 days ──► seen again? yes ─► leaves ("Seen again")
-         Phase 2  eBay ads 10 %             ── 14 days ──► seen again? yes ─► leaves   (skipped if already advertised)
-         Phase 3  price −10 %               ── 21 days ──► seen again? yes ─► leaves
+      ├─ Control group ── stays unchanged for 19 days (all three waiting times plus 7 days buffer for the decisions)
+      └─ Phase 1  new title (AI + rule check) ── 4 days ──► seen again? yes ─► leaves ("Seen again")
+         Phase 2  eBay ads 10 %             ── 4 days ──► seen again? yes ─► leaves   (skipped if already advertised)
+         Phase 3  price −10 %               ── 4 days ──► seen again? yes ─► leaves
          Phase 4  manual check: an admin decides to rework, take offline or keep (with a reason)
 ```
 
@@ -147,7 +147,9 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
 ## Limits
 
 - The app knows no costs, so it cannot tell whether a lower price still pays off; the admin checks that before approving.
-- One waiting time takes 14 to 21 days, so the first measured net effect comes two to three weeks after the first approval.
+- Waiting times are 4 days per phase since 21 Nov 2026, so the listings pass several phases before the presentation. Four days of
+  impressions are noisy: a phase shows an interim and usually "too early to judge". For a real measurement set 14 / 14 / 21 days in
+  *Settings* (the earlier defaults); the control group always lasts all three waiting times plus 7 days.
 - With only a few listings per phase the net effect is noisy; it gets reliable as more listings pass through.
 - Only eBay. Sales and traffic from other marketplaces (shop, Amazon, Etsy) are out of scope on purpose: the hub does not export
   them in new exports. Older catalogues may still show other channels as labelled reference details; these never enter analysis. All performance metrics use eBay only.
