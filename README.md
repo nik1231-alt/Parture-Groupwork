@@ -73,10 +73,17 @@ All products
 - **Seen again** means: impressions per day during the waiting time, scaled to 90 days, are no longer below the diagnosis limit.
 - **Net effect** of a phase = (listing after ÷ before) ÷ (control group after ÷ before) − 1, over exactly the same days. If the
   whole shop gets busier, the control group rises too and the net effect stays near zero. From +20 % a phase counts as clearly better.
+  "Before" is the 30 days before the phase started, computed for listing and control group **with the same, current data**
+  (not a value stored at the start, which can miss days that arrived later).
 - **The lot** uses a stored seed, so the same candidates and the same seed always give the same split (`ziehe` in `app/experimente.mjs`).
+  Since 21 Nov it draws in **pairs**: the drawn listings are sorted by impressions, neighbours form a pair, and a coin decides which
+  of each pair is tested. So both groups get one listing of every size and a strong listing cannot land in one group by chance.
+  Results show the balance at the draw (both groups over the 30 days before).
 - **Movement by hand** (default, *Settings → Funnel movement*): products only move when an admin clicks. *Draw listings by
   lot* takes new listings (with control group); on a running card, *Next phase →* or *Seen again ✓* end the waiting time,
-  measured up to that day against the control group and kept in the history. The daily run from 6:00 only fetches AI titles.
+  measured up to that day against the control group and kept in the history. Before the waiting time is complete the button asks
+  "End early after X of Y days? (recorded)": the evaluation is marked as ended early and Results show it, so nobody can quietly
+  move on when the numbers happen to look good. The daily run from 6:00 only fetches AI titles.
 - **Automatic movement** (optional): the daily run also evaluates finished waiting times, releases controls and draws new
   listings. Neither mode ever changes eBay without an approval.
 - **Data:** the company hub exports the catalogue and eBay traffic to the app every hour (whitelist only, see *Data*).
@@ -103,10 +110,19 @@ All products
    `EBAY_WERBUNG=an` for ads and `EBAY_PREIS=an` for prices (they cost money). Otherwise the approval is a **dry run**:
    checked and logged, nothing changed.
 5. If eBay refuses, eBay's message is shown at the listing and in the log, and the step stays open.
+6. **Undo on eBay** (admin, two clicks, in the open row): puts back everything the app changed on this listing, the last change
+   first: price → old price, ad → removed from the app's own campaign *Parture Ladder* (never from the shop's campaigns), title →
+   old title. Read before write: a part is undone only if eBay still shows what the app set. Without keys or switches it is a dry
+   run. Afterwards the listing leaves the ladder as *Undone on eBay* and pauses; history and log keep the changes and the undo.
+7. **Changes made outside the app are noticed.** The app notes which title and price every listing on the ladder (and in the
+   control group) should show, and compares that every 15 minutes with the hub's catalogue (updated at least daily, no eBay
+   calls). A difference the app did not make is marked on the card, in the funnel tree, the history and the log; the evaluation
+   of that listing carries the mark, and a control listing changed from outside drops out of the control group. Right after an
+   app change the catalogue may show the old value for up to 2 days; that does not count.
 
 **AI titles:** Google Gemini suggests three titles; the **rule check** (`app/titel-regeln.mjs`) lets only safe ones through:
 no superlatives, seals or price promises, never "Original"; brands only as "passend für …" and only if the old title had
-them; no new numbers, sizes or colours; no keyword lists. Tested against all 745 real titles. Without `GOOGLE_API_KEY` the
+them; no new numbers, sizes or colours; no new English words (a word like “Wallmount” stays only if the old title had it); no keyword lists. Tested against all 745 real titles. Without `GOOGLE_API_KEY` the
 suggestion comes from the title help, and a hand-typed title must pass the same rule check.
 
 ## When something is unavailable
@@ -142,15 +158,36 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
   block list of a running shop experiment. **Never** costs, fees, margins, revenue, customers or addresses: the export checks
   column names and texts before it swaps the file.
 - **`app.db`** belongs to the app and lives on the machine that runs it, never in the repository.
-- **Data lag of 3 days:** eBay corrects the last days afterwards, so only finished days count.
+- **Data delay:** on PROD the traffic comes from the company hub, which fetches every eBay day **once, on the day after**, and
+  not again later; so the newest day is yesterday (header: "traffic up to …", the tooltip says where it comes from). Whether eBay
+  still adjusts a day afterwards is not measured (checking it would use the eBay request limit, which the hub already
+  exhausts every day). Every evaluation stores the last data day it used (`datenBis`), so it can be reproduced. The app's own
+  import (`npm run export`, not used on PROD) waits 3 days and fetches the last 3 days again.
 
 ## Limits
 
 - The app knows no costs, so it cannot tell whether a lower price still pays off; the admin checks that before approving.
+  As a guard the price step never goes below *Settings → Lowest price the app may set* (default 2.99 €), and an approval
+  below it is refused, also for a suggestion made before the floor was raised.
 - Waiting times are 4 days per phase since 21 Nov 2026, so the listings pass several phases before the presentation. Four days of
   impressions are noisy: a phase shows an interim and usually "too early to judge". For a real measurement set 14 / 14 / 21 days in
   *Settings* (the earlier defaults); the control group always lasts all three waiting times plus 7 days.
-- With only a few listings per phase the net effect is noisy; it gets reliable as more listings pass through.
+- With only a few listings per phase the net effect is noisy; it gets reliable as more listings pass through. *With more time:*
+  more draws, and a pre-set number of listings per phase before anyone reads a verdict.
+- **Carry-over:** a new title can still be working when the ads start, so part of its effect is counted for the ads. Each phase is
+  measured against its own 30 days before, so it shows what was added on top. *With more time:* a pause between phases, or a
+  second control group that gets only the title.
+- **Spill-over:** a test listing could take impressions from other listings of the shop. With 10 of about 760 listings in
+  different categories this is unlikely, but it is not proven. *With more time:* compare the control group with the rest of the shop.
+- **Who is drawn:** only listings that never sold on eBay, and the top of the eligible list (sorted by impressions), not a random
+  sample of all eligible ones. The split into test and control is random (in pairs), so the comparison is fair, but a result
+  speaks for this kind of listing only. *With more time:* draw randomly from the whole eligible list.
+- **Data corrections:** the hub fetches every eBay day once, the day after; whether eBay still adjusts a day later is not measured.
+  Every evaluation stores the data day it used. *With more time:* fetch one past day again and compare.
+- **Changes from outside** are noticed through the hub's catalogue, which is updated at least once a day, so a change can stay
+  unnoticed for up to a day. *With more time:* read the listings on the ladder from eBay directly once a day.
+- **One server:** PROD and PREVIEW run on one Windows laptop of the company, with a watcher, daily backups and a tested restore,
+  but no second machine. *With more time:* a second machine or a hosted database.
 - Only eBay. Sales and traffic from other marketplaces (shop, Amazon, Etsy) are out of scope on purpose: the hub does not export
   them in new exports. Older catalogues may still show other channels as labelled reference details; these never enter analysis. All performance metrics use eBay only.
 
@@ -159,6 +196,7 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
 - [`docs/architektur.md`](docs/architektur.md): the system on one page, decisions and the alternatives we rejected
 - [`docs/tests.md`](docs/tests.md): which test checks what, and what the tests do not cover
 - [`docs/walkthrough.md`](docs/walkthrough.md): questions for the repository walkthrough, with answers
+- [`docs/fix-checkliste.md`](docs/fix-checkliste.md): the fixes from our own "how would the professor attack this?" review, ticked one by one
 - [`docs/sicherheit.md`](docs/sicherheit.md): threats, measures and the test behind each one
 - [`docs/entwicklung.md`](docs/entwicklung.md): how the team works (branches, preview, pull requests, reviews)
 - [`AGENTS.md`](AGENTS.md): rules for coding agents working in this repository

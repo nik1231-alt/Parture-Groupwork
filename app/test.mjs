@@ -102,6 +102,8 @@ test("Settings: invalid values are rejected and nothing is saved", () => {
   abgelehnt({ schonfristTage: 1.5 }, /whole number/);
   abgelehnt({ schonfristTage: -1 }, /between 0 and 365/);
   abgelehnt({ testGroesse: 41 }, /even number/);
+  abgelehnt({ preisMinimum: 0.1 }, /between/);                // F3: the price floor has limits too
+  abgelehnt({ preisMinimum: "3" }, /enter a number/);
   abgelehnt({ testGroesse: 2 }, /between 4 and 200/);
   abgelehnt({ modus: "egal" }, /choose one of the options/);
   abgelehnt({ modus: "toString" }, /choose one of the options/);

@@ -31,5 +31,8 @@ test touches `pm.db` or `app.db`: each one builds a throwaway database in memory
 | Layout in the browser (phone width, dark mode) | no browser in CI | screenshots with headless Chrome at 1280 and 400 px, light and dark |
 | Whether a phase really brings impressions back | needs weeks of real traffic | that is what the control group on PROD will show; the first result is due one waiting time (4 days since 21 Nov) after the first approval, but four days are noisy |
 | Load with many users at once | four users | not tested |
+| Removing an ad on eBay (undo, F7) | it would change a real campaign | tested with a recorded writer; the call (`bulk_delete_ads_by_listing_id` on the app's own campaign only) has not run against eBay yet |
+| Changes made outside the app (F6) on real data | needs someone to change a listing on eBay | probe on a copy of PROD: the first check noted 20 states and marked nothing; the marking itself is tested with recorded catalogue states |
+| Corrections eBay makes to a day afterwards | checking costs the eBay request limit | not measured; every evaluation stores its data day (`datenBis`) |
 
 `benutzer.mjs` has no test of its own: it is a thin command line over `login.mjs` and `rollen.mjs`, whose logic is tested.

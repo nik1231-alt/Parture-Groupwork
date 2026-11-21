@@ -10,6 +10,12 @@ export const FENSTER_TAGE = 90;     // so many days are kept (enough for the 30-
 export const NACHPRUEFEN_TAGE = 3;  // the last days up to the cut-off day are fetched anew each time and compared
 // The delay that actually applies (export, data-age warning and interface all calculate with this one function)
 export const verzoegerungTage = (env = process.env) => Math.max(1, Number(env.TRAFFIC_VERZOEGERUNG_TAGE) || VERZOEGERUNG_STANDARD);
+// On PROD the data comes from the company hub, not from this import. The hub fetches every eBay day exactly once, on the day
+// after, and never fetches it again (measured 21 Nov 2026 in its traffic warehouse: only missing days are fetched). So its
+// newest day is yesterday. Whether eBay still adjusts a day afterwards is not measured; every evaluation stores the day it used.
+export const HUB_VERZOEGERUNG = 1;
+// The delay that belongs to a pm.db: the hub export says so in stand.quelle, everything else is this app's own import
+export const verzoegerungFuer = (quelle, env = process.env) => (/hub/i.test(String(quelle ?? "")) ? HUB_VERZOEGERUNG : verzoegerungTage(env));
 const PAKET = 200;                  // the API returns at most 200 listings per call (listing_ids filter, offset does not apply)
 const METRIKEN = "TOTAL_IMPRESSION_TOTAL,LISTING_VIEWS_TOTAL,TRANSACTION";
 

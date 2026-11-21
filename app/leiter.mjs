@@ -127,10 +127,17 @@ function trageEin(db, number, details, benutzer, jetzt, stufe = "titel") {
 }
 
 // Control listings whose control time fully covers the days von..bis: the comparison group for a step with this time window
+// A control listing that was changed outside the app (F6) no longer shows "what happens without a change" and drops out.
 function kontrollGruppe(db, von, bis, einst) {
+  const fremd = new Set(db.prepare("SELECT DISTINCT number FROM leiter_verlauf WHERE ereignis = 'fremd' AND stufe = 'kontrolle'").all().map((r) => r.number));
   return db.prepare("SELECT number, stufe_start FROM leiter WHERE (stufe = 'kontrolle' OR ergebnis = 'kontrolle') AND stufe_start IS NOT NULL").all()
-    .filter((z) => z.stufe_start <= von && plusTage(z.stufe_start, kontrollTage(einst)) >= bis).map((z) => z.number);
+    .filter((z) => z.stufe_start <= von && plusTage(z.stufe_start, kontrollTage(einst)) >= bis && !fremd.has(z.number)).map((z) => z.number);
 }
+// F11 (review 21 Nov): the "before" of a listing is computed with the data of NOW, over the same 30 days as the control group's
+// "before", not taken from basis_imp_tag. basis_imp_tag is what was known at the start; on 20 Nov the hub's traffic still lacked the
+// last days (eBay request limit), so the stored value was about 8 % too low, while the control group was computed later with the
+// complete data. That mismatch alone would have shown up as +9 % "effect". basis_imp_tag stays in the history for the record.
+const vorher90Von = (z, impTag) => Math.round(impTag(z.number, plusTage(z.stufe_start, -BASIS_TAGE - 1), plusTage(z.stufe_start, -1)) * 90);
 // Impressions per day of the control group before (30 days) and during a time window, as the sum of the group
 function kontrollVergleich(db, impTag, von, bis, einst) {
   const nr = kontrollGruppe(db, von, bis, einst);
@@ -163,8 +170,10 @@ export function baueVorschlag(stufe, einst, { kanaele = [], varianten = [] } = {
     const preise = [...new Set([...kanaele.map((k) => Number(k.preis_aktuell)), ...varianten.map((v) => Number(v.price))].filter((x) => x > 0))];
     if (!kanaele.length || !preise.length) return { nichtMoeglich: "The current eBay price is not known." };
     if (preise.length > 1) return { nichtMoeglich: `The variants have different prices (${preise.map((p) => p.toFixed(2)).join(" / ")} €). One step down would break the price ladder, please decide by hand.` };
-    const alt = preise[0];
-    return { alt, neu: Math.floor(alt * (1 - einst.preisSchritt) * 100) / 100, schritt: einst.preisSchritt };
+    const alt = preise[0], neu = Math.floor(alt * (1 - einst.preisSchritt) * 100) / 100, minimum = einst.preisMinimum;
+    // F3: never below the lowest price the app may set (the step is skipped to the manual check instead)
+    if (minimum > 0 && neu < minimum) return { nichtMoeglich: `One step down (${neu.toFixed(2)} €) would go below the lowest price the app may set (${minimum.toFixed(2)} €, Settings). Skip this step to the manual check, or change the price by hand.`, alt, neu, minimum };
+    return { alt, neu, schritt: einst.preisSchritt, minimum };
   }
   return null;
 }
@@ -228,7 +237,7 @@ export async function fuehreAus(stufe, v, items, schreiber) {
 const norm = (s) => String(s ?? "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
 // An admin approves the running step: the app changes eBay, after that the waiting time runs. impTag(number, von, bis): impressions per day.
-export async function gibFrei(db, nutzer, number, { items, schreiber, impTag }, jetzt = new Date()) {
+export async function gibFrei(db, nutzer, number, { items, schreiber, impTag, einst = EINSTELLUNGEN }, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can approve a ladder step.");
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "vorschlag"); if (f) return f;
   const v = json(z.vorschlag);
@@ -239,12 +248,20 @@ export async function gibFrei(db, nutzer, number, { items, schreiber, impTag }, 
     const p = pruefeTitel(v.titel, v.alt);
     if (!p.ok) return fehler(409, "This title breaks a rule that was tightened after it was suggested: " + p.verstoesse.map((x) => x.text).join(" ") + " Ask the AI again or enter a title by hand.");
   }
+  // F3: the floor as it is set now, also for a suggestion made before it was raised
+  if (z.stufe === "preis" && einst.preisMinimum > 0 && !(v.neu >= einst.preisMinimum)) return fehler(409, `The new price ${Number(v.neu).toFixed(2)} € is below the lowest price the app may set (${einst.preisMinimum.toFixed(2)} €). Nothing was changed. Skip this step or change the price by hand.`);
   let r;
   try { r = await fuehreAus(z.stufe, v, items, schreiber); } catch (e) { r = { ausgang: "fehlgeschlagen", text: "Error while talking to eBay: " + e.message }; }
   const ereignis = r.ausgang === "angewendet" ? "freigegeben" : r.ausgang;
   verlauf(db, z.number, z.stufe, ereignis, { text: r.text, vorschlag: v }, nutzer.name, jetzt);
   protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_" + ereignis, objekt: "product " + z.number, details: { stufe: z.stufe, vorschlag: v, text: r.text }, ergebnis: r.ausgang === "angewendet" ? "ok" : r.ausgang === "probelauf" ? "dry_run" : "error" }, jetzt);
-  if (r.ausgang === "angewendet") starte(db, z, impTag, nutzer, jetzt);
+  if (r.ausgang === "angewendet") {
+    // F6: from now on eBay should show the new title or price; until the catalogue has caught up the old value still counts
+    const s0 = letzterStand(db, z.number) || { titel: items[0]?.title ?? null, preis: Number(items[0]?.preis_aktuell) || null };
+    if (z.stufe === "titel") merkeStand(db, z.number, z.stufe, { titel: v.titel, preis: s0.preis, vorher: { titel: v.alt, preis: s0.preis }, grund: "title changed by the app" }, nutzer.name, jetzt);
+    if (z.stufe === "preis") merkeStand(db, z.number, z.stufe, { titel: s0.titel, preis: v.neu, vorher: { titel: s0.titel, preis: v.alt }, grund: "price changed by the app" }, nutzer.name, jetzt);
+    starte(db, z, impTag, nutzer, jetzt);
+  }
   return ok({ number: z.number, ausgang: r.ausgang, text: r.text });
 }
 
@@ -253,6 +270,7 @@ export function starteVonHand(db, nutzer, number, { impTag }, jetzt = new Date()
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can start a ladder step.");
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "vorschlag"); if (f) return f;
   if (z.stufe === "titel" && !json(z.vorschlag)) return fehler(409, "There is no title yet. Enter one first.");
+  merkeStand(db, z.number, z.stufe, { titel: null, preis: null, neuMerken: true, grund: "changed by hand on eBay" }, nutzer.name, jetzt);
   protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_started_manually", objekt: "product " + z.number, details: { stufe: z.stufe, hinweis: "Started without the app changing eBay" } }, jetzt);
   starte(db, z, impTag, nutzer, jetzt, true);
   return ok({ number: z.number });
@@ -296,11 +314,12 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
     const jeTag = impTag(z.number, z.stufe_start, ende);
     const hoch90 = Math.round(jeTag * 90);
     const erholt = hoch90 >= grenze90;
-    const vorher90 = Math.round((z.basis_imp_tag ?? 0) * 90);
+    const vorher90 = vorher90Von(z, impTag);
     // The same days on the control group: net effect = (listing after/before) / (control after/before) − 1
     const kontrolle = kontrollVergleich(db, impTag, z.stufe_start, ende, einst);
     const nettoEffekt = kontrolle ? netto({ vorher: vorher90, nachher: hoch90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
-    const details = { tage, vorher90, nachher90: hoch90, grenze90: Math.round(grenze90), erholt, kontrolle, netto: nettoEffekt };
+    // datenBis: the last data day this evaluation used, so it can be reproduced even if corrected numbers arrive later
+    const details = { tage, vorher90, nachher90: hoch90, grenze90: Math.round(grenze90), erholt, kontrolle, netto: nettoEffekt, datenBis: ende, fremdSeit: fremdSeit(db, z.number) };
     db.transaction(() => {
       verlauf(db, z.number, z.stufe, "ausgewertet", details, "system", jetzt);
       if (erholt) setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "erholt" }, jetzt);
@@ -321,6 +340,42 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
 
 // Effect per step against the control group: all evaluations of this step together (sum before/after of the listings and of the
 // control group at the same time). Without a control group the evaluation counts only for "seen again", not in the net effect.
+// ---------- F6: changes made outside the app ----------
+// The app knows which title and price a listing on the ladder should have on eBay: the state at the first check after the draw, and
+// after every change it made, the new value ("stand" in the history). The hub's catalogue (pm.db, table kanal) shows the eBay state
+// at least once a day. A difference the app did not make is marked once ("fremd"): history, protocol, badge; evaluations note it and
+// a control listing drops out of the control group. Right after an app change the catalogue may show the old value for SYNC_TAGE days.
+export const SYNC_TAGE = 2;
+const gleicherTitel = (a, b) => norm(a).toLowerCase() === norm(b).toLowerCase();
+const gleicherPreis = (a, b) => a != null && b != null && Math.abs(Number(a) - Number(b)) <= 0.005;
+const letzterStand = (db, number) => json(db.prepare("SELECT details FROM leiter_verlauf WHERE number = ? AND ereignis = 'stand' ORDER BY id DESC LIMIT 1").get(number)?.details);
+function merkeStand(db, number, stufe, stand, benutzer, jetzt) { verlauf(db, number, stufe, "stand", { ...stand, at: jetzt.toISOString() }, benutzer, jetzt); }
+// Since when a listing counts as changed outside the app: the first mark after its last known state, or null
+export const fremdSeit = (db, number) => db.prepare("SELECT MIN(at) at FROM leiter_verlauf WHERE number = ? AND ereignis = 'fremd' AND id > (SELECT COALESCE(MAX(id), 0) FROM leiter_verlauf WHERE number = ? AND ereignis = 'stand')").get(number, number)?.at ?? null;
+// katalog: Map number → { titel, preis } of the active eBay listing (pm.db). Returns the numbers marked in this run.
+export function pruefeFremdaenderungen(db, katalog, jetzt = new Date()) {
+  const markiert = [];
+  for (const z of db.prepare("SELECT number, stufe FROM leiter WHERE stufe != 'raus'").all()) {
+    const k = katalog.get(z.number);
+    if (!k) continue;
+    const s = letzterStand(db, z.number), alter = s ? jetzt.getTime() - Date.parse(s.at) : 0;
+    // No known state yet, or a change by hand whose result the catalogue shows by now: remember what eBay shows
+    if (!s || (s.neuMerken && alter >= SYNC_TAGE * 864e5)) { merkeStand(db, z.number, z.stufe, { titel: k.titel, preis: k.preis, grund: s ? "state after the change by hand" : "first check" }, "system", jetzt); continue; }
+    if (s.neuMerken) continue;
+    const frisch = !!s.vorher && alter < SYNC_TAGE * 864e5, abw = [];
+    if (s.titel != null && !gleicherTitel(k.titel, s.titel) && !(frisch && gleicherTitel(k.titel, s.vorher.titel))) abw.push({ feld: "titel", erwartet: s.titel, ebay: k.titel });
+    if (s.preis != null && k.preis != null && !gleicherPreis(k.preis, s.preis) && !(frisch && gleicherPreis(k.preis, s.vorher.preis))) abw.push({ feld: "preis", erwartet: s.preis, ebay: k.preis });
+    if (!abw.length) continue;
+    // Once per difference: no new mark while eBay shows the same as at the last mark
+    const zuletzt = json(db.prepare("SELECT details FROM leiter_verlauf WHERE number = ? AND ereignis = 'fremd' ORDER BY id DESC LIMIT 1").get(z.number)?.details);
+    if (fremdSeit(db, z.number) && JSON.stringify(zuletzt?.abweichungen) === JSON.stringify(abw)) continue;
+    verlauf(db, z.number, z.stufe, "fremd", { abweichungen: abw }, "system", jetzt);
+    protokoll.schreibe(db, { benutzer: "system", aktion: "ladder_outside_change", objekt: "product " + z.number, details: { stufe: z.stufe, abweichungen: abw } }, jetzt);
+    markiert.push(z.number);
+  }
+  return markiert;
+}
+
 export function wirkung(db) {
   const aus = {};
   for (const s of ["titel", "werbung", "preis"]) aus[s] = { ausgewertet: 0, erholt: 0, mitKontrolle: 0, vorher90: 0, nachher90: 0, kontrolleVorher90: 0, kontrolleNachher90: 0, netto: null };
@@ -373,31 +428,35 @@ export function trichter(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date()
   return { zahl, gruende, kpi, liste };
 }
 const PHASE_GRUND = { vorschlag: "A suggestion is ready and waits for an admin's approval.", laeuft: "The change is live on eBay; the waiting time is running.", offen: "Title, ads and price did not help; an admin decides what happens." };
-const ERGEBNIS_GRUND = { ueberarbeiten: "Decided after the manual check: rework the listing", offline: "Decided after the manual check: take it offline", behalten: "Decided after the manual check: keep it as it is", abgebrochen: "Taken off the ladder by an admin", kontrolle: "Was in the control group" };
+const ERGEBNIS_GRUND = { rueckgaengig: "Undone on eBay by an admin: title, ads and price are back as before", ueberarbeiten: "Decided after the manual check: rework the listing", offline: "Decided after the manual check: take it offline", behalten: "Decided after the manual check: keep it as it is", abgebrochen: "Taken off the ladder by an admin", kontrolle: "Was in the control group" };
 
 // An admin decides after the manual check. The app changes nothing on eBay here: "offline" is a task for the admin.
 // Movement by hand (Niko, 20 Nov: products move only by button): an admin pushes a listing out of the running waiting time
 // into the next phase (ziel "weiter") or takes it off the ladder as seen again (ziel "erholt"). It is measured as in the
 // automatic run, only over the days that are in the data so far; the measurement is in the history as "ausgewertet"
 // (with vonHand), so that the effect per phase continues to be calculated against the control group.
-export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN, fuer = null }, jetzt = new Date()) {
+// Before the waiting time is complete in the data the move ends it early (F2, no silent peeking): it needs vorzeitigBestaetigt,
+// and the evaluation stores vorzeitig with the planned end, so Results and the history show it.
+export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN, fuer = null }, jetzt = new Date(), { vorzeitigBestaetigt = false } = {}) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can move a listing in the funnel.");
   if (!["weiter", "erholt"].includes(ziel)) return fehler(400, "Unknown move.");
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "laeuft"); if (f) return f;
   const tage = pruefTage(z.stufe, einst), ende = plusTage(z.stufe_start, tage);
   const bis = trafficBis && trafficBis < ende ? trafficBis : ende;
   const gemessen = trafficBis ? Math.max(0, Math.round((Date.parse(bis) - Date.parse(z.stufe_start)) / 864e5)) : 0;
-  const vorher90 = Math.round((z.basis_imp_tag ?? 0) * 90);
+  const vorher90 = vorher90Von(z, impTag);
   const nachher90 = gemessen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null;
   const kontrolle = gemessen > 0 ? kontrollVergleich(db, impTag, z.stufe_start, bis, einst) : null;
+  const vorzeitig = gemessen < tage;
+  if (vorzeitig && !vorzeitigBestaetigt) return fehler(409, `The waiting time is not over: ${gemessen} of ${tage} data days. Moving on now ends it early; this is recorded and shown in Results. Confirm to continue.`);
   const nettoEffekt = kontrolle && nachher90 != null ? netto({ vorher: vorher90, nachher: nachher90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
-  const details = { tage, gemessenTage: gemessen, vorher90, nachher90, grenze90: Math.round(grenze90 ?? 0), erholt: ziel === "erholt", kontrolle, netto: nettoEffekt, vonHand: true };
+  const details = { tage, gemessenTage: gemessen, vorzeitig, geplantesEnde: ende, vorher90, nachher90, grenze90: Math.round(grenze90 ?? 0), erholt: ziel === "erholt", kontrolle, netto: nettoEffekt, vonHand: true, datenBis: gemessen > 0 ? bis : null, fremdSeit: fremdSeit(db, z.number) };
   db.transaction(() => {
     verlauf(db, z.number, z.stufe, "ausgewertet", details, nutzer.name, jetzt);
     if (ziel === "erholt") setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "erholt" }, jetzt);
     else weiter(db, z, einst, { fuer }, jetzt);
   })();
-  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_moved", objekt: "product " + z.number, details: { stufe: z.stufe, ziel, gemessenTage: gemessen, netto: nettoEffekt } }, jetzt);
+  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_moved", objekt: "product " + z.number, details: { stufe: z.stufe, ziel, gemessenTage: gemessen, vorzeitig, netto: nettoEffekt } }, jetzt);
   return ok({ number: z.number, ziel, stufe: ziel === "erholt" ? "raus" : naechste(z.stufe), messung: details });
 }
 
@@ -431,6 +490,71 @@ export function brichAb(db, nutzer, number, grund, jetzt = new Date()) {
   })();
   protokoll.schreibe(db, { ...wer(nutzer), aktion: ohnePause ? "ladder_reset" : "ladder_removed", objekt: "product " + z.number, details: { stufe: z.stufe, grund: g } }, jetzt);
   return ok({ number: z.number, pause: !ohnePause });
+}
+
+// ---------- F7: undo on eBay ----------
+// Everything the app changed on this listing goes back, the last change first: price → old price, ad → removed from the app's own
+// campaign, title → old title. Read before write as for every change: a part is undone only if eBay still shows what the app wrote,
+// otherwise that part is left alone and the message says what eBay shows. Without credentials or switches it is a dry run.
+// After a real undo the listing leaves the ladder as "rueckgaengig" (its running measurement is dropped) and pauses like any
+// listing that was changed. History and protocol keep both the changes and the undo.
+const TEIL = { titel: "Title", werbung: "Ad", preis: "Price" };
+export function aenderungenDerApp(db, z) {
+  return db.prepare("SELECT stufe, details, at FROM leiter_verlauf WHERE number = ? AND at >= ? AND ereignis = 'freigegeben' ORDER BY id").all(z.number, z.eingestiegen_at)
+    .map((e) => ({ stufe: e.stufe, v: json(e.details)?.vorschlag, at: e.at })).filter((x) => x.v && TEIL[x.stufe]);
+}
+const beschreibe = (t) => (t.stufe === "titel" ? `set the title back to “${t.v.alt}”` : t.stufe === "preis" ? `set the price back to ${Number(t.v.alt).toFixed(2)} €` : "remove the ad");
+export async function macheRueckgaengig(db, nutzer, number, { items, schreiber }, jetzt = new Date()) {
+  if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can undo changes on eBay.");
+  const z = lade(db, String(number ?? ""));
+  if (!z || z.stufe === "raus") return fehler(404, "This listing is not on the ladder.");
+  const teile = aenderungenDerApp(db, z).reverse();
+  if (!teile.length) return fehler(409, "The app has not changed this listing on eBay, so there is nothing to undo. Use “Take off the ladder” instead.");
+  if (!items?.length) return fehler(409, "No active eBay listing found for this product.");
+  const an = (stufe) => (stufe === "titel" ? schreiber.schreibenAn() : stufe === "werbung" ? schreiber.schreibenAn() && schreiber.werbungAn() : schreiber.schreibenAn() && schreiber.preisAn());
+  if (!schreiber.konfiguriert() || teile.some((t) => !an(t.stufe))) {
+    const text = `Dry run: the undo would ${teile.map(beschreibe).join(", then ")}. ${schreiber.konfiguriert() ? "Writing is switched off for at least one part." : "This computer has no eBay credentials."} Nothing was changed on eBay.`;
+    verlauf(db, z.number, z.stufe, "probelauf", { text, rueckgaengig: true }, nutzer.name, jetzt);
+    protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_undo_dry_run", objekt: "product " + z.number, details: { teile: teile.map((t) => t.stufe), text }, ergebnis: "dry_run" }, jetzt);
+    return ok({ number: z.number, ausgang: "probelauf", text });
+  }
+  const texte = [], erledigt = [];
+  for (const it of items) {
+    const id = String(it.external_id);
+    let g;
+    try { g = await schreiber.lies(id); } catch (e) { g = { ok: false, meldung: e.message }; }
+    if (!g.ok) { texte.push(`Listing ${id}: could not read it on eBay (${g.meldung}), nothing undone.`); continue; }
+    for (const t of teile) {
+      let r;
+      try {
+        if (t.stufe === "preis") {
+          const preise = g.variationen?.length ? [...new Set(g.variationen.map((x) => x.preis))] : [g.preis];
+          if (preise.length !== 1 || Math.abs(preise[0] - t.v.neu) > 0.005) { texte.push(`Price not undone: eBay shows ${preise.map((p) => Number(p).toFixed(2)).join(" / ")} €, not the ${Number(t.v.neu).toFixed(2)} € the app set.`); continue; }
+          r = await schreiber.setzePreis(id, g.variationen?.map((x) => x.sku) || [], t.v.alt);
+        } else if (t.stufe === "werbung") r = await schreiber.entferneWerbung(id);
+        else {
+          if (norm(g.titel) !== norm(t.v.titel)) { texte.push(`Title not undone: eBay shows “${g.titel}”, not the title the app set.`); continue; }
+          r = await schreiber.setzeTitel(id, t.v.alt);
+        }
+      } catch (e) { r = { ok: false, meldung: e.message }; }
+      if (!r.ok) { texte.push(`${TEIL[t.stufe]} not undone: eBay refused (${r.meldung}).`); continue; }
+      erledigt.push(t.stufe); texte.push(`${TEIL[t.stufe]} undone: ${beschreibe(t).replace(/^set /, "").replace(/^remove /, "removed ")}.`);
+    }
+    // Read back: what does eBay show now?
+    try { const n = await schreiber.lies(id); if (n?.ok) texte.push(`Now on eBay: “${n.titel}”, ${(n.variationen?.length ? n.variationen.map((x) => x.preis) : [n.preis]).map((p) => Number(p).toFixed(2)).join(" / ")} €.`); } catch { /* only for the record */ }
+  }
+  const text = texte.join(" ");
+  if (!erledigt.length) {
+    verlauf(db, z.number, z.stufe, "fehlgeschlagen", { text, rueckgaengig: true }, nutzer.name, jetzt);
+    protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_undo_failed", objekt: "product " + z.number, details: { text }, ergebnis: "error" }, jetzt);
+    return ok({ number: z.number, ausgang: "fehlgeschlagen", text });
+  }
+  db.transaction(() => {
+    setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "rueckgaengig" }, jetzt);
+    verlauf(db, z.number, z.stufe, "rueckgaengig", { teile: erledigt, offen: teile.length * items.length - erledigt.length, text }, nutzer.name, jetzt);
+  })();
+  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_undone", objekt: "product " + z.number, details: { teile: erledigt, text } }, jetzt);
+  return ok({ number: z.number, ausgang: "rueckgaengig", text });
 }
 
 // "Start over": everything that has not been changed on eBay yet goes back to "Eligible" (the control group too). Listings with
@@ -489,7 +613,7 @@ export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst =
       const tage = pruefTage(z.stufe, einst), ende = plusTage(z.stufe_start, tage);
       const bis = trafficBis && trafficBis < ende ? trafficBis : ende;
       const gelaufen = trafficBis ? Math.max(0, Math.round((Date.parse(bis) - Date.parse(z.stufe_start)) / 864e5)) : 0;
-      stand = { tage, gelaufen, ende, jetzt90: gelaufen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null, vorher90: Math.round((z.basis_imp_tag ?? 0) * 90) };
+      stand = { tage, gelaufen, ende, jetzt90: gelaufen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null, vorher90: vorher90Von(z, impTag) };
       // Interim state against the control group over the same days: basis for "Next phase" / "Seen again" by hand
       const k = gelaufen > 0 ? kontrollVergleich(db, impTag, z.stufe_start, bis, einst) : null;
       stand.kontrolle = k;
@@ -497,10 +621,11 @@ export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst =
     }
     const x = p.get(z.number) || {};
     return { number: z.number, title: x.title ?? null, image_url: x.image_url ?? null, units_90d: x.units_90d ?? null, impressionen_90d: x.impressionen_90d ?? null,
-      stufe: z.stufe, phase: z.phase, ergebnis: z.ergebnis, eingestiegen_at: z.eingestiegen_at, stufe_start: z.stufe_start, vorschlag: json(z.vorschlag), stand, verlauf: verlaeufe.get(z.number) || [] };
+      stufe: z.stufe, phase: z.phase, ergebnis: z.ergebnis, eingestiegen_at: z.eingestiegen_at, stufe_start: z.stufe_start, vorschlag: json(z.vorschlag), stand, verlauf: verlaeufe.get(z.number) || [],
+      fremdSeit: z.stufe === "raus" ? null : fremdSeit(db, z.number) };
   });
   const zahl = Object.fromEntries([...STUFEN, KONTROLLE, "raus"].map((s) => [s, zeilen.filter((z) => z.stufe === s).length]));
-  const raus = Object.fromEntries(["erholt", ...ENTSCHEIDUNGEN, "abgebrochen", KONTROLLE].map((e) => [e, zeilen.filter((z) => z.ergebnis === e).length]));
+  const raus = Object.fromEntries(["erholt", ...ENTSCHEIDUNGEN, "abgebrochen", "rueckgaengig", KONTROLLE].map((e) => [e, zeilen.filter((z) => z.ergebnis === e).length]));
   return { zahl, raus, grenze90: Math.round(grenze90), trafficBis, max: einst.leiterMax, tage: { titel: einst.leiterTageTitel, werbung: einst.leiterTageWerbung, preis: einst.leiterTagePreis, kontrolle: kontrollTage(einst) },
     kontrolleAn: !!einst.leiterKontrolle, bewegung: einst.leiterBewegung === "automatisch" ? "automatisch" : "hand", werbesatz: einst.werbesatz, preisSchritt: einst.preisSchritt, wirkung: wirkung(db), angebote: zeilen };
 }

@@ -46,6 +46,9 @@ function phase(angebote, stufe, name) {
   const laufend = angebote.filter((a) => a.phase === "laeuft" && a.stufe === stufe);
   return {
     schluessel: stufe, name, ausgewertet: aus.length, mitKontrolle: mit.length, erholt: aus.filter((d) => d.erholt).length,
+    // ended before the waiting time was complete (F2): count and the shortest measurement
+    fremd: aus.filter((d) => d.fremdSeit).length, // F6: evaluations of listings that were changed outside the app
+    vorzeitig: aus.filter((d) => d.vorzeitig).length, kuerzesteTage: aus.filter((d) => d.vorzeitig && Number.isFinite(d.gemessenTage)).reduce((m, d) => (m == null ? d.gemessenTage : Math.min(m, d.gemessenTage)), null),
     vorher90: s.v, nachher90: s.n, aenderung: mit.length ? aenderung(s.v, s.n) : null, kontrolleAenderung: mit.length ? aenderung(s.kv, s.kn) : null,
     netto: mit.length ? netto({ vorher: s.v, nachher: s.n }, { vorher: s.kv, nachher: s.kn }) : null,
     schaetzung, urteil: urteil(schaetzung, mit.length),
@@ -102,17 +105,29 @@ export function fluss(angebote) {
   return { stufen, pruefung };
 }
 
-const lauf = (schluessel, name, angebote) => ({
+// Balance at the draw (F5): impressions per 90 days of the test and the control listings in the 30 days before the day they were
+// drawn, from the daily traffic (impTag as in the server), so it works for draws made before the paired lot too. null without impTag.
+const plusTage = (t, n) => new Date(Date.parse(t + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+export function ausgleich(test, kontrolle, impTag) {
+  if (typeof impTag !== "function" || !test.length || !kontrolle.length) return null;
+  const summe = (liste) => Math.round(liste.reduce((s, a) => { const tag = String(a.eingestiegen_at).slice(0, 10); return s + (Number(impTag(a.number, plusTage(tag, -31), plusTage(tag, -1))) || 0) * 90; }, 0));
+  return { test: summe(test), kontrolle: summe(kontrolle), nTest: test.length, nKontrolle: kontrolle.length };
+}
+
+const lauf = (schluessel, name, angebote, balance = null) => ({
   schluessel, name, angebote: angebote.filter((a) => !istKontrolle(a)).length,
   fluss: fluss(angebote.filter((a) => !istKontrolle(a))),
   phasen: PHASEN.map(([s, n]) => phase(angebote, s, n)),
+  ausgleich: balance,
 });
 
 // u = result of leiter.uebersicht. One run per day on which listings went onto the ladder (newest first), preceded by "all runs".
-export function baueErgebnisse(u, { besserAb = 0.2 } = {}) {
-  const getestet = u.angebote.filter((a) => !istKontrolle(a));
-  const tage = [...new Set(getestet.map((a) => String(a.eingestiegen_at).slice(0, 10)))].sort().reverse();
-  const laeufe = [lauf(ALLE, "All runs", u.angebote), ...tage.map((t) => lauf(t, t, getestet.filter((a) => String(a.eingestiegen_at).slice(0, 10) === t)))];
+export function baueErgebnisse(u, { besserAb = 0.2, impTag = null } = {}) {
+  const getestet = u.angebote.filter((a) => !istKontrolle(a)), kontrollen = u.angebote.filter(istKontrolle);
+  const tag = (a) => String(a.eingestiegen_at).slice(0, 10);
+  const tage = [...new Set(getestet.map(tag))].sort().reverse();
+  const laeufe = [lauf(ALLE, "All runs", u.angebote, ausgleich(getestet, kontrollen, impTag)),
+    ...tage.map((t) => lauf(t, t, getestet.filter((a) => tag(a) === t), ausgleich(getestet.filter((a) => tag(a) === t), kontrollen.filter((a) => tag(a) === t), impTag)))];
   // The control group belongs to no run; its figures are inside the evaluations of the listings
   return {
     laeufe, kontrollgruppe: u.angebote.length - getestet.length, trafficBis: u.trafficBis ?? null,

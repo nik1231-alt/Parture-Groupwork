@@ -38,6 +38,7 @@ five fields in the export code). The log contains only team user names, listing 
 | A3.8 | Secrets | row 4. `npm run scan` on 19 Nov: clean |
 | A3.9 | Roles on the server | row 2 |
 | A3.10 | Access from outside | row 1 |
+| A3.12 | Undo on eBay (F7): admin only, read before write, dry run without switches | `test-leiter.mjs` → *"Undo on eBay (F7): …"* (3 tests: reverse order, price, eBay changed in between / nothing to undo / dry run); `test-rollen-http.mjs` → builder gets 403 on `/api/leiter/rueckgaengig`. The ad is only removed from the app's own campaign |
 | A3.11 | eBay write path, one test per latch | `test-freigabe.mjs` → *"eBay latch 1: without all three credentials no call goes out, even with EBAY_SCHREIBEN=an"*, *"eBay latch 2: only exactly EBAY_SCHREIBEN=an switches writing on"*, *"eBay writer: without EBAY_SCHREIBEN=an nothing is ever written …"*, *"eBay latch 3: read before write with the real writer …"*, *"Limit: …"*, *"eBay latch 4: every outcome is in the log …"* |
 | A3.12 | Dependencies and Node version | one direct dependency (`better-sqlite3`, with 38 indirect packages); `npm audit --omit=dev` on 19 Nov: *"found 0 vulnerabilities"*. Node fixed: `"engines": { "node": ">=22" }` in `package.json`, `.nvmrc` = `22` (server: Node 22.22.3, CI: Node 22) |
 | A3.13 | No customer data | sentence at the top |

@@ -21,7 +21,7 @@ import { baueDemo } from "./demo.mjs";
 import * as titelhilfe from "./titelhilfe.mjs";
 import * as sicherung from "./sicherung.mjs";
 import * as benachrichtigung from "./benachrichtigung.mjs";
-import { laDatum, verzoegerungTage, NACHPRUEFEN_TAGE } from "./traffic.mjs";
+import { laDatum, verzoegerungTage, verzoegerungFuer, NACHPRUEFEN_TAGE } from "./traffic.mjs";
 import * as leiter from "./leiter.mjs";
 import * as problem from "./problem.mjs";
 import * as dashboard from "./dashboard.mjs";
@@ -108,7 +108,16 @@ async function werbungSpruenge(nummern = null) {
 }
 // Approval of a ladder step. Phase 2 only if eBay confirms that the listing is not advertised yet; otherwise it jumps to
 // the price step. If this cannot be checked (no access, eBay error), nothing is approved.
-async function freigeben(ctx, nr) {
+// One eBay write per listing at a time (review 21 Nov): a second click or a second admin during the eBay call gets 409 instead of
+// writing twice. Approve, Approve all and Undo share the lock.
+const ebayLaeuft = new Set();
+async function mitSperre(nr, aufgabe) {
+  if (ebayLaeuft.has(nr)) throw Object.assign(new Error("This listing is being changed on eBay right now. Wait a moment and reload."), { status: 409 });
+  ebayLaeuft.add(nr);
+  try { return await aufgabe(); } finally { ebayLaeuft.delete(nr); }
+}
+const freigeben = (ctx, nr) => mitSperre(nr, () => freigebenOhneSperre(ctx, nr));
+async function freigebenOhneSperre(ctx, nr) {
   const z = appDb().prepare("SELECT stufe, phase FROM leiter WHERE number = ?").get(nr);
   if (z?.stufe === "werbung" && z.phase === "vorschlag") {
     for (const it of leiterKontext(nr).kanaele) {
@@ -120,7 +129,7 @@ async function freigeben(ctx, nr) {
       }
     }
   }
-  return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag }));
+  return antwort(await leiter.gibFrei(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber, impTag, einst: einst() }));
 }
 const leiterDaten = (produkte = produkteLaden()) => ({ impTag, trafficBis: trafficBis(), grenze90: leiteSchwellenAb(produkte, einst(), new Date()).wenigImpressionen90d, einst: einst(), fuer: leiterKontext });
 // AI title suggestion for a product in step 1 (goes through the rule checker, see ki-titel.mjs)
@@ -152,6 +161,17 @@ function dashboardDaten() {
   });
   return dashboard.baueDashboard({ starts, abbrueche, auswertungen, kontrolle, tage, trafficBis: trafficBis(), einst: einst() });
 }
+// F6: title and price of every active eBay listing from the catalogue (pm.db), the basis for noticing changes made outside the app
+function katalogStand() {
+  const k = new Map();
+  for (const r of mitDb((db) => db.prepare("SELECT number, title, preis_aktuell FROM kanal WHERE channel = 'ebay' AND listed = 1 AND external_id IS NOT NULL ORDER BY external_id").all()))
+    if (!k.has(r.number)) k.set(r.number, { titel: r.title, preis: r.preis_aktuell == null ? null : Number(r.preis_aktuell) });
+  return k;
+}
+function pruefeFremd() {
+  try { const neu = leiter.pruefeFremdaenderungen(appDb(), katalogStand()); if (neu.length) console.log("Changed outside the app: " + neu.join(", ")); }
+  catch (e) { console.error("Check for outside changes:", e.message); }
+}
 let leiterLaeuft = false;
 // One run: evaluate waiting times, take in new listings, suggest titles for step 1. Changes nothing on eBay.
 // Movement "hand" (default since 20 Nov): the daily run only fetches AI titles; taking in only by the button "Draw listings by lot"
@@ -163,6 +183,7 @@ async function leiterLauf(wer, art = "tag", ziehen = {}) {
   try {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
     const entfernt = leiter.raeumeVerkaufteAb(appDb(), produkte, daten.einst); // before drawing: already sold on eBay ones go down
+    pruefeFremd();
     const automatisch = daten.einst.leiterBewegung === "automatisch";
     const bewerten = automatisch && art !== "ziehen", aufnehmen = automatisch || art === "ziehen";
     const ausgewertet = bewerten || aufnehmen ? leiter.werteAus(appDb(), { ...daten, nurKontrolle: !bewerten }) : [];
@@ -305,13 +326,16 @@ function sicherungStatus() {
   const k = sicherung.konfiguration(); const alle = sicherung.liste(k.ziel);
   return { automatisch: SICH_AUTO, uhrzeit: SICH_UHR, letzte: alle[0]?.geaendert ?? null, anzahl: alle.length, zweiterOrt: !!k.ziel2, laeuft: sicherungLaeuft };
 }
-// How old is the traffic data compared with the target? Target: today minus delay (LA time). 2 days or more behind = outdated.
+// How old is the traffic data compared with the target? Target: today minus the delay of the data source (LA time):
+// 1 day for the hub export, the import's own delay otherwise (traffic.mjs, verzoegerungFuer). 2 days or more behind = outdated.
 function datenStand() {
-  let bis = null; try { bis = mitDb((db) => db.prepare("SELECT traffic_bis FROM stand").get()?.traffic_bis ?? null); } catch { /* keine pm.db */ }
-  if (!bis || !/^\d{4}-\d{2}-\d{2}$/.test(bis)) return { trafficBis: null, rueckstandTage: null, veraltet: false };
-  const soll = laDatum(new Date(), verzoegerungTage());
+  let bis = null, quelle = null;
+  try { const s = mitDb((db) => db.prepare("SELECT * FROM stand").get()); bis = s?.traffic_bis ?? null; quelle = s?.quelle ?? null; } catch { /* keine pm.db */ }
+  const verzoegerung = verzoegerungFuer(quelle), hub = /hub/i.test(String(quelle ?? ""));
+  if (!bis || !/^\d{4}-\d{2}-\d{2}$/.test(bis)) return { trafficBis: null, rueckstandTage: null, veraltet: false, verzoegerung, hub };
+  const soll = laDatum(new Date(), verzoegerung);
   const rueckstand = Math.round((Date.parse(soll) - Date.parse(bis)) / 864e5);
-  return { trafficBis: bis, soll, rueckstandTage: rueckstand, veraltet: rueckstand >= 2 };
+  return { trafficBis: bis, soll, rueckstandTage: rueckstand, veraltet: rueckstand >= 2, verzoegerung, hub };
 }
 // The app's fixed numbers, each from exactly one constant: the interface shows them from here instead of keeping its own copies
 const regelZahlen = () => ({ titelMaxZeichen: TITEL_MAX_ZEICHEN, maxAenderungen: freigabe.MAX_AENDERUNGEN, zielmarke: einst().besserAb, maxFehlversuche: login.MAX_FEHLVERSUCHE, sperreMinuten: login.SPERRE_MINUTEN, verzoegerungTage: verzoegerungTage(), nachpruefenTage: NACHPRUEFEN_TAGE });
@@ -422,7 +446,7 @@ const ROUTEN = {
   // Page Results: effect of each phase of the ladder on the impressions, per run and in total (ergebnisse.mjs); the example has invented figures
   "/api/ergebnisse": () => {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
-    return baueErgebnisse(leiter.uebersicht(appDb(), produkte, daten), { besserAb: daten.einst.besserAb });
+    return baueErgebnisse(leiter.uebersicht(appDb(), produkte, daten), { besserAb: daten.einst.besserAb, impTag });
   },
   "/api/ergebnisse/beispiel": () => baueDemoErgebnisse(einst()),
   "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal WHERE channel = 'ebay' GROUP BY channel ORDER BY produkte DESC").all()),
@@ -541,7 +565,7 @@ const POST_ROUTEN = {
   "/api/leiter/schieben": async (req, ctx) => {
     adminNoetig(ctx);
     const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
-    const r = antwort(leiter.schiebeVonHand(appDb(), ctx, nr, b?.ziel, leiterDaten(produkteLaden())));
+    const r = antwort(leiter.schiebeVonHand(appDb(), ctx, nr, b?.ziel, leiterDaten(produkteLaden()), undefined, { vorzeitigBestaetigt: b?.vorzeitig === true }));
     const sprung = r.stufe === "werbung" ? await werbungSpruenge([nr]) : [];
     return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null };
   },
@@ -554,6 +578,12 @@ const POST_ROUTEN = {
     return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null };
   },
   "/api/leiter/entscheidung": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.entscheide(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.entscheidung, b?.notiz)); },
+  // F7: undo everything the app changed on eBay for this listing (admin, two clicks in the interface, read before write)
+  "/api/leiter/rueckgaengig": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
+    return antwort(await mitSperre(nr, () => leiter.macheRueckgaengig(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber })));
+  },
   "/api/leiter/abbrechen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.brichAb(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund)); },
   // Builder and admin: enter a title by hand (it must pass the rule checker) or ask the AI again
   "/api/leiter/titel": async (req, ctx) => {
@@ -646,6 +676,8 @@ server.listen(PORT, "127.0.0.1", () => {
   // List of the advertised eBay listings (phase 2 only for non-advertised ones): at start and every 6 hours
   // After every rollout once: listings already sold on eBay without an eBay change come off the ladder (leiter.raeumeVerkaufteAb)
   setTimeout(() => { try { const p = produkteLaden(); leiter.raeumeVerkaufteAb(appDb(), p, leiterDaten(p).einst); } catch (e) { console.error("Ladder clean-up:", e.message); } }, 20e3).unref();
+  // F6: compare the ladder with the catalogue every 15 minutes (the hub export arrives every hour, no eBay calls)
+  setTimeout(pruefeFremd, 30e3).unref(); setInterval(pruefeFremd, 15 * 60e3).unref();
   if (schreiber.konfiguriert()) { setTimeout(() => aktualisiereWerbung().catch(() => {}), 30e3).unref(); setInterval(() => aktualisiereWerbung().catch(() => {}), 6 * 3600e3).unref(); }
   if (TRAFFIC_AUTO) { console.log(`Automatic traffic import: daily from ${TRAFFIC_UHR}:00 (delay ${verzoegerungTage()} days).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
 });

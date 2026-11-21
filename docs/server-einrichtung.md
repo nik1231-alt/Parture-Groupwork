@@ -131,7 +131,7 @@ npm run export          # builds daten\pm.db: listings, sales, daily traffic val
 - Afterwards the import runs **by itself every day from 5 a.m.** (`EBAY_TRAFFIC_AUTO=an`), with finished days only (3 days delay); the last 3 days are re-checked and checked against the account total (below 80 % coverage it aborts, the old file stays).
 - Visible in the app: tab **Log → Traffic import** and **System**. If the data is more than 2 days behind target, a yellow warning appears at the top and (with Telegram) a message.
 
-Probes: the Log tab shows "Last successful import" with today's date; at the top of the app it says "traffic up to <date>", which is 3 days back.
+Probes: the Log tab shows "Last successful import" with today's date; at the top of the app it says "traffic up to <date>", which is 3 days back with this import (with the hub export on PROD it is yesterday, see README → Data).
 
 ## 8. Backup
 

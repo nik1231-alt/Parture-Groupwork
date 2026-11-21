@@ -40,6 +40,7 @@ export const EINSTELLUNGEN = {
   leiterKontrolle: true,     // the daily run draws one control listing for every listing taken in (stays unchanged, comparison per step)
   werbesatz: 0.1,            // ad rate for eBay Promoted Listings (share of the sale price, due only on a sale)
   preisSchritt: 0.1,         // by this share the price is lowered in step 3
+  preisMinimum: 2.99,        // F3: the app never sets a lower price; it knows no costs, so this is a guard, not a margin check
 };
 
 // Order = order of the tabs in the interface
