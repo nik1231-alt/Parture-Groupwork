@@ -61,8 +61,18 @@ export function ziehe(kandidaten, n, seed) {
   const zufall = mulberry32(seed);
   for (let i = liste.length - 1; i > 0; i--) { const j = Math.floor(zufall() * (i + 1)); [liste[i], liste[j]] = [liste[j], liste[i]]; }
   const gezogen = liste.slice(0, n);
-  const haelfte = Math.floor(gezogen.length / 2);
-  return { test: gezogen.slice(0, haelfte), kontrolle: gezogen.slice(haelfte) };
+  // F5, matched pairs: the drawn listings sorted by impressions in 90 days, neighbours form a pair and a seeded coin decides which
+  // one of each pair is tested. Both groups then contain one listing of every size class, so a strong listing cannot land in one
+  // group by chance. Ties by number, so the input order still does not matter. Odd number: the last one goes to the control group.
+  const nr = (p) => String(p.number);
+  const sortiert = [...gezogen].sort((a, b) => (Number(b.impressionen_90d) || 0) - (Number(a.impressionen_90d) || 0) || (nr(a) < nr(b) ? -1 : nr(a) > nr(b) ? 1 : 0));
+  const test = [], kontrolle = [];
+  for (let i = 0; i + 1 < sortiert.length; i += 2) {
+    const [t, k] = zufall() < 0.5 ? [sortiert[i], sortiert[i + 1]] : [sortiert[i + 1], sortiert[i]];
+    test.push(t); kontrolle.push(k);
+  }
+  if (sortiert.length % 2) kontrolle.push(sortiert[sortiert.length - 1]);
+  return { test, kontrolle };
 }
 
 // Block list (table "sperre" in pm.db, comes from the hub): listings of a running price experiment in the shop must not go into any title test,

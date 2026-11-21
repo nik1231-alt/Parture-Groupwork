@@ -74,6 +74,9 @@ All products
 - **Net effect** of a phase = (listing after ÷ before) ÷ (control group after ÷ before) − 1, over exactly the same days. If the
   whole shop gets busier, the control group rises too and the net effect stays near zero. From +20 % a phase counts as clearly better.
 - **The lot** uses a stored seed, so the same candidates and the same seed always give the same split (`ziehe` in `app/experimente.mjs`).
+  Since 21 Nov it draws in **pairs**: the drawn listings are sorted by impressions, neighbours form a pair, and a coin decides which
+  of each pair is tested. So both groups get one listing of every size and a strong listing cannot land in one group by chance.
+  Results show the balance at the draw (both groups over the 30 days before).
 - **Movement by hand** (default, *Settings → Funnel movement*): products only move when an admin clicks. *Draw listings by
   lot* takes new listings (with control group); on a running card, *Next phase →* or *Seen again ✓* end the waiting time,
   measured up to that day against the control group and kept in the history. Before the waiting time is complete the button asks

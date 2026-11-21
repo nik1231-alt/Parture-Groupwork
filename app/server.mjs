@@ -425,7 +425,7 @@ const ROUTEN = {
   // Page Results: effect of each phase of the ladder on the impressions, per run and in total (ergebnisse.mjs); the example has invented figures
   "/api/ergebnisse": () => {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
-    return baueErgebnisse(leiter.uebersicht(appDb(), produkte, daten), { besserAb: daten.einst.besserAb });
+    return baueErgebnisse(leiter.uebersicht(appDb(), produkte, daten), { besserAb: daten.einst.besserAb, impTag });
   },
   "/api/ergebnisse/beispiel": () => baueDemoErgebnisse(einst()),
   "/api/kanaele": () => mitDb((db) => db.prepare("SELECT channel, COUNT(*) produkte, SUM(listed) gelistet, SUM(units_90d) stueck_90d FROM kanal WHERE channel = 'ebay' GROUP BY channel ORDER BY produkte DESC").all()),

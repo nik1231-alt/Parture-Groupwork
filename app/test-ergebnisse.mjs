@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { urteil, schaetze, tKritisch, baueErgebnisse, fluss, MIN_AUSGEWERTET, PHASEN, ALLE } from "./ergebnisse.mjs";
+import { urteil, schaetze, tKritisch, baueErgebnisse, fluss, ausgleich, MIN_AUSGEWERTET, PHASEN, ALLE } from "./ergebnisse.mjs";
 import { baueDemoErgebnisse } from "./ergebnisse-demo.mjs";
 import * as leiter from "./leiter.mjs";
 import { EINSTELLUNGEN } from "./regeln.mjs";
@@ -149,6 +149,20 @@ test("Example view: invented figures, always the same, two runs plus all, ads cl
   assert.ok(a.laeufe.some((l) => l.phasen.some((p) => p.urteil === "too_few")), "one run also shows 'too early'");
   const w = a.laeufe[0].fluss.stufen[1];
   assert.deepEqual([w.laeuft, w.wartet], [2, 1], "the example also shows running and waiting listings");
+});
+
+test("Balance at the draw (F5): impressions of test and control over the 30 days before their draw day, per run", () => {
+  const laeuft = (nr, tag, kontrolle = false) => ({ number: nr, stufe: kontrolle ? "kontrolle" : "titel", phase: kontrolle ? "kontrolle" : "laeuft", eingestiegen_at: tag + "T16:00:00.000Z", verlauf: [] });
+  const fenster = [];
+  const impTag = (nr, von, bis) => { fenster.push([nr, von, bis]); return { T1: 2, T2: 4, K1: 3, K2: 3, T3: 10, K3: 10 }[nr]; };
+  const e = baueErgebnisse(uebersicht([laeuft("T1", "2026-11-20"), laeuft("T2", "2026-11-20"), laeuft("K1", "2026-11-20", true), laeuft("K2", "2026-11-20", true),
+    laeuft("T3", "2026-11-22"), laeuft("K3", "2026-11-22", true)]), { impTag });
+  assert.deepEqual(e.laeufe[0].ausgleich, { test: 1440, kontrolle: 1440, nTest: 3, nKontrolle: 3 }, "all runs: (2+4+10)×90 against (3+3+10)×90");
+  const r20 = e.laeufe.find((l) => l.schluessel === "2026-11-20");
+  assert.deepEqual(r20.ausgleich, { test: 540, kontrolle: 540, nTest: 2, nKontrolle: 2 }, "the run counts only the controls drawn the same day");
+  assert.ok(fenster.some(([nr, von, bis]) => nr === "T1" && von === "2026-10-20" && bis === "2026-11-19"), "30 days before the draw day");
+  assert.equal(baueErgebnisse(uebersicht([laeuft("T1", "2026-11-20")])).laeufe[0].ausgleich, null, "without impTag or without controls: nothing");
+  assert.equal(ausgleich([], [], impTag), null);
 });
 
 test("Ended early (F2): a phase counts its early evaluations and the shortest measurement", () => {

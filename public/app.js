@@ -659,7 +659,12 @@ function laufAnsicht(l, skala) {
       el("td", { class: "zahl", text: vorher }), el("td", { class: "zahl", text: nachher }), el("td", { class: "zahl", text: mit ? pz(p.aenderung) : "–" }),
       el("td", { class: "zahl", text: mit ? pz(p.kontrolleAenderung) : "–" }), el("td", { class: "zahl", text: zeigen ? pz(e.effekt) : "–" }), el("td", { class: "zahl", text: zeigen ? `${pz(e.von, false)} to ${pz(e.bis)}` : "–" }));
   };
+  // Balance at the draw (F5): both groups over the 30 days before they were drawn
+  const b = l.ausgleich, jeAngebot = (s, n) => (n ? zahl(Math.round(s / n)) : "–");
+  const balance = b ? el("p", { class: "leise klein ausgleich" }, el("strong", { text: "Balance at the draw: " }),
+    `test group ${zahl(b.test)} impressions per 90 days (${b.nTest} listings, ${jeAngebot(b.test, b.nTest)} each) · control group ${zahl(b.kontrolle)} (${b.nKontrolle} listings, ${jeAngebot(b.kontrolle, b.nKontrolle)} each), measured over the 30 days before the draw. Draws are made in pairs of similar listings since 21 Nov.`) : null;
   return [
+    balance,
     flussPanel(l),
     el("section", { class: "panel phasen" },
       el("div", { class: "phase-zeile phase-kopfzeile" }, ["Phase", "Effect compared with control group", "Result"].map((t) => el("div", { text: t }))),
