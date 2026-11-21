@@ -90,6 +90,10 @@ async function laden() {
     // Funnel status per product for the note line on the page Products
     zustand.funnel = leiterDaten?.trichter ? new Map(leiterDaten.trichter.liste.map((x) => [x.number, x])) : null;
     $("#stand").textContent = stand ? `Data as of ${new Date(stand.exportiert_at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" })}${stand.traffic_bis ? ` · traffic up to ${datum(stand.traffic_bis + "T12:00:00Z")}` : ""}` : "";
+    // Where the traffic comes from and what the newest day means (F1): the hub fetches every eBay day once, on the day after
+    $("#stand").title = stand?.traffic_bis ? (/hub/i.test(stand.quelle || "")
+      ? "eBay traffic from the company hub: every day is fetched once, on the day after, and not again later. eBay may still adjust the newest day slightly; every evaluation stores the data day it used."
+      : "eBay traffic from this app's own import: only finished days, the last days are fetched again and compared.") : "";
     zeichneListings();
     ladeZaehler();
     ladeBetrieb();
@@ -1260,7 +1264,8 @@ async function ladeLog() {
       el("div", { class: "einstieg" }, el("h1", { text: "Log" }),
         el("p", { class: "leise", text: "Everything that was proposed, approved, changed on eBay or imported, with who did it and the result. Entries are only ever added, never edited. The latest 300 are shown." })),
       ts ? el("div", { class: "panel" }, el("h2", { text: "Traffic import" }),
-        el("p", { class: "leise", text: !ts.zugangsdaten ? "This computer has no eBay credentials, so it does not import traffic. Data comes from the team copy in the repository."
+        el("p", { class: "leise", text: bt?.daten?.hub ? `Traffic comes from the company hub export, every hour: each eBay day is fetched once, on the day after, and not again later, so the newest day is yesterday (now up to ${bt.daten.trafficBis ? datum(bt.daten.trafficBis + "T12:00:00Z") : "–"}). Every evaluation stores the data day it used. This app's own import below is not needed for that.`
+          : !ts.zugangsdaten ? "This computer has no eBay credentials, so it does not import traffic. Data comes from the team copy in the repository."
           : ts.automatisch ? `Runs automatically once a day from ${ts.uhrzeit}:00. Only finished days are imported (${ts.verzoegerungTage} days delay), and the latest ${ts.nachpruefenTage} days are checked again against eBay.`
           : "Automatic import is off. Set EBAY_TRAFFIC_AUTO=an in the .env of this computer to import traffic every day." }),
         el("p", { class: "leise klein", text: `Last successful import: ${zeitpunkt(ts.letzterErfolg)} · last failed import: ${ts.letzterFehler ? zeitpunkt(ts.letzterFehler) : "none"}` }),

@@ -21,7 +21,7 @@ import { baueDemo } from "./demo.mjs";
 import * as titelhilfe from "./titelhilfe.mjs";
 import * as sicherung from "./sicherung.mjs";
 import * as benachrichtigung from "./benachrichtigung.mjs";
-import { laDatum, verzoegerungTage, NACHPRUEFEN_TAGE } from "./traffic.mjs";
+import { laDatum, verzoegerungTage, verzoegerungFuer, NACHPRUEFEN_TAGE } from "./traffic.mjs";
 import * as leiter from "./leiter.mjs";
 import * as problem from "./problem.mjs";
 import * as dashboard from "./dashboard.mjs";
@@ -305,13 +305,16 @@ function sicherungStatus() {
   const k = sicherung.konfiguration(); const alle = sicherung.liste(k.ziel);
   return { automatisch: SICH_AUTO, uhrzeit: SICH_UHR, letzte: alle[0]?.geaendert ?? null, anzahl: alle.length, zweiterOrt: !!k.ziel2, laeuft: sicherungLaeuft };
 }
-// How old is the traffic data compared with the target? Target: today minus delay (LA time). 2 days or more behind = outdated.
+// How old is the traffic data compared with the target? Target: today minus the delay of the data source (LA time):
+// 1 day for the hub export, the import's own delay otherwise (traffic.mjs, verzoegerungFuer). 2 days or more behind = outdated.
 function datenStand() {
-  let bis = null; try { bis = mitDb((db) => db.prepare("SELECT traffic_bis FROM stand").get()?.traffic_bis ?? null); } catch { /* keine pm.db */ }
-  if (!bis || !/^\d{4}-\d{2}-\d{2}$/.test(bis)) return { trafficBis: null, rueckstandTage: null, veraltet: false };
-  const soll = laDatum(new Date(), verzoegerungTage());
+  let bis = null, quelle = null;
+  try { const s = mitDb((db) => db.prepare("SELECT * FROM stand").get()); bis = s?.traffic_bis ?? null; quelle = s?.quelle ?? null; } catch { /* keine pm.db */ }
+  const verzoegerung = verzoegerungFuer(quelle), hub = /hub/i.test(String(quelle ?? ""));
+  if (!bis || !/^\d{4}-\d{2}-\d{2}$/.test(bis)) return { trafficBis: null, rueckstandTage: null, veraltet: false, verzoegerung, hub };
+  const soll = laDatum(new Date(), verzoegerung);
   const rueckstand = Math.round((Date.parse(soll) - Date.parse(bis)) / 864e5);
-  return { trafficBis: bis, soll, rueckstandTage: rueckstand, veraltet: rueckstand >= 2 };
+  return { trafficBis: bis, soll, rueckstandTage: rueckstand, veraltet: rueckstand >= 2, verzoegerung, hub };
 }
 // The app's fixed numbers, each from exactly one constant: the interface shows them from here instead of keeping its own copies
 const regelZahlen = () => ({ titelMaxZeichen: TITEL_MAX_ZEICHEN, maxAenderungen: freigabe.MAX_AENDERUNGEN, zielmarke: einst().besserAb, maxFehlversuche: login.MAX_FEHLVERSUCHE, sperreMinuten: login.SPERRE_MINUTEN, verzoegerungTage: verzoegerungTage(), nachpruefenTage: NACHPRUEFEN_TAGE });

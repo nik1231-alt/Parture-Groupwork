@@ -7,13 +7,13 @@ import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { bereiteVor, legeBenutzerAn } from "./login.mjs";
-import { laDatum, VERZOEGERUNG_STANDARD } from "./traffic.mjs";
+import { laDatum, VERZOEGERUNG_STANDARD, HUB_VERZOEGERUNG } from "./traffic.mjs";
 
 const PORT = 4000 + Math.floor(Math.random() * 90);
 const verz = fs.mkdtempSync(path.join(os.tmpdir(), "parture-betrieb-"));
 const appdb = path.join(verz, "app.db"), pmdb = path.join(verz, "pm.db");
 { const d = new Database(appdb); bereiteVor(d); legeBenutzerAn(d, "anna", "ein-langes-passwort"); d.close(); }
-const setzeStand = (bis) => { fs.rmSync(pmdb, { force: true }); const d = new Database(pmdb); d.exec("CREATE TABLE stand (exportiert_at TEXT, traffic_bis TEXT)"); d.prepare("INSERT INTO stand VALUES (?, ?)").run(new Date().toISOString(), bis); d.close(); };
+const setzeStand = (bis, quelle = null) => { fs.rmSync(pmdb, { force: true }); const d = new Database(pmdb); d.exec("CREATE TABLE stand (exportiert_at TEXT, traffic_bis TEXT, quelle TEXT)"); d.prepare("INSERT INTO stand VALUES (?, ?, ?)").run(new Date().toISOString(), bis, quelle); d.close(); };
 fs.mkdirSync(path.join(verz, "daten"), { recursive: true });
 // Start time of the test server: up to 90 s (900 × 100 ms). 5 s was not enough on 19 Nov, 30 s on 20 Nov was not either, when PROD and PREVIEW
 // tested at the same time with tight memory (5cebbb9 rejected). A healthy start takes under 1 s, so the limit costs nothing.
@@ -40,6 +40,17 @@ test("Data age: expected = today minus delay. On time is fine, 1 day behind too,
     const d = (await betrieb(c)).daten;
     assert.equal(d.rueckstandTage, rueck); assert.equal(d.veraltet, veraltet, `Rückstand ${rueck}`);
   }
+});
+
+test("Data age with the hub export: its newest day is yesterday (1 day), so 2 days behind that is outdated, not 2 days behind the import's 3", async () => {
+  const c = await cookie(), hub = "data.db (nur Whitelist; eBay-Traffic aus dem Hub-Warenhaus)";
+  for (const [rueck, veraltet] of [[0, false], [1, false], [2, true]]) {
+    setzeStand(laDatum(new Date(), HUB_VERZOEGERUNG + rueck), hub);
+    const d = (await betrieb(c)).daten;
+    assert.equal(d.rueckstandTage, rueck); assert.equal(d.veraltet, veraltet); assert.equal(d.verzoegerung, HUB_VERZOEGERUNG); assert.equal(d.hub, true);
+  }
+  setzeStand(laDatum(new Date(), VERZOEGERUNG_STANDARD), null);
+  assert.equal((await betrieb(c)).daten.verzoegerung, VERZOEGERUNG_STANDARD, "without the hub note it is the own import");
 });
 
 test("Data age: without a traffic date or with an unreadable value there is no warning and no crash", async () => {
