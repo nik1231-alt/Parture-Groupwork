@@ -127,9 +127,11 @@ function trageEin(db, number, details, benutzer, jetzt, stufe = "titel") {
 }
 
 // Control listings whose control time fully covers the days von..bis: the comparison group for a step with this time window
+// A control listing that was changed outside the app (F6) no longer shows "what happens without a change" and drops out.
 function kontrollGruppe(db, von, bis, einst) {
+  const fremd = new Set(db.prepare("SELECT DISTINCT number FROM leiter_verlauf WHERE ereignis = 'fremd' AND stufe = 'kontrolle'").all().map((r) => r.number));
   return db.prepare("SELECT number, stufe_start FROM leiter WHERE (stufe = 'kontrolle' OR ergebnis = 'kontrolle') AND stufe_start IS NOT NULL").all()
-    .filter((z) => z.stufe_start <= von && plusTage(z.stufe_start, kontrollTage(einst)) >= bis).map((z) => z.number);
+    .filter((z) => z.stufe_start <= von && plusTage(z.stufe_start, kontrollTage(einst)) >= bis && !fremd.has(z.number)).map((z) => z.number);
 }
 // Impressions per day of the control group before (30 days) and during a time window, as the sum of the group
 function kontrollVergleich(db, impTag, von, bis, einst) {
@@ -248,7 +250,13 @@ export async function gibFrei(db, nutzer, number, { items, schreiber, impTag, ei
   const ereignis = r.ausgang === "angewendet" ? "freigegeben" : r.ausgang;
   verlauf(db, z.number, z.stufe, ereignis, { text: r.text, vorschlag: v }, nutzer.name, jetzt);
   protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_" + ereignis, objekt: "product " + z.number, details: { stufe: z.stufe, vorschlag: v, text: r.text }, ergebnis: r.ausgang === "angewendet" ? "ok" : r.ausgang === "probelauf" ? "dry_run" : "error" }, jetzt);
-  if (r.ausgang === "angewendet") starte(db, z, impTag, nutzer, jetzt);
+  if (r.ausgang === "angewendet") {
+    // F6: from now on eBay should show the new title or price; until the catalogue has caught up the old value still counts
+    const s0 = letzterStand(db, z.number) || { titel: items[0]?.title ?? null, preis: Number(items[0]?.preis_aktuell) || null };
+    if (z.stufe === "titel") merkeStand(db, z.number, z.stufe, { titel: v.titel, preis: s0.preis, vorher: { titel: v.alt, preis: s0.preis }, grund: "title changed by the app" }, nutzer.name, jetzt);
+    if (z.stufe === "preis") merkeStand(db, z.number, z.stufe, { titel: s0.titel, preis: v.neu, vorher: { titel: s0.titel, preis: v.alt }, grund: "price changed by the app" }, nutzer.name, jetzt);
+    starte(db, z, impTag, nutzer, jetzt);
+  }
   return ok({ number: z.number, ausgang: r.ausgang, text: r.text });
 }
 
@@ -257,6 +265,7 @@ export function starteVonHand(db, nutzer, number, { impTag }, jetzt = new Date()
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can start a ladder step.");
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "vorschlag"); if (f) return f;
   if (z.stufe === "titel" && !json(z.vorschlag)) return fehler(409, "There is no title yet. Enter one first.");
+  merkeStand(db, z.number, z.stufe, { titel: null, preis: null, neuMerken: true, grund: "changed by hand on eBay" }, nutzer.name, jetzt);
   protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_started_manually", objekt: "product " + z.number, details: { stufe: z.stufe, hinweis: "Started without the app changing eBay" } }, jetzt);
   starte(db, z, impTag, nutzer, jetzt, true);
   return ok({ number: z.number });
@@ -305,7 +314,7 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
     const kontrolle = kontrollVergleich(db, impTag, z.stufe_start, ende, einst);
     const nettoEffekt = kontrolle ? netto({ vorher: vorher90, nachher: hoch90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
     // datenBis: the last data day this evaluation used, so it can be reproduced even if corrected numbers arrive later
-    const details = { tage, vorher90, nachher90: hoch90, grenze90: Math.round(grenze90), erholt, kontrolle, netto: nettoEffekt, datenBis: ende };
+    const details = { tage, vorher90, nachher90: hoch90, grenze90: Math.round(grenze90), erholt, kontrolle, netto: nettoEffekt, datenBis: ende, fremdSeit: fremdSeit(db, z.number) };
     db.transaction(() => {
       verlauf(db, z.number, z.stufe, "ausgewertet", details, "system", jetzt);
       if (erholt) setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "erholt" }, jetzt);
@@ -326,6 +335,42 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
 
 // Effect per step against the control group: all evaluations of this step together (sum before/after of the listings and of the
 // control group at the same time). Without a control group the evaluation counts only for "seen again", not in the net effect.
+// ---------- F6: changes made outside the app ----------
+// The app knows which title and price a listing on the ladder should have on eBay: the state at the first check after the draw, and
+// after every change it made, the new value ("stand" in the history). The hub's catalogue (pm.db, table kanal) shows the eBay state
+// at least once a day. A difference the app did not make is marked once ("fremd"): history, protocol, badge; evaluations note it and
+// a control listing drops out of the control group. Right after an app change the catalogue may show the old value for SYNC_TAGE days.
+export const SYNC_TAGE = 2;
+const gleicherTitel = (a, b) => norm(a).toLowerCase() === norm(b).toLowerCase();
+const gleicherPreis = (a, b) => a != null && b != null && Math.abs(Number(a) - Number(b)) <= 0.005;
+const letzterStand = (db, number) => json(db.prepare("SELECT details FROM leiter_verlauf WHERE number = ? AND ereignis = 'stand' ORDER BY id DESC LIMIT 1").get(number)?.details);
+function merkeStand(db, number, stufe, stand, benutzer, jetzt) { verlauf(db, number, stufe, "stand", { ...stand, at: jetzt.toISOString() }, benutzer, jetzt); }
+// Since when a listing counts as changed outside the app: the first mark after its last known state, or null
+export const fremdSeit = (db, number) => db.prepare("SELECT MIN(at) at FROM leiter_verlauf WHERE number = ? AND ereignis = 'fremd' AND id > (SELECT COALESCE(MAX(id), 0) FROM leiter_verlauf WHERE number = ? AND ereignis = 'stand')").get(number, number)?.at ?? null;
+// katalog: Map number → { titel, preis } of the active eBay listing (pm.db). Returns the numbers marked in this run.
+export function pruefeFremdaenderungen(db, katalog, jetzt = new Date()) {
+  const markiert = [];
+  for (const z of db.prepare("SELECT number, stufe FROM leiter WHERE stufe != 'raus'").all()) {
+    const k = katalog.get(z.number);
+    if (!k) continue;
+    const s = letzterStand(db, z.number), alter = s ? jetzt.getTime() - Date.parse(s.at) : 0;
+    // No known state yet, or a change by hand whose result the catalogue shows by now: remember what eBay shows
+    if (!s || (s.neuMerken && alter >= SYNC_TAGE * 864e5)) { merkeStand(db, z.number, z.stufe, { titel: k.titel, preis: k.preis, grund: s ? "state after the change by hand" : "first check" }, "system", jetzt); continue; }
+    if (s.neuMerken) continue;
+    const frisch = !!s.vorher && alter < SYNC_TAGE * 864e5, abw = [];
+    if (s.titel != null && !gleicherTitel(k.titel, s.titel) && !(frisch && gleicherTitel(k.titel, s.vorher.titel))) abw.push({ feld: "titel", erwartet: s.titel, ebay: k.titel });
+    if (s.preis != null && k.preis != null && !gleicherPreis(k.preis, s.preis) && !(frisch && gleicherPreis(k.preis, s.vorher.preis))) abw.push({ feld: "preis", erwartet: s.preis, ebay: k.preis });
+    if (!abw.length) continue;
+    // Once per difference: no new mark while eBay shows the same as at the last mark
+    const zuletzt = json(db.prepare("SELECT details FROM leiter_verlauf WHERE number = ? AND ereignis = 'fremd' ORDER BY id DESC LIMIT 1").get(z.number)?.details);
+    if (fremdSeit(db, z.number) && JSON.stringify(zuletzt?.abweichungen) === JSON.stringify(abw)) continue;
+    verlauf(db, z.number, z.stufe, "fremd", { abweichungen: abw }, "system", jetzt);
+    protokoll.schreibe(db, { benutzer: "system", aktion: "ladder_outside_change", objekt: "product " + z.number, details: { stufe: z.stufe, abweichungen: abw } }, jetzt);
+    markiert.push(z.number);
+  }
+  return markiert;
+}
+
 export function wirkung(db) {
   const aus = {};
   for (const s of ["titel", "werbung", "preis"]) aus[s] = { ausgewertet: 0, erholt: 0, mitKontrolle: 0, vorher90: 0, nachher90: 0, kontrolleVorher90: 0, kontrolleNachher90: 0, netto: null };
@@ -400,7 +445,7 @@ export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, g
   const vorzeitig = gemessen < tage;
   if (vorzeitig && !vorzeitigBestaetigt) return fehler(409, `The waiting time is not over: ${gemessen} of ${tage} data days. Moving on now ends it early; this is recorded and shown in Results. Confirm to continue.`);
   const nettoEffekt = kontrolle && nachher90 != null ? netto({ vorher: vorher90, nachher: nachher90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
-  const details = { tage, gemessenTage: gemessen, vorzeitig, geplantesEnde: ende, vorher90, nachher90, grenze90: Math.round(grenze90 ?? 0), erholt: ziel === "erholt", kontrolle, netto: nettoEffekt, vonHand: true, datenBis: gemessen > 0 ? bis : null };
+  const details = { tage, gemessenTage: gemessen, vorzeitig, geplantesEnde: ende, vorher90, nachher90, grenze90: Math.round(grenze90 ?? 0), erholt: ziel === "erholt", kontrolle, netto: nettoEffekt, vonHand: true, datenBis: gemessen > 0 ? bis : null, fremdSeit: fremdSeit(db, z.number) };
   db.transaction(() => {
     verlauf(db, z.number, z.stufe, "ausgewertet", details, nutzer.name, jetzt);
     if (ziel === "erholt") setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "erholt" }, jetzt);
@@ -506,7 +551,8 @@ export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst =
     }
     const x = p.get(z.number) || {};
     return { number: z.number, title: x.title ?? null, image_url: x.image_url ?? null, units_90d: x.units_90d ?? null, impressionen_90d: x.impressionen_90d ?? null,
-      stufe: z.stufe, phase: z.phase, ergebnis: z.ergebnis, eingestiegen_at: z.eingestiegen_at, stufe_start: z.stufe_start, vorschlag: json(z.vorschlag), stand, verlauf: verlaeufe.get(z.number) || [] };
+      stufe: z.stufe, phase: z.phase, ergebnis: z.ergebnis, eingestiegen_at: z.eingestiegen_at, stufe_start: z.stufe_start, vorschlag: json(z.vorschlag), stand, verlauf: verlaeufe.get(z.number) || [],
+      fremdSeit: z.stufe === "raus" ? null : fremdSeit(db, z.number) };
   });
   const zahl = Object.fromEntries([...STUFEN, KONTROLLE, "raus"].map((s) => [s, zeilen.filter((z) => z.stufe === s).length]));
   const raus = Object.fromEntries(["erholt", ...ENTSCHEIDUNGEN, "abgebrochen", KONTROLLE].map((e) => [e, zeilen.filter((z) => z.ergebnis === e).length]));

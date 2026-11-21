@@ -642,7 +642,7 @@ function laufAnsicht(l, skala) {
   const pz = Diagramm.proz, a = Diagramm.achse(phasen);
   const zeile = (p) => {
     const u = PHASE_URTEIL[p.urteil], e = p.schaetzung, fertig = p.ausgewertet > 0;
-    const unter = fertig ? `${zahl(p.ausgewertet)} listing${p.ausgewertet === 1 ? "" : "s"}` + (p.vorzeitig ? ` · ${zahl(p.vorzeitig)} ended early (shortest ${p.kuerzesteTage} days)` : "")
+    const unter = fertig ? `${zahl(p.ausgewertet)} listing${p.ausgewertet === 1 ? "" : "s"}` + (p.vorzeitig ? ` · ${zahl(p.vorzeitig)} ended early (shortest ${p.kuerzesteTage} days)` : "") + (p.fremd ? ` · ${zahl(p.fremd)} changed outside the app` : "")
       : p.vorlaeufig ? `${p.anzahl} running · day ${p.gelaufen} of ${p.tage}`
       : p.laeuft ? `${p.laeuft} running${p.naechstesEnde ? `, due ${datum(p.naechstesEnde + "T12:00:00Z")}` : ""}` : "nothing finished";
     const chip = p.vorlaeufig ? [u[0], p.mitDaten ? "Interim: " + u[1].toLowerCase() : "Waiting for the first day"] : u;
@@ -695,7 +695,8 @@ const QUELLE_TEXT = { ki: "AI suggestion", regel: "From the title help (no AI)",
 const EREIGNIS_TEXT = { aufgenommen: "Entered the ladder (low impressions)", vorschlag: "Suggestion ready", kein_vorschlag: "No suggestion possible", freigegeben: "Approved and changed on eBay",
   probelauf: "Dry run, nothing changed", fehlgeschlagen: "Change failed", gestartet: "Waiting time started", ausgewertet: "Checked after the waiting time", uebersprungen: "Step skipped",
   pruefung: "Moved to the manual check", entschieden: "Decided", abgebrochen: "Taken off the ladder",
-  kontrolle: "Drawn into the control group (stays unchanged)", kontrolle_ende: "Control time over" };
+  kontrolle: "Drawn into the control group (stays unchanged)", kontrolle_ende: "Control time over",
+  stand: "Expected state on eBay noted", fremd: "Changed outside the app" };
 
 async function ladeLeiter() {
   const root = $("#ansicht-ladder");
@@ -877,7 +878,8 @@ function leiterZeile(a, l) {
   const marken = [
     el("span", { class: "status " + (a.stufe === "raus" ? (a.ergebnis === "erholt" ? "gut" : "grau") : a.phase === "laeuft" ? "phase" : a.phase === "offen" ? "warn" : "offen"), text: a.stufe === "raus" ? ERGEBNIS_LEITER[a.ergebnis] || a.ergebnis : STUFE_TEXT[a.stufe] }),
     a.beworben && a.stufe !== "raus" ? el("span", { class: "status grau", title: `Already advertised in “${a.beworben}”: skips Phase 2`, text: "advertised → skips ads" }) : null,
-    a.verlauf?.some((e) => e.ereignis === "aufgenommen" && e.details?.vonHand) ? el("span", { class: "status grau", title: "Added by hand, no control partner", text: "added by hand" }) : null];
+    a.verlauf?.some((e) => e.ereignis === "aufgenommen" && e.details?.vonHand) ? el("span", { class: "status grau", title: "Added by hand, no control partner", text: "added by hand" }) : null,
+    a.fremdSeit ? el("span", { class: "status warn", title: "Title or price on eBay differs from what the app set or saw at the draw. The measurement of this listing is marked; a control listing drops out of the control group.", text: `changed outside the app since ${datum(a.fremdSeit)}` }) : null];
   // Content per step
   let mitte = null, haupt = null, haken = null;
   if (a.phase === "vorschlag" && a.stufe === "titel") {
@@ -1038,6 +1040,10 @@ function trichterBild(l, arbeit = null) {
   const gruende = Object.entries(f.gruende).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
     .map(([g, n]) => ast({ status: "nicht_geeignet", name: GRUND_TEXT[g] || g, n, von: z.nicht_geeignet, klasse: "grau" }));
   const test = z.titel + z.werbung + z.preis + z.pruefung + z.erholt, gezogen = z.kontrolle + test;
+  // F6: listings whose title or price was changed outside the app, per branch
+  const fremd = (pruef) => l.angebote.filter((a) => a.fremdSeit && pruef(a)).length;
+  const fremdKontrolle = fremd((a) => a.stufe === "kontrolle"), fremdTest = fremd((a) => a.stufe !== "kontrolle");
+  const fremdText = (n) => (n ? ` · ${n} changed outside the app` : "");
   const phase = (status, name, notiz) => ast({ status, name, n: z[status], von: test, notiz: live(status) || notiz });
   return el("section", { class: "panel trichter-bild", "aria-label": "Funnel" },
     el("div", { class: "kopf-zeile" }, el("h2", { text: "Where every product stands" }),
@@ -1047,8 +1053,8 @@ function trichterBild(l, arbeit = null) {
         ast({ status: "nicht_geeignet", name: "Not eligible", n: z.nicht_geeignet, kinder: gruende, klappe: "baumGruende" }),
         ast({ status: "geeignet", name: "Eligible, not drawn yet", n: z.geeignet, notiz: "low impressions, never sold on eBay, free" }),
         ast({ name: "Drawn by lot", n: gezogen, statisch: true, klasse: "phase", notiz: "half stays unchanged, half gets one change at a time", kinder: [
-          ast({ status: "kontrolle", name: "Control group", n: z.kontrolle, von: gezogen, notiz: `unchanged for ${l.tage.kontrolle} days, the yardstick for every phase` }),
-          ast({ name: "Test group", n: test, von: gezogen, statisch: true, klasse: "phase", kinder: [
+          ast({ status: "kontrolle", name: "Control group", n: z.kontrolle, von: gezogen, notiz: `unchanged for ${l.tage.kontrolle} days, the yardstick for every phase${fremdText(fremdKontrolle)}` }),
+          ast({ name: "Test group", n: test, von: gezogen, statisch: true, klasse: "phase", notiz: fremdTest ? fremdText(fremdTest).slice(3) : null, kinder: [
             phase("titel", "Phase 1 · New title", `${l.tage.titel} days`),
             phase("werbung", `Phase 2 · Ads ${Math.round(l.werbesatz * 100)} %`, `${l.tage.werbung} days`),
             phase("preis", `Phase 3 · Price −${Math.round(l.preisSchritt * 100)} %`, `${l.tage.preis} days`),
@@ -1172,6 +1178,8 @@ function lebenslauf(a) {
   const zeile = (e) => {
     const d = e.details || {};
     const extra = e.ereignis === "ausgewertet" ? (d.vorzeitig ? ` Ended early after ${d.gemessenTage} of ${d.tage} days.` : "") + ` ${zahl(d.vorher90)} → ${zahl(d.nachher90)} impressions per 90 days (limit ${zahl(d.grenze90)}): ${d.erholt ? "seen again" : "still too few"}${d.kontrolle ? `; control group ${zahl(d.kontrolle.vorher90)} → ${zahl(d.kontrolle.nachher90)}, net effect ${aenderung(d.netto)}` : ""}`
+      : e.ereignis === "fremd" ? " " + (d.abweichungen || []).map((x) => x.feld === "preis" ? `price ${eur(x.erwartet)} expected, eBay shows ${eur(x.ebay)}` : `title “${x.erwartet}” expected, eBay shows “${x.ebay}”`).join("; ")
+      : e.ereignis === "stand" ? (d.titel ? ` “${d.titel}”` : "") + (d.preis != null ? ` · ${eur(d.preis)}` : "") + (d.grund ? ` (${d.grund})` : "")
       : e.ereignis === "vorschlag" && d.titel ? ` “${d.titel}”` : d.text ? " " + d.text : d.grund ? " " + d.grund : d.notiz ? ` ${ERGEBNIS_LEITER[d.entscheidung] || ""}: ${d.notiz}` : "";
     return el("li", { text: `${zeitpunkt(e.at)} · ${STUFE_TEXT[e.stufe] || e.stufe} · ${EREIGNIS_TEXT[e.ereignis] || e.ereignis}${extra}${e.benutzer !== "system" ? ` (${e.benutzer})` : ""}` });
   };

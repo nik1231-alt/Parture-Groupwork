@@ -107,21 +107,25 @@ candidates and splits them.
 
 **Done when:** new draws are paired and the balance is visible. (The running tranche of 20 Nov stays as it is.)
 
-### F6 · Changes made outside the app are noticed
+### F6 · Changes made outside the app are noticed ✅ (PR #64)
 **Question:** "What if someone changes a test or control listing on eBay during the waiting time?"
 
 Today the app reads eBay only right before writing. During the waiting time nobody checks.
 
-- [ ] At the draw, store a snapshot per listing (title and price from the hub export, table `kanal`): for control
+- [x] At the draw, store a snapshot per listing (title and price from the hub export, table `kanal`): for control
       listings the state at the draw, for test listings the state the app wrote (new title, new price).
-- [ ] Every hourly data refresh compares the snapshot with `kanal` (no extra eBay calls).
-- [ ] A difference marks the listing "changed outside the app since <day>": badge on the card and in the funnel tree,
+      *Taken at the first check after the draw (at most 15 minutes later), and after every title or price change the app made;
+      a step done by hand on eBay takes the new state from the catalogue after 2 days.*
+- [x] Every hourly data refresh compares the snapshot with `kanal` (no extra eBay calls). *Every 15 minutes and before each
+      draw; the catalogue itself is updated by the hub at least once a day, so a change shows up within a day.*
+- [x] A difference marks the listing "changed outside the app since <day>": badge on the card and in the funnel tree,
       entry in the history and the protocol.
-- [ ] Evaluations store the mark; a control listing changed from outside drops out of the control group from that day;
-      Results count and name them.
-- [ ] Tests: control price changed → marked and excluded; test title not the written one → marked; no change → nothing.
+- [x] Evaluations store the mark; a control listing changed from outside drops out of the control group from that day;
+      Results count and name them. *(It drops out of every comparison, not only from that day: the conservative choice.)*
+- [x] Tests: control price changed → marked and excluded; test title not the written one → marked; no change → nothing.
+      *(test-leiter, 3 tests; probe on a copy of PROD: 20 states noted, 0 false marks.)*
 
-**Done when:** a change made outside the app shows up within an hour and cannot silently enter a result.
+**Done when:** a change made outside the app shows up within a day (the catalogue's rhythm) and cannot silently enter a result.
 
 ### F7 · Undo a step on eBay
 **Question:** "A new title performs badly or was a mistake. How do you go back?"

@@ -152,6 +152,17 @@ function dashboardDaten() {
   });
   return dashboard.baueDashboard({ starts, abbrueche, auswertungen, kontrolle, tage, trafficBis: trafficBis(), einst: einst() });
 }
+// F6: title and price of every active eBay listing from the catalogue (pm.db), the basis for noticing changes made outside the app
+function katalogStand() {
+  const k = new Map();
+  for (const r of mitDb((db) => db.prepare("SELECT number, title, preis_aktuell FROM kanal WHERE channel = 'ebay' AND listed = 1 AND external_id IS NOT NULL ORDER BY external_id").all()))
+    if (!k.has(r.number)) k.set(r.number, { titel: r.title, preis: r.preis_aktuell == null ? null : Number(r.preis_aktuell) });
+  return k;
+}
+function pruefeFremd() {
+  try { const neu = leiter.pruefeFremdaenderungen(appDb(), katalogStand()); if (neu.length) console.log("Changed outside the app: " + neu.join(", ")); }
+  catch (e) { console.error("Check for outside changes:", e.message); }
+}
 let leiterLaeuft = false;
 // One run: evaluate waiting times, take in new listings, suggest titles for step 1. Changes nothing on eBay.
 // Movement "hand" (default since 20 Nov): the daily run only fetches AI titles; taking in only by the button "Draw listings by lot"
@@ -163,6 +174,7 @@ async function leiterLauf(wer, art = "tag", ziehen = {}) {
   try {
     const produkte = produkteLaden(), daten = leiterDaten(produkte);
     const entfernt = leiter.raeumeVerkaufteAb(appDb(), produkte, daten.einst); // before drawing: already sold on eBay ones go down
+    pruefeFremd();
     const automatisch = daten.einst.leiterBewegung === "automatisch";
     const bewerten = automatisch && art !== "ziehen", aufnehmen = automatisch || art === "ziehen";
     const ausgewertet = bewerten || aufnehmen ? leiter.werteAus(appDb(), { ...daten, nurKontrolle: !bewerten }) : [];
@@ -649,6 +661,8 @@ server.listen(PORT, "127.0.0.1", () => {
   // List of the advertised eBay listings (phase 2 only for non-advertised ones): at start and every 6 hours
   // After every rollout once: listings already sold on eBay without an eBay change come off the ladder (leiter.raeumeVerkaufteAb)
   setTimeout(() => { try { const p = produkteLaden(); leiter.raeumeVerkaufteAb(appDb(), p, leiterDaten(p).einst); } catch (e) { console.error("Ladder clean-up:", e.message); } }, 20e3).unref();
+  // F6: compare the ladder with the catalogue every 15 minutes (the hub export arrives every hour, no eBay calls)
+  setTimeout(pruefeFremd, 30e3).unref(); setInterval(pruefeFremd, 15 * 60e3).unref();
   if (schreiber.konfiguriert()) { setTimeout(() => aktualisiereWerbung().catch(() => {}), 30e3).unref(); setInterval(() => aktualisiereWerbung().catch(() => {}), 6 * 3600e3).unref(); }
   if (TRAFFIC_AUTO) { console.log(`Automatic traffic import: daily from ${TRAFFIC_UHR}:00 (delay ${verzoegerungTage()} days).`); setTimeout(pruefeTrafficImport, 30e3).unref(); setInterval(pruefeTrafficImport, 15 * 60e3).unref(); }
 });
