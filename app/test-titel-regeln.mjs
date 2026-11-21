@@ -30,6 +30,18 @@ test("Brands: no new ones, and only with a reference word", () => {
   assert.deepEqual(markenIn("Adapter passend für IKEA Trofast &amp; Kallax"), ["ikea", "kallax", "trofast"]);
 });
 
+test("Stay German (F4): a new English word is rejected, one from the old title is kept, common German loanwords pass", () => {
+  assert.ok(regeln("2x Wallmount Halter passend für Bosch L-Boxx schwarz").includes("sprache"), "Wallmount added");
+  assert.ok(regeln("2x Holder Bracket passend für Bosch L-Boxx").includes("sprache"), "two English words added");
+  assert.match(pruefeTitel("2x Holder passend für Bosch L-Boxx", ALT).verstoesse.find((v) => v.regel === "sprache").text, /“holder” is English/);
+  // The live titles of 20 Nov: the English words came from the old title, so they pass
+  assert.deepEqual(regeln("Wandhalterung Wallmount passend für Lautsprecher Sonos Beam schwarz", "Wandhalterung passend für Lautsprecher Sonos Beam, Wallmount, schwarz"), []);
+  assert.deepEqual(regeln("Werkzeug Wandhalterung Halter passend für Dewalt Circular Saw 7 1/4", "Wandhalterung passend für Dewalt Circular Saw 7 1/4, Halterung, Halter, Werkzeug"), []);
+  // Loanwords that German titles use all the time are not on the list
+  assert.deepEqual(regeln("2x Halter Set passend für Bosch L-Boxx Wandhalterung schwarz").filter((r) => r === "sprache"), []);
+  assert.deepEqual(regeln("Gehäuse Cover passend für FritzFon C5", "Gehäuse passend für FritzFon C5").filter((r) => r === "sprache"), []);
+});
+
 test("Invent nothing: new numbers and colours are rejected", () => {
   assert.ok(regeln("4x Halter passend für Bosch L-Boxx Wandhalterung").includes("erfunden"), "4x instead of 2x");
   assert.ok(regeln("2x Halter 30 cm passend für Bosch L-Boxx").includes("erfunden"), "size invented");

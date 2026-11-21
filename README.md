@@ -108,7 +108,7 @@ All products
 
 **AI titles:** Google Gemini suggests three titles; the **rule check** (`app/titel-regeln.mjs`) lets only safe ones through:
 no superlatives, seals or price promises, never "Original"; brands only as "passend für …" and only if the old title had
-them; no new numbers, sizes or colours; no keyword lists. Tested against all 745 real titles. Without `GOOGLE_API_KEY` the
+them; no new numbers, sizes or colours; no new English words (a word like “Wallmount” stays only if the old title had it); no keyword lists. Tested against all 745 real titles. Without `GOOGLE_API_KEY` the
 suggestion comes from the title help, and a hand-typed title must pass the same rule check.
 
 ## When something is unavailable

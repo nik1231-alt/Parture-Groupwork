@@ -32,6 +32,11 @@ const BEZUG = /\b(passend|kompatibel|geeignet|für)\b/i;
 const FARBEN = ["schwarz", "weiß", "weiss", "grau", "rot", "blau", "grün", "gelb", "orange", "pink", "rosa", "lila", "violett", "braun", "beige", "gold", "silber", "transparent", "anthrazit"];
 // Filler words may occur several times ("passend für A … für B"), they are not keywords
 export const FUELL = new Set(["für", "mit", "und", "oder", "von", "zum", "zur", "der", "die", "das", "den", "dem", "ein", "eine", "auf", "aus", "passend", "kompatibel", "geeignet", "set", "stk", "stück"]);
+// F4: English words that German buyers do not search for. A new title may keep them if the old title had them (e.g. the
+// product name "Circular Saw" or "Wallmount" in No. 405 and No. 2009), but it must not add them. Only clearly English words:
+// "Cover", "Set", "Clip", "Organizer", "Adapter" or "Kit" are common in German titles and stay allowed.
+export const ENGLISCH = new Set(["for", "with", "and", "the", "of", "mount", "wallmount", "holder", "bracket", "hanger", "hook", "wall", "shelf",
+  "saw", "circular", "drill", "replacement", "spare", "part", "parts", "storage", "black", "white", "grey", "gray", "red", "blue", "green"]);
 const EMOJI = /[\p{Extended_Pictographic}✅✔⭐]/u;
 const ERLAUBT = /[\p{L}\p{N}\s\-/,.&()+'"×:]/u;
 
@@ -82,6 +87,9 @@ export function pruefeTitel(neu, alt) {
   for (const z of zahlen(n)) if (!alteZahlen.has(z)) melde("erfunden", `The number “${z}” is not in the old title. Sizes and quantities must not be made up.`);
   const alteWoerter = woerter(a);
   for (const f of FARBEN) if (woerter(n).includes(f) && !alteWoerter.includes(f)) melde("erfunden", `The colour “${f}” is not in the old title.`);
+  // Stay German (F4): no English word that the old title did not have
+  const englisch = [...new Set(woerter(n))].filter((w) => ENGLISCH.has(w) && !alteWoerter.includes(w));
+  if (englisch.length) melde("sprache", `“${englisch.join("”, “")}” ${englisch.length === 1 ? "is" : "are"} English and not in the old title. Titles stay German: buyers on eBay.de search in German.`);
   // Form: no keyword more often than in the old title, no emojis, no new special characters, no new capitalised words
   const vorher = zaehle(alteWoerter);
   for (const [w, k] of zaehle(woerter(n))) {
@@ -101,6 +109,7 @@ export function pruefeTitel(neu, alt) {
 export const REGELN_FUER_KI = [
   `At most ${TITEL_MAX_ZEICHEN} characters.`,
   "German, like the old title. Start with the product type (what it is), then what it fits; put the words buyers search for early.",
+  "No English words (mount, holder, bracket, wall …) unless the old title already has them; use the German word (Halterung, Halter, Wand).",
   "Brands only AFTER “passend für” or “kompatibel mit” (“Armlehne Box passend für BMW X3”), never at the start and never before that phrase, so we never look like the maker. Use only brands that are already in the old title.",
   "Do not add numbers, sizes, quantities or colours that are not in the old title.",
   "No superlatives (beste, top, premium, perfekt), no test marks (TÜV, geprüft, zertifiziert, CE), no environmental claims (nachhaltig, öko, recycelt), no price or shipping promises (gratis, Rabatt, Angebot), no guarantees, never “Original” or “OEM”.",

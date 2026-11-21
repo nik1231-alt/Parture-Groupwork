@@ -73,16 +73,20 @@ Today `baueVorschlag("preis")` lowers by the price step (10 %) and rounds to .49
 
 **Done when:** no code path can write a price below the floor.
 
-### F4 · AI titles stay German
+### F4 · AI titles stay German ✅ (PR #62)
 **Question:** "The live titles contain ‘Wallmount’ and ‘Circular Saw’. Does that help a German search?"
 
-- [ ] Rule check (`app/titel-regeln.mjs`): new English words that were not in the old title are rejected (a short, named
+- [x] Rule check (`app/titel-regeln.mjs`): new English words that were not in the old title are rejected (a short, named
       list of common English listing words such as mount, wallmount, holder, bracket, cover, case, saw, circular, drill),
       with a clear reason.
-- [ ] The AI prompt says: German only, keep English words only if the old title had them.
-- [ ] Re-run the rule check against all 745 real titles: no old title is rejected (the check only judges new words).
-- [ ] List the live titles that would fail now (No. 2009, No. 405) in the PR, so the team can decide whether to rework them.
-- [ ] Tests: "Wallmount" new → rejected; "Wallmount" already in the old title → allowed; German compound words unaffected.
+- [x] The AI prompt says: German only, keep English words only if the old title had them.
+- [x] Re-run the rule check against all 745 real titles: no old title is rejected (the check only judges new words).
+      *760 eBay titles today; 21 already contain a listed English word; none is rejected against itself.*
+- [x] List the live titles that would fail now (No. 2009, No. 405) in the PR, so the team can decide whether to rework them.
+      *Finding: none would fail. “Wallmount” (No. 2009) and “Circular Saw” (No. 405) were already in the old titles; the AI
+      kept them, it did not invent them. That is the honest answer to the question above.*
+- [x] Tests: "Wallmount" new → rejected; "Wallmount" already in the old title → allowed; German compound words unaffected.
+      *(test-titel-regeln, including both live titles and the loanwords Set / Cover.)*
 
 **Done when:** a new title with an English word that was not there before cannot be approved.
 
