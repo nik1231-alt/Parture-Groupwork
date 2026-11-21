@@ -1,4 +1,4 @@
-/* Arbeitsoberfläche für eBay-Angebote: kühle Neutraltöne, eine Akzentfarbe für Aktionen, Zustände in eigenen Farben
+/* Work interface for eBay listings: cool neutral tones, one accent colour for actions, states in their own colours
    (Ampel), klare Schrift ohne Serifen, flache Flächen mit feinen Linien statt Schatten.
    Farben nur über Variablen; der Dunkelmodus folgt dem System. Schriften kommen vom System (die CSP lädt keine fremden). */
 :root {
@@ -11,10 +11,10 @@
   --schatten-hoch: 0 8px 28px rgba(17, 24, 39, .14);
   --radius: 10px; --radius-klein: 7px;
   --g-sichtbarkeit: #d08a10; --g-ok: #2f9a5d; --g-warten: #6b7a99;
-  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+  -- sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
   --anzeige: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
-  --serif: var(--anzeige); /* alter Name, falls ihn noch etwas benutzt */
+  -- serif: var(--anzeige); /* old name, in case something still uses it */
   --breite: 1160px;
 }
 @media (prefers-color-scheme: dark) {
@@ -42,10 +42,10 @@ a { color: var(--akzent); text-underline-offset: 2px; }
 .klein { font-size: 13px; }
 .nur-screenreader { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 :focus-visible { outline: 2px solid var(--fokus); outline-offset: 2px; }
-/* Das hidden-Attribut muss immer gewinnen, auch bei Elementen mit eigenem display */
+/* The hidden attribute must always win, even for elements with their own display */
 [hidden] { display: none !important; }
 
-/* Kopfzeile: Marke und Navigation in einer Zeile, Status rechts; die Navigation ist ein Reiterband mit Unterstrich */
+/* Header: brand and navigation in one row, status on the right; the navigation is a tab band with an underline */
 .kopf { border-bottom: 1px solid var(--linie); background: var(--karte); position: sticky; top: 0; z-index: 5; }
 .kopf-innen { max-width: var(--breite); margin: 0 auto; padding: 0 20px; display: flex; align-items: stretch; gap: 8px 28px; flex-wrap: wrap; }
 .marke { display: flex; align-items: center; gap: 10px; padding: 12px 0; }
@@ -64,7 +64,7 @@ a { color: var(--akzent); text-underline-offset: 2px; }
 .einstieg { margin-bottom: 20px; display: grid; gap: 6px; }
 .einstieg p { margin: 0; max-width: 70ch; font-size: 15px; }
 
-/* Knöpfe und Felder */
+/* Buttons and fields */
 .knopf { border: 1px solid var(--linie-stark); background: var(--karte); border-radius: var(--radius-klein); padding: 7px 14px; cursor: pointer; font-weight: 550; line-height: 1.35; transition: background .12s, border-color .12s, color .12s; display: inline-flex; align-items: center; gap: 6px; }
 .knopf:hover { background: var(--karte-leise); border-color: var(--leise); }
 .knopf-akzent { background: var(--akzent); border-color: var(--akzent); color: var(--akzent-text); }
@@ -91,7 +91,7 @@ a { color: var(--akzent); text-underline-offset: 2px; }
 .auswahl select { padding: 9px 12px; cursor: pointer; }
 .ergebnis-zeile { margin: 10px 2px 8px; font-size: 13px; }
 
-/* Liste: feste Reihenfolge Bild, Name, Preis, Verkäufe, Impressionen, Empfehlung */
+/* List: fixed order image, name, price, sales, impressions, recommendation */
 .tabelle { background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); overflow: hidden; }
 .spalten { display: grid; grid-template-columns: 48px minmax(0, 1fr) 84px 92px 118px 190px 18px; gap: 0 14px; align-items: center; }
 .kopfzeile { padding: 9px 16px; border-bottom: 1px solid var(--linie); background: var(--karte-leise); font-size: 11.5px; font-weight: 600; color: var(--leise); text-transform: uppercase; letter-spacing: .06em; }
@@ -137,7 +137,7 @@ a { color: var(--akzent); text-underline-offset: 2px; }
 .kopf-zeile { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .aktionen { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
 
-/* Tests: Karten, Tabellen, Urteil */
+/* Tests: cards, tables, verdict */
 .testkarte { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; padding: 14px 18px; margin-bottom: 8px; background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); text-decoration: none; color: var(--text); }
 .testkarte:hover { border-color: var(--akzent-linie); background: var(--karte-hover); }
 .mini { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -174,7 +174,7 @@ a { color: var(--akzent); text-underline-offset: 2px; }
 .hinweis-fehler { background: var(--schlecht-weich); border-color: var(--schlecht); border-left-width: 4px; }
 .toast { position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 11px 18px; border-radius: var(--radius); font-size: 14px; font-weight: 500; box-shadow: var(--schatten-hoch); z-index: 10; max-width: calc(100vw - 32px); }
 
-/* Schmale Bildschirme: Name und Kennzahlen untereinander statt in Spalten */
+/* Narrow screens: name and figures one below the other instead of in columns */
 @media (max-width: 860px) {
   .kopfzeile { display: none; }
   .spalten { grid-template-columns: 48px minmax(0, 1fr) 18px; grid-template-areas: "bild name pfeil" "bild kennzahlen kennzahlen" "bild chip chip"; gap: 4px 12px; }
@@ -192,16 +192,16 @@ a { color: var(--akzent); text-underline-offset: 2px; }
 }
 @media (min-width: 861px) { .kennzahlen-kurz { display: none; } }
 
-/* Zeilen mit fester Spaltenaufteilung (statt Inline-Stil, damit sie auf schmalen Bildschirmen umbrechen können) */
+/* Rows with a fixed column layout (instead of an inline style, so that they can wrap on narrow screens) */
 .angebotszeile.zwei { grid-template-columns: 48px minmax(0, 1fr); }
 .angebotszeile.titelpaar { grid-template-columns: 48px minmax(0, 1fr) minmax(0, 1fr); }
 .angebotszeile.vergleich { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 150px; }
-/* Breite Tabellen (Log, Team, Zahlen) scrollen in ihrem eigenen Kasten, nie die ganze Seite */
+/* Wide tables (log, team, figures) scroll in their own box, never the whole page */
 .rollbar { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--linie); border-radius: var(--radius); background: var(--karte); }
 .rollbar .mini tr:last-child td { border-bottom: 0; }
 .mini td.details { min-width: 220px; overflow-wrap: anywhere; }
 .mini.protokoll td { vertical-align: top; }
-/* Telefon-Breite (bis etwa 400 px): nichts darf breiter werden als der Bildschirm */
+/* Phone width (up to about 400 px): nothing may be wider than the screen */
 @media (max-width: 600px) {
   .angebotszeile.vergleich { grid-template-columns: minmax(0, 1fr); }
   .angebotszeile.titelpaar { grid-template-columns: 48px minmax(0, 1fr); }
@@ -232,7 +232,7 @@ a { color: var(--akzent); text-underline-offset: 2px; }
 .login-formular .knopf-akzent { margin-top: 18px; justify-content: center; padding: 10px 18px; }
 .login-formular .knopf:disabled { opacity: .6; cursor: default; }
 
-/* Diagramme der Testauswertung */
+/* Charts of the test evaluation */
 .auswertung .d-block { margin-top: 22px; }
 .auswertung .d-block h3 { font-size: 15px; }
 .auswertung .d-block p { margin: 2px 0 8px; }
@@ -258,7 +258,7 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
 @media (max-width: 520px) { .seite { padding-top: 20px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
-/* Umgebung (VORSCHAU / PROD / lokal) und Warnungen */
+/* Environment (PREVIEW / PROD / local) and warnings */
 .umgebung { font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 3px 8px; border-radius: 5px; background: var(--akzent-weich); color: var(--akzent); }
 .umgebung.vorschau { background: var(--warn-weich); color: var(--warn); }
 .umgebung.prod { background: var(--gut-weich); color: var(--gut); }
@@ -270,7 +270,7 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
 .wort { font: inherit; font-size: 13px; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--linie-stark); background: var(--karte); cursor: pointer; }
 .wort:hover, .wort:focus-visible { border-color: var(--fokus); color: var(--akzent); }
 
-/* Leiter: Stufenband oben (verbundene Schritte), Karten je Angebot mit Zustandsstreifen links, Fortschritt der Prüfzeit */
+/* Ladder: step band at the top (connected steps), cards per listing with a state stripe on the left, progress of the waiting time */
 .trichter { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0 0 14px; background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); overflow: hidden; }
 .stufe { padding: 14px 16px 14px 18px; position: relative; border-right: 1px solid var(--linie); min-width: 0; }
 .stufe:last-child { border-right: 0; }
@@ -306,19 +306,19 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
   .leiter-kopf .badge { grid-column: 1 / -1; justify-self: start; }
 }
 
-/* Auswahlliste "Add a listing" auf der Seite Ladder */
+/* Selection list "Add a listing" on the page Ladder */
 .auswahl.panel { border-color: var(--akzent-linie); background: linear-gradient(var(--akzent-weich), var(--karte) 60%); }
 .auswahl-zeile { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
 .auswahl-zeile input[type="search"] { flex: 0 1 220px; min-width: 0; }
 .auswahl-zeile select { flex: 1 1 320px; min-width: 0; max-width: 100%; }
 .kopf-rechts { margin-left: auto; }
-/* Überspringen mit Begründung: Feld und Knopf als ein Paar, rechts in der Knopfzeile */
+/* Skip with a reason: field and button as a pair, on the right in the button row */
 .ueberspringen { display: inline-flex; gap: 6px; margin-left: auto; flex: 0 1 380px; min-width: 0; }
 .ueberspringen .feld { min-width: 0; }
 @media (max-width: 600px) { .ueberspringen { margin-left: 0; flex-basis: 100%; } }
 .knopf { white-space: nowrap; }
 
-/* Funnel: Kennzahlen, Balken je Status, Status-Chips, Tabelle aller Produkte */
+/* Funnel: key figures, bars per status, status chips, table of all products */
 :root { --s-kontrolle: #7b5bd6; --s-kontrolle-weich: #efeafc; }
 @media (prefers-color-scheme: dark) { :root { --s-kontrolle: #b49cff; --s-kontrolle-weich: #2a2347; } }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 12px; }
@@ -365,10 +365,10 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
   .fz.ebene-2 .fz-name, .fz.ebene-3 .fz-name { padding-left: 22px; }
 }
 
-/* Gesperrte Felder (z. B. Settings für Builder) sehen auch gesperrt aus */
+/* Locked fields (e.g. Settings for builders) also look locked */
 .feld:disabled, select:disabled, input:disabled, textarea:disabled { background: var(--karte-leise); color: var(--leise); cursor: not-allowed; border-style: dashed; }
 
-/* Problem: Kernaussagen, Konzentrationskurve, vier Felder, Säulen der Impressionen */
+/* Problem: key statements, concentration curve, four fields, columns of the impressions */
 .kpi.warn { border-top-color: var(--warn); } .kpi.offen { border-top-color: var(--g-sichtbarkeit); } .kpi.grau { border-top-color: var(--linie-stark); }
 .aussagen { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 12px; }
 .aussage { background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); padding: 18px 20px; display: grid; gap: 4px; border-left: 5px solid var(--linie-stark); }
@@ -410,7 +410,7 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
 
 a.knopf { text-decoration: none; }
 
-/* Funnel als Bild: gestapelter Balken aller Produkte, Gründe als Balken, Leiter als Fluss mit Kreisen */
+/* Funnel as a picture: stacked bar of all products, reasons as bars, ladder as a flow with circles */
 .trichter-bild { display: grid; gap: 14px; }
 .trichter-bild h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--leise); margin-bottom: 8px; }
 .fb { display: flex; height: 46px; border-radius: 10px; overflow: hidden; gap: 2px; background: var(--karte-leise); }
@@ -448,7 +448,7 @@ a.knopf { text-decoration: none; }
 .pipeline > .pl-pfeil { flex-basis: 64px; }
 @media (max-width: 860px) { .gr-zeile { grid-template-columns: minmax(0, 1fr) auto; } .gr-balken { grid-column: 1 / -1; grid-row: 2; } }
 
-/* Zwischenstand einer laufenden Prüfzeit: Balken Angebot und Kontrollgruppe, Nettoeffekt */
+/* Interim state of a running waiting time: bars listing and control group, net effect */
 .zwischenstand { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 22px; align-items: end; margin: 6px 0 2px; padding: 10px 12px; background: var(--karte-leise); border-radius: var(--radius-klein); }
 .zs-titel { font-size: 11.5px; font-weight: 600; color: var(--leise); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
 .zs-zeile { display: grid; grid-template-columns: 52px minmax(0, 1fr) 64px; gap: 8px; align-items: center; font-size: 12.5px; }
@@ -458,7 +458,7 @@ a.knopf { text-decoration: none; }
 .zs-balken i.phase { background: var(--akzent); } .zs-balken i.kontrolle { background: var(--s-kontrolle); }
 .zs-netto { display: flex; align-items: center; gap: 8px; }
 
-/* Funnel-Bedienung: "How it works", Datenband, Schrittleiste, Reiter, Losen, Arbeitszeilen, Titelvergleich, LIVE-Knopf */
+/* Funnel operation: "How it works", data band, step bar, tabs, drawing by lot, work rows, title comparison, LIVE button */
 .wie { margin-top: 4px; } .wie > summary { cursor: pointer; color: var(--akzent); font-weight: 600; font-size: 14px; }
 .wie-liste { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; color: var(--leise); max-width: 80ch; }
 .band { margin-bottom: 12px; }
@@ -507,7 +507,7 @@ a.knopf { text-decoration: none; }
   .reiterleiste { overflow-x: auto; }
 }
 
-/* Seite Dashboard (public/ergebnisse.js): Antwort-Satz, Phasen-Reiter, Tageskurve, Gruppenvergleich, Hebel */
+/* Page Dashboard (public/ergebnisse.js): answer sentence, phase tabs, daily curve, group comparison, levers */
 .r-antwort { display: grid; gap: 8px; border-left: 0; }
 .r-antwort .r-satz { font-family: var(--anzeige); font-size: clamp(20px, 2.6vw, 26px); font-weight: 650; letter-spacing: -.015em; line-height: 1.25; margin: 0; text-wrap: balance; }
 .r-antwort .r-satz strong { color: var(--gut); }
@@ -558,7 +558,7 @@ a.knopf { text-decoration: none; }
 
 .sammel { flex-wrap: wrap; justify-content: flex-end; }
 .abschnitt-kopf { flex-wrap: wrap; }
-/* Seite Results */
+/* Page Results */
 .lauf-waehler { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .lauf-liste { flex: 0 1 340px; min-width: 0; padding: 7px 10px; cursor: pointer; }
 .lauf-waehler .abstand { flex: 1 1 0; }
@@ -599,7 +599,7 @@ a.knopf { text-decoration: none; }
 @media (max-width: 800px) { .fluss-zeile { grid-template-columns: 1fr 1fr; gap: 4px 12px; } .fluss-balken { grid-column: 1 / -1; grid-row: 2; } .fluss-text { grid-column: 2; grid-row: 1; text-align: right; } }
 .tag-fuer-tag { margin-top: 28px; }
 
-/* Funnel: Stufe im Bild wählen, Arbeit darunter (Niko 20.11.: an der Übersicht orientieren) */
+/* Funnel: choose the step in the picture, work below (Niko, 20 Nov: follow the overview) */
 .pl-knoten.gewaehlt { background: var(--karte-hover); box-shadow: inset 0 0 0 2px var(--akzent); }
 .pl-todo { margin-top: 2px; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--karte-leise); color: var(--leise); white-space: nowrap; }
 .pl-todo.dringend { background: var(--akzent); color: #fff; }

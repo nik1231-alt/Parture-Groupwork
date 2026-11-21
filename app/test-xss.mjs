@@ -1,7 +1,7 @@
-// XSS (Checkliste A3.6): ein Angebotstitel mit <script> darf nie als HTML in die Seite kommen.
-// Drei Riegel: (1) die Oberfläche setzt Daten nur per textContent ein (statische Prüfung von public/), (2) die API liefert JSON mit
-// nosniff, nie HTML, (3) die CSP erlaubt nur Skripte aus der eigenen App, eingeschleuste Inline-Skripte liefen also auch dann nicht.
-// Der Server läuft mit einer Kopie der Team-Daten, in der ein Titel ein Skript enthält.
+// XSS (checklist A3.6): a listing title with <script> must never get into the page as HTML.
+// Three latches: (1) the interface inserts data only through textContent (static check of public/), (2) the API delivers JSON with
+// nosniff, never HTML, (3) the CSP allows only scripts from the app itself, so injected inline scripts would not run even then.
+// The server runs with a copy of the team data in which one title contains a script.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -15,31 +15,31 @@ const WURZEL = path.join(import.meta.dirname, "..");
 const PUBLIC = path.join(WURZEL, "public");
 const BOESE = `<script>alert("xss")</script> Holder <img src=x onerror=alert(1)>`;
 
-// ---------- statisch: die Oberfläche ----------
-test("Oberfläche: kein innerHTML, outerHTML, insertAdjacentHTML, document.write, eval oder new Function in public/*.js", () => {
+// ---------- static: the interface ----------
+test("Interface: no innerHTML, outerHTML, insertAdjacentHTML, document.write, eval or new Function in public/*.js", () => {
   const verboten = /\.(innerHTML|outerHTML)\s*[+]?=|insertAdjacentHTML|document\.write|\beval\s*\(|new\s+Function\s*\(|createContextualFragment|DOMParser|javascript:/;
   const dateien = fs.readdirSync(PUBLIC).filter((f) => f.endsWith(".js"));
-  assert.ok(dateien.length >= 3, "public/*.js nicht gefunden");
+  assert.ok(dateien.length >= 3, "public/*.js not found");
   for (const f of dateien) {
     fs.readFileSync(path.join(PUBLIC, f), "utf8").split(/\r?\n/).forEach((z, i) => {
-      if (/^\s*\/\//.test(z)) return; // Kommentare dürfen die Wörter nennen
+      if (/^\s*\/\//.test(z)) return; // Comments may name the words
       assert.doesNotMatch(z, verboten, `${f}:${i + 1}: ${z.trim().slice(0, 120)}`);
     });
   }
 });
 
-test("Oberfläche: der Baustein el() setzt Text nur per textContent, Bilder nur von https", () => {
+test("Interface: the el() helper sets text only via textContent, images only from https", () => {
   const app = fs.readFileSync(path.join(PUBLIC, "app.js"), "utf8");
-  assert.match(app, /if \(k === "text"\) n\.textContent = v;/, "el({ text }) muss textContent benutzen");
-  assert.match(app, /for \(const kind of kinder\.flat\(\)\) if \(kind != null\) n\.append\(kind\);/, "Kinder werden per append eingesetzt (Zeichenketten werden dabei zu Textknoten)");
-  assert.match(app, /const bildUrl = \(u\) => \(typeof u === "string" && \/\^https:\\\/\\\/\/i\.test\(u\) \? u : null\);/, "Bildadressen nur mit https://");
+  assert.match(app, /if \(k === "text"\) n\.textContent = v;/, "el({ text }) must use textContent");
+  assert.match(app, /for \(const kind of kinder\.flat\(\)\) if \(kind != null\) n\.append\(kind\);/, "children are inserted by append (strings become text nodes in the process)");
+  assert.match(app, /const bildUrl = \(u\) => \(typeof u === "string" && \/\^https:\\\/\\\/\/i\.test\(u\) \? u : null\);/, "image addresses only with https://");
 });
 
-test("Oberfläche: HTML-Seiten haben keine Inline-Skripte und keine on…=-Handler (die CSP würde sie ohnehin blockieren)", () => {
+test("Interface: HTML pages have no inline scripts and no on…= handlers (the CSP would block them anyway)", () => {
   for (const f of fs.readdirSync(PUBLIC).filter((n) => n.endsWith(".html"))) {
     const html = fs.readFileSync(path.join(PUBLIC, f), "utf8");
     for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
-      // eigene Datei, höchstens mit Versionsangabe (?v=…), damit ein Ausrollen nicht am Zwischenspeicher hängen bleibt
+      // own file, at most with a version number (?v=…), so that a rollout does not get stuck on the cache
       assert.match(m[1], /\bsrc="\/[\w.-]+\.js(\?v=[\w.-]+)?"/, `${f}: Skript ohne eigene Datei`);
       assert.equal(m[2].trim(), "", `${f}: Inline-Skript`);
     }
@@ -47,7 +47,7 @@ test("Oberfläche: HTML-Seiten haben keine Inline-Skripte und keine on…=-Handl
   }
 });
 
-// ---------- Server mit präparierten Daten ----------
+// ---------- Server with prepared data ----------
 const PORT = 4200 + Math.floor(Math.random() * 90);
 const verz = fs.mkdtempSync(path.join(os.tmpdir(), "parture-xss-"));
 const appdb = path.join(verz, "app.db"), pmdb = path.join(verz, "pm.db");
@@ -68,7 +68,7 @@ test.before(async () => {
   for (let i = 0; i < 900; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
-// Erst auf das Ende des Servers warten, dann löschen: unter Windows hält der laufende Prozess app.db offen (EBUSY).
+// First wait for the end of the server, then delete: on Windows the running process keeps app.db open (EBUSY).
 test.after(async () => {
   if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
   fs.rmSync(verz, { recursive: true, force: true });
@@ -80,12 +80,12 @@ async function anmelden() {
 }
 const istJson = (r) => { assert.match(r.headers.get("content-type"), /^application\/json/); assert.equal(r.headers.get("x-content-type-options"), "nosniff"); };
 
-test("API: ein Titel mit <script> kommt als JSON-Text zurück, unverändert, nie als HTML", async () => {
+test("API: a title with <script> comes back as JSON text, unchanged, never as HTML", async () => {
   const c = await anmelden();
   const liste = await fetch(basis + "/api/produkte?q=" + encodeURIComponent("<script>"), { headers: { Cookie: c } });
   istJson(liste);
   const treffer = (await liste.json()).daten;
-  assert.deepEqual(treffer.map((p) => [p.number, p.title]), [[NR, BOESE]], "der Titel ist Text, er wird weder ausgeführt noch verändert");
+  assert.deepEqual(treffer.map((p) => [p.number, p.title]), [[NR, BOESE]], "the title is text, it is neither executed nor changed");
   const einzel = await fetch(basis + "/api/produkt?nr=" + encodeURIComponent(NR), { headers: { Cookie: c } });
   istJson(einzel);
   assert.equal((await einzel.json()).daten.title, BOESE);
@@ -96,7 +96,7 @@ test("API: ein Titel mit <script> kommt als JSON-Text zurück, unverändert, nie
   assert.equal(fehlt.status, 404); istJson(fehlt);
 });
 
-test("CSP: jede HTML-Antwort erlaubt nur Skripte aus der eigenen App (script-src 'self', kein unsafe-inline/eval)", async () => {
+test("CSP: every HTML response allows only scripts from the app itself (script-src 'self', no unsafe-inline/eval)", async () => {
   const c = await anmelden();
   const seiten = [["/", null], ["/login.html", null], ["/", c], ["/index.html", c]];
   for (const [p, cookie] of seiten) {

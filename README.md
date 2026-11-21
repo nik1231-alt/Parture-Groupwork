@@ -161,6 +161,34 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
 - [`docs/entwicklung.md`](docs/entwicklung.md): how the team works (branches, preview, pull requests, reviews)
 - [`AGENTS.md`](AGENTS.md): rules for coding agents working in this repository
 
+## German names
+
+The code was started in German, so many file, function, table and setting names are German. They are kept on purpose: the
+running server, its database and the Windows tasks use them, and renaming them shortly before the hand-in would risk breaking the live system.
+Everything a person reads (interface, messages, documentation, comments, test names) is English. New names are written in English.
+
+| German name | Meaning | Where |
+|---|---|---|
+| `leiter` | ladder / funnel: the steps a listing goes through (title → ads → price → manual check) | `app/leiter.mjs`, `/api/leiter` |
+| `freigabe` | approval by an admin | `app/freigabe.mjs`, `/api/freigaben` |
+| `protokoll` | log (append-only) | `app/protokoll.mjs`, `/api/protokoll` |
+| `waechter` | watcher: deploys new versions after green tests, restarts the app | `app/waechter.mjs` |
+| `sicherung` | backup | `app/sicherung.mjs`, `npm run sicherung` |
+| `benutzer`, `rollen`, `login` | users, roles, sign-in | `app/benutzer.mjs`, `app/rollen.mjs`, `app/login.mjs` |
+| `einstellungen`, `regeln` | settings, rules (default values) | `app/einstellungen.mjs`, `app/regeln.mjs` |
+| `bewertung`, `auswertung`, `ergebnisse` | assessment of a listing, evaluation of a test, results of the phases | `app/bewertung.mjs`, `app/auswertung.mjs`, `app/ergebnisse.mjs` |
+| `experimente` | tests with a test and a control group (the "Tests" page) | `app/experimente.mjs` |
+| `titelhilfe`, `titel-regeln`, `ki-titel` | title help, title rule checker, AI title suggestions | `app/titelhilfe.mjs`, `app/titel-regeln.mjs`, `app/ki-titel.mjs` |
+| `ebay-schreiben`, `export-ebay` | writing to eBay, building `pm.db` from eBay | `app/ebay-schreiben.mjs`, `app/export-ebay.mjs` |
+| `benachrichtigung` | notification (Telegram) | `app/benachrichtigung.mjs` |
+| `EBAY_SCHREIBEN`, `EBAY_WERBUNG`, `EBAY_PREIS` | switches: writing to eBay, ads, price (each must be `an` = on) | `.env` |
+| `PM_UMGEBUNG` | environment: `prod`, `vorschau` (preview) or empty (local) | `.env` |
+| `vorschau` | preview (branch and environment) | git, server |
+| `Los`, `ziehen` | draw by lot, to draw | tests, ladder |
+| `Probelauf` | dry run | approval, ladder |
+| `kanal`, `produkt`, `bild`, `sperre`, `stand` | tables of `pm.db`: channel, product, image, block list, state | `daten-team/pm.db` |
+| `aenderung`, `erholt`, `ueberarbeiten`, `behalten` | change, recovered ("seen again"), rework, keep | database, ladder |
+
 ## Glossary
 
 | Term | Meaning |

@@ -1,19 +1,19 @@
-// Traffic je Listing und Tag aus der eBay-Analytics-API, mit Absicherung gegen unfertige Zahlen.
+// Traffic per listing and day from the eBay Analytics API, with protection against unfinished figures.
 //
-// Warum mit Verzögerung: eBay ändert die Zahlen der letzten Tage noch nachträglich. Deshalb gilt ein Tag erst nach
-// VERZOEGERUNG Tagen als fertig (Standard 3, in der .env als TRAFFIC_VERZOEGERUNG_TAGE änderbar). Die letzten Tage vor dem
-// Stichtag werden bei jedem Lauf noch einmal geholt und verglichen: Weicht eBay ab, wird überschrieben und gezählt.
-// Kontrolle: Je Tag wird die Summe über alle Listings mit der Gesamtsumme des Kontos (Dimension DAY) verglichen.
-// Alle Funktionen mit Netz bekommen fetchFn, damit die Tests ohne Internet laufen.
+// Why with a delay: eBay still changes the figures of the last days afterwards. That is why a day counts as finished only after
+// VERZOEGERUNG days (default 3, changeable in the .env as TRAFFIC_VERZOEGERUNG_TAGE). The last days before the
+// cut-off day are fetched again on every run and compared: if eBay differs, it is overwritten and counted.
+// Control: for each day the sum over all listings is compared with the total of the account (dimension DAY).
+// All functions with network get fetchFn, so that the tests run without internet.
 export const VERZOEGERUNG_STANDARD = 3;
-export const FENSTER_TAGE = 90;     // so viele Tage werden vorgehalten (reicht für die 30- und 90-Tage-Summen)
-export const NACHPRUEFEN_TAGE = 3;  // die letzten Tage bis zum Stichtag werden jedes Mal neu geholt und verglichen
-// Die tatsächlich geltende Verzögerung (Export, Datenstand-Warnung und Oberfläche rechnen alle mit dieser einen Funktion)
+export const FENSTER_TAGE = 90;     // so many days are kept (enough for the 30- and 90-day sums)
+export const NACHPRUEFEN_TAGE = 3;  // the last days up to the cut-off day are fetched anew each time and compared
+// The delay that actually applies (export, data-age warning and interface all calculate with this one function)
 export const verzoegerungTage = (env = process.env) => Math.max(1, Number(env.TRAFFIC_VERZOEGERUNG_TAGE) || VERZOEGERUNG_STANDARD);
-const PAKET = 200;                  // die API liefert je Aufruf höchstens 200 Listings (listing_ids-Filter, offset gilt nicht)
+const PAKET = 200;                  // the API returns at most 200 listings per call (listing_ids filter, offset does not apply)
 const METRIKEN = "TOTAL_IMPRESSION_TOTAL,LISTING_VIEWS_TOTAL,TRANSACTION";
 
-// ---------- Datum (eBay rechnet in Los-Angeles-Zeit) ----------
+// ---------- Date (eBay calculates in Los Angeles time) ----------
 export const laDatum = (jetzt = new Date(), tageZurueck = 0) => new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Los_Angeles" }).format(new Date(jetzt.getTime() - tageZurueck * 864e5));
 export function addTage(iso, n) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 export const tageListe = (bis, anzahl) => Array.from({ length: anzahl }, (_, i) => addTage(bis, -(anzahl - 1 - i)));
@@ -21,9 +21,9 @@ const kompakt = (iso) => iso.replace(/-/g, "");
 const ausKompakt = (s) => { const m = String(s).match(/^(\d{4})-?(\d{2})-?(\d{2})$/); return m ? `${m[1]}-${m[2]}-${m[3]}` : null; };
 
 // ---------- Abruf ----------
-// eBay begrenzt die Analytics-API (HTTP 429, "request limit has been reached"). Dann wird nicht weiter gehämmert: nach einer
-// kurzen Wartezeit gibt es einen zweiten Versuch, danach wirft die Funktion einen LimitFehler. Der Import speichert, was er hat,
-// und macht beim nächsten Lauf weiter.
+// eBay limits the Analytics API (HTTP 429, "request limit has been reached"). Then there is no hammering: after a
+// short wait there is a second attempt, after that the function throws a LimitFehler. The import saves what it has
+// and continues at the next run.
 export class LimitFehler extends Error { constructor(m) { super(m); this.name = "LimitFehler"; this.limit = true; } }
 async function holeJson(fetchFn, url, token, versuche = 3, pauseMs = 1500, limitPauseMs = 20000) {
   let letzter; let limitVersuche = 0;
@@ -33,10 +33,10 @@ async function holeJson(fetchFn, url, token, versuche = 3, pauseMs = 1500, limit
       if (r.ok) return await r.json();
       if (r.status === 429) {
         if (++limitVersuche >= 2) throw new LimitFehler("eBay Analytics: request limit reached (HTTP 429)");
-        await new Promise((res) => setTimeout(res, limitPauseMs)); i--; continue; // zählt nicht als normaler Versuch
+        await new Promise((res) => setTimeout(res, limitPauseMs)); i--; continue; // does not count as a normal attempt
       }
       letzter = new Error(`eBay Analytics: HTTP ${r.status}`);
-      if (r.status >= 400 && r.status < 500) break; // Client-Fehler: Wiederholen hilft nicht
+      if (r.status >= 400 && r.status < 500) break; // Client error: retrying does not help
     } catch (e) { if (e instanceof LimitFehler) throw e; letzter = e; }
     if (i < versuche) await new Promise((res) => setTimeout(res, pauseMs * i));
   }
@@ -44,8 +44,8 @@ async function holeJson(fetchFn, url, token, versuche = 3, pauseMs = 1500, limit
 }
 const wert = (keys, mv, k) => { const i = keys.indexOf(k); return i >= 0 ? Number(mv?.[i]?.value) || 0 : 0; };
 
-// Ein Zeitraum (von bis bis, einschließlich), alle Listings: Map(itemId -> { imp, auf, trans }).
-// Wirft bei jedem endgültigen Fehler: lieber gar nichts als einen halben Tag.
+// A period (von to bis, inclusive), all listings: Map(itemId -> { imp, auf, trans }).
+// Throws on every final error: rather nothing at all than half a day.
 export async function holeZeitraum(token, von, bis, ids, { fetchFn = fetch, versuche = 3, pauseMs = 1500, limitPauseMs = 20000, drosselMs = 0 } = {}) {
   const je = new Map();
   for (let i = 0; i < ids.length; i += PAKET) {
@@ -66,7 +66,7 @@ export async function holeZeitraum(token, von, bis, ids, { fetchFn = fetch, vers
 
 export const holeTag = (token, datum, ids, opts) => holeZeitraum(token, datum, datum, ids, opts);
 
-// Kontosumme je Tag (Dimension DAY): Map(datum -> { imp, auf, trans }). Bei Fehlern null (die Kontrolle ist eine Zugabe).
+// Account total per day (dimension DAY): Map(date -> { imp, auf, trans }). On errors null (the control is an extra).
 export async function holeKontrolle(token, von, bis, { fetchFn = fetch, versuche = 3, pauseMs = 1500 } = {}) {
   try {
     const url = "https://api.ebay.com/sell/analytics/v1/traffic_report?" + new URLSearchParams({ dimension: "DAY", filter: `date_range:[${kompakt(von)}..${kompakt(bis)}],marketplace_ids:{EBAY_DE}`, metric: METRIKEN });
@@ -82,15 +82,15 @@ export async function holeKontrolle(token, von, bis, { fetchFn = fetch, versuche
   } catch { return null; }
 }
 
-// ---------- Planung und Vergleich (reine Funktionen) ----------
-// Welche Tage müssen geholt werden? Fehlende, und die letzten nachpruefen Tage immer.
+// ---------- Planning and comparison (pure functions) ----------
+// Which days have to be fetched? Missing ones, and the last nachpruefen days always.
 export function planeTage(vorhandeneTage, alleTage, nachpruefen = NACHPRUEFEN_TAGE) {
   const hat = new Set(vorhandeneTage);
   const spaet = new Set(alleTage.slice(-nachpruefen));
   return alleTage.filter((t) => !hat.has(t) || spaet.has(t));
 }
 
-// Wie viele Zeilen eines Tages sind bei eBay inzwischen anders als gespeichert? (neu, weggefallen oder geänderte Zahlen)
+// How many rows of a day are now different on eBay than stored? (new, dropped or changed figures)
 export function zaehleAbweichungen(alt, neu) {
   if (!alt) return 0;
   let n = 0;
@@ -100,7 +100,7 @@ export function zaehleAbweichungen(alt, neu) {
   return n;
 }
 
-// Summen je Listing über die letzten laenge Tage bis einschließlich bis. tage: Map(datum -> Map(itemId -> {imp,auf,trans})).
+// Sums per listing over the last laenge days up to and including bis. tage: Map(date -> Map(itemId -> {imp,auf,trans})).
 export function fensterSummen(tage, bis, laenge, bekannt = null) {
   const von = addTage(bis, -(laenge - 1));
   const je = new Map();
@@ -115,7 +115,7 @@ export function fensterSummen(tage, bis, laenge, bekannt = null) {
   return je;
 }
 
-// Anteil der Kontosumme (Impressionen), den die Listings je Tag erklären. 1 = vollständig. Fehlende Kontrolle: null.
+// Share of the account total (impressions) that the listings explain per day. 1 = complete. Missing control: null.
 export function abdeckung(tage, kontrolle, tageListeGeprueft) {
   if (!kontrolle) return null;
   const zeilen = [];

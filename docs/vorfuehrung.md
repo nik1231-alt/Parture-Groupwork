@@ -1,85 +1,85 @@
-# Vorführung und Architektur (eine Seite)
+# Demo and architecture (one page)
 
-## Die Idee in drei Sätzen
+## The idea in three sentences
 
-Wir verbessern die **Sichtbarkeit (Impressionen)** von eBay-Angeboten des Shops `partureshop` über **Titeltests**: Die App zieht per Los Test- und Kontrollgruppe, ein Builder trägt neue Titel ein, **Niko gibt frei**, erst dann ändert die App die Titel bei eBay. Nach der Prüfzeit vergleicht sie beide Gruppen und sagt „besser“, „kein Unterschied belegt“ oder „schlechter“, wobei die Verkäufe als Schutzkennzahl dienen. Alles ist im Protokoll nachvollziehbar.
+We improve the **visibility (impressions)** of eBay listings of the shop `partureshop` through **title tests**: the app draws a test and a control group by lot, a builder enters new titles, **Niko approves**, and only then does the app change the titles on eBay. After the waiting time it compares both groups and says "better", "no difference proven" or "worse", with sales as a safety figure. Everything can be traced in the log.
 
-## Architektur
+## Architecture
 
 ```
-Builder (3) und Admin (Niko)
-        │  Browser
+Builders (3) and admin (Niko)
+        │  browser
         ▼
-Cloudflare Access (E-Mail-Code) ──► Cloudflare Tunnel ──► Server-Laptop
-                                                          ├─ PROD      (main, mit eBay-Keys)  ──► eBay APIs (Trading, Analytics, Fulfillment)
-                                                          └─ VORSCHAU  (vorschau, ohne Keys)
-GitHub ──► Wächter ──► nur nach bestandenen Tests ──► PROD  /  Branch vorschau ──► VORSCHAU
+Cloudflare Access (e-mail code) ──► Cloudflare Tunnel ──► server laptop
+                                                          ├─ PROD     (main, with eBay keys)  ──► eBay APIs (Trading, Analytics, Fulfillment)
+                                                          └─ PREVIEW  (vorschau, without keys)
+GitHub ──► watcher ──► only after passing tests ──► PROD  /  branch vorschau ──► PREVIEW
 ```
 
-Warum so:
-- **Zwei Rollen, serverseitig erzwungen:** Builder schlagen vor, nur der Admin gibt frei. Die Keys liegen nur auf PROD.
-- **Nichts Ungeprüftes auf PROD:** Pull Request, Review, automatische Tests, dann erst Auto-Deploy.
-- **Nichts überschrieben:** Vor jeder Änderung liest die App den aktuellen Titel; weicht er ab, passiert nichts. Obergrenze 50 Änderungen je Freigabe. Probelauf, solange der Schreibschalter aus ist.
-- **Lückenloses Protokoll:** nur anhängen, die Datenbank verbietet Ändern und Löschen.
-- **Saubere Daten:** Traffic nur aus fertigen Tagen (3 Tage Verzug), letzte Tage nachgeprüft, Kontrolle gegen die Kontosumme, Warnung bei Rückstand.
-- **Betrieb:** tägliche Sicherung mit getesteter Rücksicherung, Wächter startet die App nach Absturz neu, Meldung an Niko per Telegram.
+Why this way:
+- **Two roles, enforced on the server:** builders propose, only the admin approves. The keys exist only on PROD.
+- **Nothing unchecked on PROD:** pull request, review, automatic tests, and only then auto-deploy.
+- **Nothing overwritten:** before every change the app reads the current title; if it differs, nothing happens. Limit of 50 changes per approval. Dry run as long as the write switch is off.
+- **Complete log:** append-only, the database forbids changing and deleting.
+- **Clean data:** traffic only from finished days (3 days delay), the last days re-checked, control against the account total, a warning when the data is behind.
+- **Operation:** daily backup with a tested restore, the watcher restarts the app after a crash, a Telegram message to Niko.
 
-## Ablauf der Vorführung (ca. 8 Minuten)
+## Demo run (about 8 minutes)
 
-| # | Zeigen | Satz dazu |
+| # | Show | What to say |
 |---|---|---|
-| 1 | Seite *Listings*, Filter „Low impressions“ | „Von rund 740 Angeboten sehen Käufer viele kaum. Die App zeigt welche und warum.“ |
-| 2 | Kopfzeile: **LIVE**, Datenstand, „traffic up to“ | „Die Zahlen kommen täglich automatisch aus der eBay-API, immer mit 3 Tagen Verzug, damit sie endgültig sind.“ |
-| 3 | *Tests* → „Draw a new test“ | „Per Los: eine Hälfte bekommt neue Titel, die andere bleibt als Vergleich. So sehen wir, ob es am Titel liegt und nicht am Monat.“ |
-| 4 | Als **Builder** anmelden, Titel eintragen (Titelhilfe zeigen), „Send for approval“ | „Der Builder kann nichts bei eBay ändern, nur vorschlagen.“ Niko bekommt eine Telegram-Meldung. |
-| 5 | Als **Admin** → *Approvals*, alter und neuer Titel nebeneinander, „Approve“ | „Erst jetzt schreibt die App bei eBay. Sie prüft vorher, dass der Titel noch der erwartete ist.“ |
-| 6 | Bei eBay: der Titel ist geändert (im zweiten Fenster) | „Echte Änderung, mit Niko‘s Zugang, nur nach Freigabe.“ |
-| 7 | *Log* | „Wer hat was wann vorgeschlagen, freigegeben, geändert: nicht nachträglich änderbar.“ |
-| 8 | *Tests* → „Show an example verdict“ | „Ein echtes Urteil braucht 30 Tage plus Datenverzug. So sieht es aus: besser, kein Unterschied, schlechter, mit Schutzkennzahl Verkäufe.“ |
-| 8b | *Ladder*: Trichter oben, eine Karte mit KI-Titel (alt/neu, verworfene Vorschläge mit Grund), eine laufende Stufe mit Fortschritt, den Lebenslauf aufklappen | „Was der Test im Kleinen beweist, macht die Leiter im Alltag: erst Titel, dann Werbung, dann Preis, und wenn nichts hilft, schaut ein Mensch drauf. Die KI schreibt, der Regelprüfer wirft alles raus, was abgemahnt werden könnte, und freigeben muss Niko.“ |
-| 9 | Kurz: VORSCHAU öffnen (Badge **PREVIEW**), `docs/entwicklung.md` | „Alle bauen weiter: Push auf `vorschau`, nach 1 bis 2 Minuten sichtbar, per Pull Request und Tests nach PROD.“ |
+| 1 | *Listings* page, filter "Low impressions" | "Of about 740 listings, buyers hardly see many. The app shows which ones and why." |
+| 2 | Header: **LIVE**, data age, "traffic up to" | "The figures come automatically from the eBay API every day, always with 3 days delay so that they are final." |
+| 3 | *Tests* → "Draw a new test" | "By lot: one half gets new titles, the other half stays as a comparison. That shows whether it is the title and not the month." |
+| 4 | Log in as **builder**, enter titles (show the title help), "Send for approval" | "The builder cannot change anything on eBay, only propose." Niko gets a Telegram message. |
+| 5 | As **admin** → *Approvals*, old and new title side by side, "Approve" | "Only now does the app write to eBay. Before that it checks that the title is still the expected one." |
+| 6 | On eBay: the title is changed (in a second window) | "A real change, with Niko's access, only after approval." |
+| 7 | *Log* | "Who proposed, approved, changed what and when: cannot be changed afterwards." |
+| 8 | *Tests* → "Show an example verdict" | "A real verdict needs 30 days plus data delay. This is what it looks like: better, no difference, worse, with sales as the safety figure." |
+| 8b | *Ladder*: the funnel at the top, a card with an AI title (old/new, discarded suggestions with the reason), a running step with progress, open the history | "What the test proves in the small, the ladder does in everyday use: first the title, then ads, then price, and if nothing helps, a person takes a look. The AI writes, the rule checker throws out everything that could draw a warning letter, and Niko has to approve." |
+| 9 | Briefly: open the PREVIEW (badge **PREVIEW**), `docs/entwicklung.md` | "Everyone keeps building: push to `vorschau`, visible after 1 to 2 minutes, by pull request and tests to PROD." |
 
-Ausfallplan, falls Netz oder Server streiken: Screenshots der Schritte 1 bis 8 und ein Bildschirmvideo vorher aufnehmen; lokal läuft die App auch ohne Internet mit der Team-Kopie der Daten (`npm start`).
+Fallback plan if the network or the server fails: record screenshots of steps 1 to 8 and a screen video beforehand; locally the app also runs without internet with the team copy of the data (`npm start`).
 
-## Ehrlich benennen (kommt bei Fragen)
+## Name these openly (comes up in questions)
 
-- Ein echtes Test-Urteil liegt innerhalb der Projektzeit nicht vor (Prüfzeit plus Datenverzug), deshalb das Beispiel-Urteil mit erfundenen Zahlen, klar so gekennzeichnet.
-- eBay kann Titeländerungen bei Angeboten mit Verkäufen ablehnen; die App zeigt dann eBays Meldung und ändert nichts.
-- Die Titelhilfe liefert nur belegte Hinweise aus den eigenen Daten und nur, wenn ein Muster klar erkennbar ist. Sie erfindet keine Titel.
-- Korrelation ist kein Beweis: genau dafür gibt es den Gruppenvergleich.
+- A real test verdict is not available within the project time (waiting time plus data delay), hence the example verdict with invented figures, clearly marked as such.
+- eBay can refuse title changes for listings with sales; the app then shows eBay's message and changes nothing.
+- The title help delivers only evidence-based hints from the own data and only when a pattern is clearly visible. It invents no titles.
+- Correlation is not proof: that is exactly why there is the group comparison.
 
-## Vor und während eines echten Tests
+## Before and during a real test
 
-- **Shopify-Titel der Testprodukte nicht anfassen** (B1.5): Der Parture-Hub überträgt jede Titeländerung im Shopify-Shop binnen 10 Minuten nach eBay und würde den Testtitel überschreiben. Lion ist informiert.
-- Gesperrte Angebote (Tabelle `sperre` in `pm.db`, heute die 50 Angebote des Preis-Abstieg-Tests bis 01.12.) kommen in kein Los.
-- Revert-Plan ausfüllen, bevor der Schalter an geht: [`belege/revert-plan.md`](belege/revert-plan.md).
+- **Do not touch the Shopify titles of the test products** (B1.5): the Parture hub copies every title change in the Shopify shop to eBay within 10 minutes and would overwrite the test title. Lion is informed.
+- Blocked listings (table `sperre` in `pm.db`, today the 50 listings of the price-decrease test until 1 Dec) go into no draw.
+- Fill in the revert plan before the switch is turned on: [`belege/revert-plan.md`](belege/revert-plan.md).
 
-## Wer hat was gebaut (A5.8, offen sagen)
+## Who built what (A5.8, say it openly)
 
-- **Gruppe:** Idee und fachlicher Kern: Diagnose-Regeln, Test mit Kontrollgruppe, Freigabe-Ablauf, Login und Rollen, Auswertung mit Diagrammen, Oberfläche.
-- **Server-KI** (Claude, im Git als „Parture Server-KI“ und mit `Co-Authored-By` erkennbar): Server-Betrieb (zwei Umgebungen, Cloudflare, Wächter, Sicherung), der nächtliche Datenexport aus dem Hub und, zur Abgabe am 22.11., ein Teil der Tests (Routenschutz, Ende-zu-Ende-Durchlauf), der Sicherheits- und Architektur-Doku sowie der Aufräumarbeiten aus der Checkliste.
-- Die genauen Anteile zeigt `git shortlog -sn` (mit `.mailmap`, ein Name je Person). **Diese Liste vor der Vorführung von der Gruppe prüfen und anpassen**: Was hier steht, muss stimmen.
+- **Group:** idea and subject core: diagnosis rules, test with a control group, approval flow, login and roles, evaluation with charts, interface.
+- **Server AI** (Claude, in Git as "Parture Server-KI" and recognisable by `Co-Authored-By`): server operation (two environments, Cloudflare, watcher, backup), the nightly data export from the hub and, for the hand-in on 22 Nov, part of the tests (route protection, end-to-end run), the security and architecture docs and the clean-up work from the checklist.
+- The exact shares are shown by `git shortlog -sn` (with `.mailmap`, one name per person). **The group should check and adjust this list before the demo**: what is written here must be true.
 
-## Fragen und Antworten (B4, je zwei Sätze, eine Person zuständig)
+## Questions and answers (B4, two sentences each, one person responsible)
 
-| # | Frage | Antwort | Wer |
+| # | Question | Answer | Who |
 |---|---|---|---|
-| 1 | Warum kein Framework? | Rund 4.300 Zeilen mit einer einzigen Abhängigkeit, ohne Build-Schritt, jede Zeile lesbar. Der Preis: Routing und Sitzungen haben wir selbst geschrieben, dafür sind sie getestet. | … |
-| 2 | Warum SQLite? | Eine Datei, die nachts atomar ausgetauscht wird, Trigger für das Protokoll, kein Datenbankserver zu betreiben. Bei fünf Nutzern braucht es nichts Größeres. | … |
-| 3 | Warum keine Kosten, kein Gewinn, keine Kunden? | Der Export des Shops gibt nur eine Whitelist öffentlicher Felder heraus, das ist Firmenregel. Deshalb formulieren wir die Aufgabe über Impressionen, Menge und Preis. | … |
-| 4 | Wie ist sichergestellt, dass ein Builder nichts bei eBay ändert? | Die Rolle prüft der Server bei jeder Anfrage, mit Test für jede Route; die Keys liegen nur auf PROD, und geschrieben wird nur mit Schalter. Vor jeder Änderung liest die App den Titel, alles steht im Protokoll. | … |
-| 5 | Was, wenn eBay ablehnt? | Die App zeigt eBays Meldung am Vorschlag und im Protokoll. Geändert ist dann nichts. | … |
-| 6 | Korrelation oder Ursache? | Das Los mit Kontrollgruppe trennt den Titel-Effekt von Saison und eBay-Schwankungen; Verkäufe sind Schutzkennzahl, die Marke liegt bei +20 %. Ein echtes Urteil braucht 30 Tage, wir zeigen den Zwischenstand nach x Tagen und das Beispiel-Urteil. | … |
-| 7 | Was hat die KI gemacht, was die Gruppe? | Siehe Abschnitt oben, offen und mit Git-Zahlen. | Niko |
-| 8 | Was mit einem weiteren Monat? | Automatisches Urteil nach 30 Tagen, Titelhilfe mit mehr Daten, weitere Kanäle. | … |
-| 9 | Wie habt ihr zusammengearbeitet? | Branch je Aufgabe, Pull Request mit Review, CI mit Tests und Geheimnis-Scan, Vorschau nach einer Minute, PROD nur über `main`. Zahlen aus `git shortlog -sn` nennen. | … |
-| 10 | Wie schützt ihr Zugangsdaten? | `.env` und Datenbanken sind git-ignoriert, der Geheimnis-Scan prüft jede Datei und die ganze Historie, die Keys liegen nur auf PROD. Davor sitzt Cloudflare Access, die App prüft dessen Token zusätzlich. | … |
+| 1 | Why no framework? | About 4,300 lines with a single dependency, no build step, every line readable. The price: we wrote routing and sessions ourselves, and they are tested. | … |
+| 2 | Why SQLite? | One file that is replaced atomically at night, triggers for the log, no database server to run. With five users nothing bigger is needed. | … |
+| 3 | Why no costs, no profit, no customers? | The shop's export gives out only a whitelist of public fields; that is a company rule. That is why we phrase the task around impressions, quantity and price. | … |
+| 4 | How is it ensured that a builder changes nothing on eBay? | The server checks the role on every request, with a test for every route; the keys exist only on PROD, and writing happens only with the switch. Before every change the app reads the title, and everything is in the log. | … |
+| 5 | What if eBay refuses? | The app shows eBay's message on the proposal and in the log. Nothing is changed then. | … |
+| 6 | Correlation or cause? | The draw with a control group separates the title effect from season and eBay fluctuations; sales are a safety figure, the mark is +20 %. A real verdict needs 30 days, we show the interim state after x days and the example verdict. | … |
+| 7 | What did the AI do, what did the group do? | See the section above, openly and with Git figures. | Niko |
+| 8 | What about another month? | Automatic verdict after 30 days, title help with more data, more channels. | … |
+| 9 | How did you work together? | One branch per task, pull request with review, CI with tests and secret scan, preview after a minute, PROD only through `main`. Name the figures from `git shortlog -sn`. | … |
+| 10 | How do you protect credentials? | `.env` and databases are git-ignored, the secret scan checks every file and the whole history, the keys exist only on PROD. In front sits Cloudflare Access, and the app checks its token as well. | … |
 
-## Sprecherrollen (B3.2, von der Gruppe auszufüllen)
+## Speaker roles (B3.2, to be filled in by the group)
 
-| Schritt | Wer spricht |
+| Step | Who speaks |
 |---|---|
-| 1–2 Listings, Datenstand | … |
-| 3–4 Test ziehen, Titel als Builder | … |
-| 5–7 Freigabe, eBay, Log (Admin) | Niko |
-| 8–9 Urteil, Zusammenarbeit | … |
+| 1–2 Listings, data age | … |
+| 3–4 Draw a test, titles as builder | … |
+| 5–7 Approval, eBay, log (admin) | Niko |
+| 8–9 Verdict, teamwork | … |

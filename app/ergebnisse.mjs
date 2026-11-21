@@ -1,25 +1,25 @@
-// Ergebnisse (Seite Results): wie haben sich die Impressionen verändert, und ist der Unterschied zur Kontrollgruppe klar oder Zufall?
-// Reine Rechnung ohne Datenbank: sie bekommt die Übersicht der Leiter (leiter.uebersicht) und liefert fertige Zahlen für die Seite.
-// Ein "Lauf" sind alle Angebote, die am selben Tag auf die Leiter kamen (ein Start mit ein paar Produkten). Jeder Lauf wird für sich
-// ausgewertet, dazu gibt es "alle Läufe". Je Phase (Titel, Werbung, Preis): Summe der Impressionen vorher und nachher, Veränderung der Kontrollgruppe
-// und ein Urteil. Das Urteil sagt, ob der Effekt eines typischen Angebots klar von null verschieden ist: ein 95-%-Bereich um den Effekt je Angebot.
-// Liegt der ganze Bereich über null, ist es ein klarer Anstieg; liegt er darunter, ein klarer Rückgang; sonst ist es nicht von Zufall zu unterscheiden.
+// Results (page "Results"): how did impressions change, and is the difference from the control group clear or chance?
+// Pure calculation without a database: it receives the overview of the ladder (leiter.uebersicht) and returns finished figures for the page.
+// A "run" is all listings that went onto the ladder on the same day (one start with a few products). Each run is evaluated on its own,
+// plus "all runs". Per phase (title, ads, price): sum of impressions before and after, change of the control group
+// and a verdict. The verdict says whether the effect of a typical listing is clearly different from zero: a 95 % range around the effect per listing.
+// If the whole range lies above zero it is a clear increase; if it lies below, a clear decrease; otherwise it cannot be told apart from chance.
 import { netto } from "./auswertung.mjs";
 
 export const PHASEN = [["titel", "New title"], ["werbung", "Ads"], ["preis", "Lower price"]];
-export const MIN_AUSGEWERTET = 5;  // so viele Angebote mit Kontrollgruppe braucht eine Phase, bevor sie ein Urteil bekommt (sonst "too_few")
+export const MIN_AUSGEWERTET = 5;  // so many listings with a control group does a phase need before it gets a verdict (otherwise "too_few")
 export const ALLE = "alle";
 
 const endlich = (x) => (Number.isFinite(x) ? x : null);
 const aenderung = (vorher, nachher) => (vorher > 0 ? endlich(nachher / vorher - 1) : null);
 const istKontrolle = (a) => a.stufe === "kontrolle" || a.ergebnis === "kontrolle";
 
-// Kritischer Wert der t-Verteilung (zweiseitig, 95 %) nach Freiheitsgraden; ab 30 gilt die Normalverteilung (1,96)
+// Critical value of the t distribution (two-sided, 95 %) by degrees of freedom; from 30 on the normal distribution applies (1.96)
 const T95 = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042];
 export const tKritisch = (freiheitsgrade) => (freiheitsgrade < 1 ? null : freiheitsgrade <= 30 ? T95[freiheitsgrade - 1] : 1.96);
 
-// Typischer Effekt je Angebot gegen die Kontrollgruppe mit 95-%-Bereich. Gerechnet wird mit dem Logarithmus des Verhältnisses (+50 % und −33 %
-// heben sich so auf, wie man es erwartet); ein Angebot mit 0 Impressionen nachher zählt mit −99 %.
+// Typical effect per listing against the control group with a 95 % range. It is calculated with the logarithm of the ratio (+50 % and −33 %
+// cancel out, as one would expect); a listing with 0 impressions afterwards counts as −99 %.
 export function schaetze(nettos) {
   const w = nettos.filter((x) => Number.isFinite(x)).map((x) => Math.log(1 + Math.max(x, -0.99)));
   if (w.length < 2) return null;
@@ -29,7 +29,7 @@ export function schaetze(nettos) {
   return { effekt: Math.exp(m) - 1, von: Math.exp(m - abstand) - 1, bis: Math.exp(m + abstand) - 1, n: w.length };
 }
 
-// "up" und "down": der ganze 95-%-Bereich liegt über bzw. unter null. Sonst "unclear". Zu wenige Angebote: "too_few".
+// "up" and "down": the whole 95 % range lies above or below zero. Otherwise "unclear". Too few listings: "too_few".
 export function urteil(schaetzung, anzahl) {
   if (!schaetzung || anzahl < MIN_AUSGEWERTET) return "too_few";
   if (schaetzung.von > 0) return "up";
@@ -53,9 +53,9 @@ function phase(angebote, stufe, name) {
   };
 }
 
-// Wohin sind die Angebote gekommen? Je Phase: wie viele sind dort angekommen und was ist aus ihnen geworden: wieder gesehen (raus aus der Leiter),
-// weitergereicht, noch in der Prüfzeit, wartet auf Freigabe, ohne Messung übersprungen (z. B. schon beworben) oder von Hand herausgenommen.
-// Nach der letzten Phase folgt die manuelle Prüfung durch einen Admin (wartet oder entschieden).
+// Where did the listings end up? Per phase: how many arrived there and what became of them: seen again (left the ladder),
+// passed on, still in the waiting time, waiting for approval, skipped without a measurement (e.g. already advertised) or taken off by hand.
+// After the last phase comes the manual check by an admin (waiting or decided).
 const ENTSCHEIDUNGEN = ["behalten", "ueberarbeiten", "offline"];
 export function fluss(angebote) {
   const stufen = PHASEN.map(([schluessel, name]) => ({ schluessel, name, erreicht: 0, erholt: 0, weiter: 0, laeuft: 0, wartet: 0, uebersprungen: 0, entfernt: 0 }));
@@ -87,12 +87,12 @@ const lauf = (schluessel, name, angebote) => ({
   phasen: PHASEN.map(([s, n]) => phase(angebote, s, n)),
 });
 
-// u = Ergebnis von leiter.uebersicht. Ein Lauf je Tag, an dem Angebote auf die Leiter kamen (neueste zuerst), davor "alle Läufe".
+// u = result of leiter.uebersicht. One run per day on which listings went onto the ladder (newest first), preceded by "all runs".
 export function baueErgebnisse(u, { besserAb = 0.2 } = {}) {
   const getestet = u.angebote.filter((a) => !istKontrolle(a));
   const tage = [...new Set(getestet.map((a) => String(a.eingestiegen_at).slice(0, 10)))].sort().reverse();
   const laeufe = [lauf(ALLE, "All runs", u.angebote), ...tage.map((t) => lauf(t, t, getestet.filter((a) => String(a.eingestiegen_at).slice(0, 10) === t)))];
-  // Die Kontrollgruppe gehört zu keinem Lauf, ihre Zahlen stecken in den Auswertungen der Angebote
+  // The control group belongs to no run; its figures are inside the evaluations of the listings
   return {
     laeufe, kontrollgruppe: u.angebote.length - getestet.length, trafficBis: u.trafficBis ?? null,
     skala: { besserAb, mindestAusgewertet: MIN_AUSGEWERTET }, leer: laeufe[0].phasen.every((p) => p.ausgewertet === 0),

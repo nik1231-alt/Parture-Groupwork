@@ -1,7 +1,7 @@
-// Demo: drei Beispiel-Urteile mit ERFUNDENEN Zahlen, berechnet mit der echten Urteilsfunktion und den echten Einstellungen.
-// Ein echtes Urteil braucht mindestens eine Prüfzeit (Standard 30 Tage) plus Datenverzug. Zur Vorführung zeigt die App deshalb,
-// wie ein Urteil und die Diagramme aussehen und gelesen werden. Die Beispiele sind in der Oberfläche als Beispiel gekennzeichnet,
-// sie berühren keine echten Tests.
+// Demo: three example verdicts with INVENTED figures, calculated with the real verdict function and the real settings.
+// A real verdict needs at least one waiting time (default 30 days) plus data delay. For the demo the app therefore shows
+// what a verdict and the charts look like and how they are read. The examples are marked as examples in the interface,
+// they touch no real tests.
 import { urteile } from "./experimente.mjs";
 import { baueAuswertung } from "./auswertung.mjs";
 
@@ -12,10 +12,10 @@ const FAELLE = [
   { schluessel: "worse", titel: "Example C: impressions rose, but sales fell", test: { vorher: g(1200, 30, 6), nachher: g(2000, 50, 2) }, kontrolle: { vorher: g(1250, 31, 5), nachher: g(1300, 32, 5) } },
 ];
 
-// Zufallszahlen mit festem Startwert: jeder Aufruf liefert dieselben Beispielangebote
+// Random numbers with a fixed start value: every call returns the same example listings
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
-// Verteilt eine Summe ganzzahlig nach Gewichten, so dass die Teile genau die Summe ergeben (größter Rest)
+// Distributes a sum into whole numbers by weights, so that the parts add up exactly to the sum (largest remainder)
 function verteile(summe, gewichte) {
   const gesamt = gewichte.reduce((s, x) => s + x, 0);
   const teile = gewichte.map((w) => Math.floor((summe * w) / gesamt));
@@ -25,11 +25,11 @@ function verteile(summe, gewichte) {
   return teile;
 }
 
-// Erfundene Einzelangebote, deren Summen genau zu den Zahlen des Beispiels passen: so stimmen Urteil und Diagramm überein.
+// Invented single listings whose sums match the figures of the example exactly: this way verdict and chart agree.
 function angebote(gruppe, summen, rng, namensanfang) {
   const n = 20;
-  const ausgang = Array.from({ length: n }, () => 0.4 + rng() * 1.6);           // unterschiedlich große Angebote
-  const schwankung = Array.from({ length: n }, () => 0.5 + rng() * 1.0);        // jedes Angebot entwickelt sich etwas anders
+  const ausgang = Array.from({ length: n }, () => 0.4 + rng() * 1.6);           // listings of different size
+  const schwankung = Array.from({ length: n }, () => 0.5 + rng() * 1.0);        // every listing develops a little differently
   const nachGewicht = ausgang.map((w, i) => w * schwankung[i]);
   const feld = (f) => [verteile(summen.vorher[f], ausgang), verteile(summen.nachher[f], nachGewicht)];
   const [iv, inn] = feld("imp"), [av, an] = feld("auf"), [tv, tn] = feld("trans");

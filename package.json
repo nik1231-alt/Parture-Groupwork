@@ -1,7 +1,7 @@
 {
   "name": "parture-groupwork",
   "version": "0.1.0",
-  "description": "Produktmanagement fuer den Parture-Shop — Uni-Gruppenarbeit. Arbeitet auf einer Whitelist-Kopie (pm.db), nie auf der Firmendatenbank.",
+  "description": "Product management for the Parture shop (university team project). Works on a whitelist copy (pm.db), never on the company database.",
   "type": "module",
   "main": "app/server.mjs",
   "engines": {

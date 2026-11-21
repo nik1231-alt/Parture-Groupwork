@@ -1,17 +1,17 @@
-# Lokale Daten (Server-Nachtlauf bzw. eigener Export) bleiben ausserhalb von Git
+# Local data (the server's nightly run or your own export) stays out of Git
 daten/
 *.db
 *.db.neu
-# Ausnahme: die Team-Kopie der Daten (eBay-Stand, ohne Kosten/Kunden) liegt bewusst im Repo
+# Exception: the team copy of the data (eBay figures, without costs or customers) is deliberately in the repository
 !daten-team/
 !daten-team/pm.db
-# Geheimnisse
+# Secrets
 .env
 # Node
 node_modules/
-# Laufzeit
+# Runtime
 *.log
 pm.pid
-# Alle Varianten von .env ausschliessen (z. B. .env.local), nur die Vorlage bleibt
+# Exclude every variant of .env (e.g. .env.local); only the template stays
 .env.*
 !.env.beispiel

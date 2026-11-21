@@ -1,46 +1,46 @@
-// Diagnose (Grundgerüst, Fokus: Impressionen): jedes Angebot bekommt einen von drei Bereichen.
-// Reine Funktionen ohne Datenbank und ohne Netz, damit sie leicht zu testen sind.
-// Nur eBay. Bewusst NICHT enthalten: Werbung (bräuchte ein Budget) und Preis als Hebel (bräuchte einen Deckungsbeitrag).
-// Alle Werte stehen in EINSTELLUNGEN (Startwerte) und lassen sich in der App unter "Settings" ändern.
-// Sichtbare Texte sind auf Englisch; Schlüssel und Kommentare bleiben deutsch.
+// Diagnosis (basic framework, focus: impressions): every listing gets one of three areas.
+// Pure functions without a database and without network, so that they are easy to test.
+// eBay only. Deliberately NOT included: ads (would need a budget) and price as a lever (would need a contribution margin).
+// All values are in EINSTELLUNGEN (default values) and can be changed in the app under "Settings".
+// Visible texts are in English; keys (names) stay German, comments are English.
 //
-// Der Baum (der erste Treffer gewinnt):
-//   1. jünger als die Schonfrist (Standard 90 Tage)  -> warten        (Briefing: zu wenig Daten = abwarten)
-//   2. keine Impressionen bekannt                    -> warten
-//   3. Impressionen unter der Grenze                 -> sichtbarkeit  (Hebel: Titel und Suchbegriffe)
-//        Grenze = unteres Viertel des Shops (einstellbar) oder eine feste Zahl
-//   4. sonst                                         -> ok
+// The tree (the first hit wins):
+//   1. younger than the grace period (default 90 days)  -> warten (wait)    (briefing: too little data = wait)
+//   2. no impressions known                             -> warten
+//   3. impressions below the limit                      -> sichtbarkeit (visibility)  (lever: title and search terms)
+//        limit = lowest quarter of the shop (adjustable) or a fixed number
+//   4. otherwise                                        -> ok
 
-// eBay-Titel dürfen höchstens so lang sein (Vorgabe von eBay, daher fest und nicht in den Settings). Die einzige Stelle mit dieser Zahl:
-// Server (setzeTitel, Titelhilfe), Tests und Oberfläche (über /api/experimente) lesen sie von hier.
+// eBay titles may be at most this long (eBay's rule, hence fixed and not in the Settings). The only place with this number:
+// server (setzeTitel, title help), tests and interface (through /api/experimente) read it from here.
 export const TITEL_MAX_ZEICHEN = 80;
 
 export const EINSTELLUNGEN = {
   // Diagnose
-  schonfristTage: 90,        // so lange gilt ein Angebot als "neu" und wird nicht bewertet
+  schonfristTage: 90,        // for so long a listing counts as "new" and is not assessed
   modus: "anteil",           // "anteil" = unteres Viertel des Shops, "fest" = feste Zahl
-  anteilUnten: 0.25,         // Anteil des Shops, der als "wenig Impressionen" gilt (Modus "anteil")
-  festeGrenze: 2000,         // Grenze in Impressionen je 90 Tage (Modus "fest")
-  wenigImpressionen90d: 2000, // wird aus den Daten berechnet (leiteSchwellenAb); dies ist nur der Rückfallwert
-  // Tests (Gruppenvergleich, siehe experimente.mjs)
-  testGroesse: 40,           // so viele Angebote kommen in einen Test (je zur Hälfte Test- und Kontrollgruppe)
-  pruefungNachTagen: 30,     // so lange läuft ein Test, bevor geurteilt wird (das Datenfenster der App ist 30 Tage)
-  mindestImpressionen30: 150, // darunter wird nicht geurteilt (Mindestmenge aus dem Briefing)
-  besserAb: 0.2,             // Zielmarke: die Testgruppe muss gegenüber der Kontrollgruppe um mindestens 20 % mehr Impressionen haben (einzige Stelle; Oberfläche liest sie aus der Auswertung)
-  schutzGrenze: 0.2,         // die Verkäufe der Testgruppe dürfen gegenüber der Kontrollgruppe um höchstens 20 % fallen
-  // Leiter (siehe leiter.mjs): Prüfzeit je Stufe, wie viele Angebote gleichzeitig, Werbesatz und Preisschritt
-  leiterTageTitel: 14,       // so lange läuft der neue Titel, bevor die Impressionen wieder geprüft werden
-  leiterTageWerbung: 14,     // Prüfzeit nach dem Einschalten der Werbung
-  leiterTagePreis: 21,       // Prüfzeit nach der Preissenkung (Verkäufe reagieren langsamer)
-  leiterMax: 20,             // höchstens so viele Angebote stehen gleichzeitig auf der Leiter
+  anteilUnten: 0.25,         // share of the shop that counts as "low impressions" (mode "anteil")
+  festeGrenze: 2000,         // limit in impressions per 90 days (mode "fest")
+  wenigImpressionen90d: 2000, // is calculated from the data (leiteSchwellenAb); this is only the fallback value
+  // Tests (group comparison, see experimente.mjs)
+  testGroesse: 40,           // so many listings go into a test (half test group, half control group)
+  pruefungNachTagen: 30,     // so long a test runs before a verdict is given (the app's data window is 30 days)
+  mindestImpressionen30: 150, // below this no verdict is given (minimum amount from the briefing)
+  besserAb: 0.2,             // Target mark: the test group must have at least 20 % more impressions than the control group (the only place; the interface reads it from the evaluation)
+  schutzGrenze: 0.2,         // the sales of the test group may fall by at most 20 % compared with the control group
+  // Ladder (see leiter.mjs): waiting time per step, how many listings at the same time, ad rate and price step
+  leiterTageTitel: 14,       // for so long the new title runs before the impressions are checked again
+  leiterTageWerbung: 14,     // waiting time after switching on the ads
+  leiterTagePreis: 21,       // waiting time after the price cut (sales react more slowly)
+  leiterMax: 20,             // at most so many listings are on the ladder at the same time
   leiterNurOhneVerkauf: "ja", // Niko 20.11.: Angebote, die bei eBay schon verkauft haben, nicht anfassen ("nein" = auch verkaufte)
   leiterBewegung: "hand",    // Niko 20.11.: erst einmal nur per Knopf; "automatisch" = der Tageslauf zieht und bewertet selbst
-  leiterKontrolle: true,     // der tägliche Lauf lost zu jedem aufgenommenen Angebot eines als Kontrollgruppe aus (bleibt unverändert, Vergleich je Stufe)
-  werbesatz: 0.1,            // Werbesatz für eBay Promoted Listings (Anteil am Verkaufspreis, nur bei Verkauf fällig)
-  preisSchritt: 0.1,         // um diesen Anteil wird der Preis in Stufe 3 gesenkt
+  leiterKontrolle: true,     // the daily run draws one control listing for every listing taken in (stays unchanged, comparison per step)
+  werbesatz: 0.1,            // ad rate for eBay Promoted Listings (share of the sale price, due only on a sale)
+  preisSchritt: 0.1,         // by this share the price is lowered in step 3
 };
 
-// Reihenfolge = Reihenfolge der Reiter in der Oberfläche
+// Order = order of the tabs in the interface
 export const GRUPPEN = {
   sichtbarkeit: { label: "Low impressions", empfehlung: "Improve the title", regel: "impressions are in the lowest share of the shop (or under your fixed limit): buyers rarely see the listing" },
   ok: { label: "Fine", empfehlung: "No action needed", regel: "enough impressions" },
@@ -58,8 +58,8 @@ function perzentil(werte, anteil) {
   return v[Math.floor(anteil * (v.length - 1))];
 }
 
-// Berechnet die Grenze für "wenig Impressionen". Modus "fest": die eingestellte Zahl. Modus "anteil": das untere Viertel
-// (oder der eingestellte Anteil) der Angebote außerhalb der Schonfrist. Bei weniger als 20 Angeboten bleibt der Rückfallwert.
+// Calculates the limit for "low impressions". Mode "fest": the set number. Mode "anteil": the lower quarter
+// (or the set share) of the listings outside the grace period. With fewer than 20 listings the fallback value stays.
 export function leiteSchwellenAb(produkte, einst = EINSTELLUNGEN, jetzt = new Date()) {
   if (einst.modus === "fest") return { ...einst, wenigImpressionen90d: einst.festeGrenze };
   const imp = produkte
@@ -80,7 +80,7 @@ export const klickrate = (p) => {
 
 const n = (x) => Number(x).toLocaleString("en-GB");
 
-// p: { created_at, units_90d, impressionen_90d } (fehlende Zahlen = null). einst: bitte mit leiteSchwellenAb berechnet.
+// p: { created_at, units_90d, impressionen_90d } (missing numbers = null). einst: please calculated with leiteSchwellenAb.
 export function bewerte(p, einst = EINSTELLUNGEN, jetzt = new Date()) {
   const v90 = Number(p.units_90d) || 0;
   const imp = p.impressionen_90d == null ? null : Number(p.impressionen_90d);

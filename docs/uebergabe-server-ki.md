@@ -1,149 +1,149 @@
-# Übergabeprotokoll: Parture-Tool auf den Server bringen
+# Handover protocol: bringing the Parture tool onto the server
 
-Dieses Dokument ist für die KI (Claude Code o. Ä.), die auf dem **Server-Laptop** läuft und dort Zugriff auf Cloudflare (Tunnel, Access) hat. Es ist so geschrieben, dass du ohne Vorwissen weiterarbeiten kannst. Die KI auf Nikos Mac hat das Tool gebaut und getestet. Du richtest es auf dem Server ein, schaltest es nach Proben scharf und übergibst es der Gruppe.
+This document is for the AI (Claude Code or similar) that runs on the **server laptop** and has access to Cloudflare (tunnel, Access) there. It is written so that you can carry on without prior knowledge. The AI on Niko's Mac built and tested the tool. You set it up on the server, switch it live after the probes and hand it over to the group.
 
-**Niko gibt dir als ersten Satz nur das:** „Lies `docs/uebergabe-server-ki.md` im Repo `Parture-Groupwork` vollständig und arbeite es von oben nach unten ab. Frag mich nur bei den Punkten, die dort als ‚Frag Niko‘ stehen.“
+**Niko gives you only this as the first sentence:** "Read `docs/uebergabe-server-ki.md` in the repo `Parture-Groupwork` completely and work through it from top to bottom. Ask me only at the points that are marked 'Ask Niko'."
 
 ---
 
-## 1. Auftrag in einem Satz
+## 1. The task in one sentence
 
-Das Repo `nik1231-alt/Parture-Groupwork` (privates GitHub-Repo, Uni-Gruppenprojekt, Frist ca. **23.11.2026**) ist ein **Produktmanagement-Tool für den eBay-Shop `partureshop`** (Fokus: mehr Impressionen durch Titeltests). Es soll **robust und vorzeigbar** auf dem Server laufen, für alle vier Gruppenmitglieder per Login erreichbar, mit täglich automatisch eintreffenden Traffic-Daten, und Titeländerungen bei eBay sollen nur nach **Freigabe durch Niko** (Admin) und mit seinem eBay-Zugang geschehen und lückenlos protokolliert werden.
+The repo `nik1231-alt/Parture-Groupwork` (private GitHub repo, university team project, deadline about **23 Nov 2026**) is a **product management tool for the eBay shop `partureshop`** (focus: more impressions through title tests). It is to run on the server **robustly and presentably**, reachable for all four group members by login, with traffic data arriving automatically every day, and title changes on eBay are to happen only after **approval by Niko** (admin) and with his eBay access, and be logged without gaps.
 
-Niko will ausdrücklich **„keine halbgaren Sachen, sondern ein robustes System, das man vorstellen und präsentieren kann“**. Lieber weniger Funktionen, die zuverlässig laufen, als viele, die nur meistens laufen.
+Niko explicitly wants **"no half-baked things, but a robust system that can be shown and presented"**. Rather fewer features that run reliably than many that only run most of the time.
 
-## 2. Spielregeln für dich (verbindlich)
+## 2. Rules of the game for you (binding)
 
-1. **Geheimnisse:** eBay-Keys, Refresh-Token, Cloudflare-Tokens, Telegram-Token, Passwörter, `.env`-Inhalte und Tunnel-Zugangsdaten werden **nie** in den Chat, in Commits, Issues, Logs, Tool-Ausgaben oder Dokumente geschrieben. Niko trägt Werte **selbst** in die `.env` ein (er öffnet die Datei im Editor). Du gibst die Datei nicht aus (`cat .env` ist tabu) und zeigst bei Prüfungen nur „gesetzt / nicht gesetzt“. Nikos Wunsch: Passwörter nicht im Chat posten.
-2. **Nichts Außenwirksames ohne Nikos Ja:** kein Push auf `main`, kein Merge, kein Schließen von Pull Requests, keine Änderung an GitHub-Einstellungen, kein Einschalten von `EBAY_SCHREIBEN=an`, keine echte Titeländerung bei eBay, keine Freigabe von Cloudflare-Access-Personen ohne seine Liste. Vorbereiten und vorschlagen ja, ausführen erst nach „ja“.
-3. **Keine ungeprüften Stände auf der Maschine mit den Keys.** PROD folgt nur `main` und nur nach bestandenen Tests. Du richtest keinen Mechanismus ein, der Code von einem Branch zieht, den jemand ohne Review beschreiben kann, auf eine Maschine mit eBay-Keys. (Grund: Wer dort Code ausführen lässt, kann die Keys lesen.)
-4. **Ein Befehl, der Prozesse beendet, trifft nur dein Ziel.** Kein `pkill node`, kein `taskkill /im node.exe` (das hat schon einmal den laufenden Server von Niko mit beendet). Immer über PID oder die Aufgabe.
-5. **Antworte auf Deutsch**, kurz und ehrlich. Wenn etwas nicht geklappt hat oder nicht getestet ist, sag es so. Hake in `docs/server-checkliste.md` nur ab, was du selbst mit der angegebenen **Probe** geprüft hast.
-6. Arbeite auf einem eigenen Branch (`server/<thema>`), öffne Pull Requests, schreibe **nie direkt auf `main`**.
+1. **Secrets:** eBay keys, refresh token, Cloudflare tokens, Telegram token, passwords, `.env` contents and tunnel credentials are **never** written into the chat, commits, issues, logs, tool output or documents. Niko enters values into the `.env` **himself** (he opens the file in an editor). You do not print the file (`cat .env` is taboo) and in checks you show only "set / not set". Niko's wish: do not post passwords in the chat.
+2. **Nothing with an effect on the outside without Niko's yes:** no push to `main`, no merge, no closing of pull requests, no change to GitHub settings, no switching on `EBAY_SCHREIBEN=an`, no real title change on eBay, no approval of Cloudflare Access persons without his list. Preparing and suggesting yes, executing only after a "yes".
+3. **No unchecked versions on the machine with the keys.** PROD follows only `main` and only after passing tests. You do not set up any mechanism that pulls code from a branch that somebody can write to without a review onto a machine with eBay keys. (Reason: whoever has code run there can read the keys.)
+4. **A command that ends processes hits only your target.** No `pkill node`, no `taskkill /im node.exe` (that once ended Niko's running server as well). Always by PID or by the task.
+5. **Reply to Niko in German**, briefly and honestly. If something did not work or is not tested, say so. In `docs/server-checkliste.md` tick only what you checked yourself with the given **probe**.
+6. Work on your own branch (`server/<topic>`), open pull requests, **never write directly to `main`**.
 
-## 3. Was schon fertig ist (gebaut und mit 116 automatischen Tests geprüft)
+## 3. What is already done (built and checked with 116 automatic tests)
 
-| Bereich | Stand |
+| Area | Status |
 |---|---|
-| Login | Benutzer/Sitzungen (scrypt, HttpOnly/SameSite/Secure-Cookie), Sperre je Name (5 Fehlversuche) und je Adresse (20), Passwort ändern unter *Account*, Schutz-Header/CSP |
-| Rollen | `admin` (Niko) und `builder` (Alexius76, giacomogrilli, EmbletonNova). Der Server prüft Rechte, nicht nur die Oberfläche. Immer mindestens ein Admin |
-| Freigabe | Builder: „Send for approval“. Admin gibt frei → App liest aktuellen Titel bei eBay, überschreibt **nichts**, wenn er vom erwarteten abweicht, schreibt nur mit `EBAY_SCHREIBEN=an`, sonst **Dry run**. Obergrenze 50 Angebote je Freigabe. Rückänderung („revert“) braucht wieder Freigabe |
-| Protokoll | Tab *Log*, nur anhängen (SQLite-Trigger verbieten Ändern/Löschen) |
-| Traffic | Tageswerte je Listing aus der eBay-Analytics-API, Stichtag = heute − 3 Tage, die letzten 3 Tage werden nachgeprüft, Kontrolle gegen Kontosumme (< 80 % bricht ab), fortsetzbar bei HTTP 429, täglich ab 5 Uhr automatisch (`EBAY_TRAFFIC_AUTO=an`), Warnbanner bei Rückstand ≥ 2 Tage |
-| Betrieb | Wächter `app/waechter.mjs` (Auto-Deploy mit Testschranke, Neustart bei Absturz/Hänger), tägliche Sicherung mit Rücksicherung, Telegram-Meldung (optional), Statusseite (Tab Log → System), Umgebungs-Badge PREVIEW/LIVE |
-| Qualität | CI-Workflow (`.github/workflows/pruefung.yml`), Geheimnis-Scan über Dateien **und gesamte Git-Historie** (sauber, Stand 17.11.), Entwicklerleitfaden, Einrichtungsanleitung |
-| Hilfen | Titelhilfe (Wort-Hinweise aus eigenen Daten, erfindet keine Titel), Beispiel-Urteile mit erfundenen Zahlen (Tab Tests) |
+| Login | Users/sessions (scrypt, HttpOnly/SameSite/Secure cookie), lock per name (5 failed attempts) and per address (20), change password under *Account*, protective headers/CSP |
+| Roles | `admin` (Niko) and `builder` (Alexius76, giacomogrilli, EmbletonNova). The server checks rights, not only the interface. Always at least one admin |
+| Approval | Builder: "Send for approval". The admin approves → the app reads the current title on eBay, overwrites **nothing** if it differs from the expected one, writes only with `EBAY_SCHREIBEN=an`, otherwise **dry run**. Limit of 50 listings per approval. A revert ("revert") needs an approval again |
+| Log | Tab *Log*, append-only (SQLite triggers forbid changing/deleting) |
+| Traffic | Daily values per listing from the eBay Analytics API, cut-off day = today − 3 days, the last 3 days are re-checked, control against the account total (< 80 % aborts), resumable on HTTP 429, automatically every day from 5 a.m. (`EBAY_TRAFFIC_AUTO=an`), warning banner when 2 days or more behind |
+| Operation | Watcher `app/waechter.mjs` (auto-deploy with a test gate, restart after a crash/hang), daily backup with restore, Telegram message (optional), status page (tab Log → System), environment badge PREVIEW/LIVE |
+| Quality | CI workflow (`.github/workflows/pruefung.yml`), secret scan over files **and the whole Git history** (clean, status 17 Nov), developer guide, setup guide |
+| Helpers | Title help (word hints from the own data, invents no titles), example verdicts with invented figures (tab Tests) |
 
-**Nicht** getestet: eine echte Titeländerung bei eBay (nur gegen einen Ersatz-Schreiber), und die neue Oberfläche wurde nur per API und Syntaxprüfung, nicht visuell im Browser abgenommen. Das gehört in deine Proben (Abschnitt 6).
+**Not** tested: a real title change on eBay (only against a fake writer), and the new interface was accepted only by API and syntax check, not visually in the browser. That belongs in your probes (section 6).
 
-## 4. Wo der Code gerade liegt (zuerst prüfen!)
+## 4. Where the code lies right now (check this first!)
 
-Alles liegt auf **Branches**, nichts davon war beim Schreiben dieses Dokuments auf `main`:
+Everything lies on **branches**, none of it was on `main` when this document was written:
 
-- `emb/login` (Login von EmbletonNova)
-- `admin/rollen-freigabe` (PR #4: Rollen, Freigabe, Protokoll, Traffic-Import; Basis noch `emb/login`)
-- `admin/server-betrieb` (Wächter, Sicherung, Telegram, Statusseite, Passwort ändern, Titelhilfe, Demo, CI, Doku, dieses Dokument)
+- `emb/login` (login by EmbletonNova)
+- `admin/rollen-freigabe` (PR #4: roles, approval, log, traffic import; base still `emb/login`)
+- `admin/server-betrieb` (watcher, backup, Telegram, status page, change password, title help, demo, CI, docs, this document)
 
-**Erste Handlung:** `git fetch` und prüfen, was auf `origin/main` ist (`git log --oneline origin/main -5`, `git branch -r --contains <commit>`). Fehlen die drei Branches noch, **frag Niko**, sie in der richtigen Reihenfolge zu mergen (Login → PR #4 → Betrieb). Du mergst nicht selbst. Bis dahin kannst du alles vorbereiten (Ordner, Tunnel, Access) und die Proben aus einem Klon des Branches `admin/server-betrieb` fahren.
+**First action:** `git fetch` and check what is on `origin/main` (`git log --oneline origin/main -5`, `git branch -r --contains <commit>`). If the three branches are still missing, **ask Niko** to merge them in the right order (login → PR #4 → operation). You do not merge yourself. Until then you can prepare everything (folders, tunnel, Access) and run the probes from a clone of the branch `admin/server-betrieb`.
 
-Außerdem braucht es den Branch **`vorschau`**. Existiert er nicht: Niko legt ihn an oder erlaubt dir `git push origin main:vorschau` (sonst nichts).
+The branch **`vorschau`** is needed as well. If it does not exist: Niko creates it or allows you `git push origin main:vorschau` (nothing else).
 
-## 5. Architektur, die du herstellst
+## 5. The architecture you create
 
 ```
 GitHub
-  main    ──► PROD     C:\parture\prod       Port 5070   eBay-Keys, Freigabe, Traffic-Import, Wächter (nur Fast-Forward + Tests)
-  vorschau──► VORSCHAU C:\parture\vorschau   Port 5071   KEINE Keys, Wächter folgt hart, jede Minute
+  main    ──► PROD     C:\parture\prod       port 5070   eBay keys, approval, traffic import, watcher (fast-forward + tests only)
+  vorschau──► PREVIEW  C:\parture\vorschau   port 5071   NO keys, watcher follows hard, every minute
 
-Browser ─► Cloudflare Access (E-Mail-Code, nur die 4 Adressen) ─► Cloudflare Tunnel (Dienst) ─► 127.0.0.1:5070 / :5071 ─► App-Login
+Browser ─► Cloudflare Access (e-mail code, only the 4 addresses) ─► Cloudflare tunnel (service) ─► 127.0.0.1:5070 / :5071 ─► app login
 ```
 
-- Die App lauscht ausschließlich auf `127.0.0.1`. Keine eingehenden Firewall-Ports öffnen.
-- Mit gesetzten `CF_ACCESS_TEAM_DOMAIN` und `CF_ACCESS_AUD` nimmt die App **nur** Anfragen mit gültigem Cloudflare-Access-Token an (sonst 401). Zwei Access-Anwendungen, zwei verschiedene AUD (je eine pro Hostname).
-- Chrome sperrt Port 5060 (`ERR_UNSAFE_PORT`): deshalb 5070/5071, nicht 5060.
+- The app listens only on `127.0.0.1`. Open no incoming firewall ports.
+- With `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` set, the app accepts **only** requests with a valid Cloudflare Access token (otherwise 401). Two Access applications, two different AUDs (one per host name).
+- Chrome blocks port 5060 (`ERR_UNSAFE_PORT`): hence 5070/5071, not 5060.
 
-## 6. Dein Arbeitsplan (von oben nach unten)
+## 6. Your work plan (from top to bottom)
 
-Die ausführlichen Befehle und Proben stehen in **`docs/server-einrichtung.md`** (gleiche Nummerierung der Schritte). Hake in **`docs/server-checkliste.md`** ab (Kennungen B1 … H6). Eigenes Branch/PR für die Abhakungen.
+The detailed commands and probes are in **`docs/server-einrichtung.md`** (same numbering of the steps). Tick things off in **`docs/server-checkliste.md`** (IDs B1 … H6). Use your own branch/PR for the ticks.
 
-**Phase 1: Server vorbereiten (B)**
-1. Zustand der Maschine prüfen: Betriebssystem, Node ≥ 22, Git, Ruhezustand aus, Netz stabil, welche alten Aufgaben/Prozesse laufen (`Get-ScheduledTask`, Port 5060/5070/5071 belegt?). Es existiert evtl. noch **`C:\parture-pm`** mit der alten Aufgabe „Parture PM (5060)“ (zieht `main` ohne Tests): `installiere.ps1` deaktiviert sie. Daten dort (`daten\app.db`, `.env`) **nicht löschen**, erst sichten und mit Niko klären (**Frag Niko**, ob sie übernommen werden sollen).
-2. Zwei Klone `C:\parture\prod` (`main`) und `C:\parture\vorschau` (`vorschau`), `npm ci`, `npm test` in beiden grün.
-3. `.env` je Umgebung aus `server\env.prod.beispiel` / `env.vorschau.beispiel` anlegen. **Niko trägt die eBay-Werte selbst ein.** `EBAY_SCHREIBEN` bleibt **leer**.
-4. Benutzer anlegen (`npm run benutzer -- anlegen …`), Passwörter verdeckt abfragen lassen, **nicht** ausgeben. Niko = admin, die drei = builder; beide Umgebungen.
-5. Wächter als Aufgabe: `.\server\windows\installiere.ps1 -Umgebung prod|vorschau`. Proben: Absturztest, Neustart des Laptops, `daten\waechter.log`.
+**Phase 1: prepare the server (B)**
+1. Check the state of the machine: operating system, Node ≥ 22, Git, hibernation off, network stable, which old tasks/processes run (`Get-ScheduledTask`, are ports 5060/5070/5071 in use?). There may still be **`C:\parture-pm`** with the old task "Parture PM (5060)" (pulls `main` without tests): `installiere.ps1` disables it. **Do not delete** the data there (`daten\app.db`, `.env`); look at it first and clarify with Niko (**Ask Niko** whether it should be taken over).
+2. Two clones `C:\parture\prod` (`main`) and `C:\parture\vorschau` (`vorschau`), `npm ci`, `npm test` green in both.
+3. Create the `.env` per environment from `server\env.prod.beispiel` / `env.vorschau.beispiel`. **Niko enters the eBay values himself.** `EBAY_SCHREIBEN` stays **empty**.
+4. Create users (`npm run benutzer -- anlegen …`), have the passwords asked for hidden, **do not** print them. Niko = admin, the three others = builder; both environments.
+5. Watcher as a task: `.\server\windows\installiere.ps1 -Umgebung prod|vorschau`. Probes: crash test, restart of the laptop, `daten\waechter.log`.
 
-**Phase 2: Zugang von außen (C)** (du hast die Cloudflare-Rechte)
-6. Named Tunnel `parture` mit zwei Hostnamen (`app.<domain>`, `vorschau.<domain>`), als Dienst installiert; Konfig aus `server\cloudflare\config.beispiel.yml`. **Frag Niko** nach der Domain (muss bei Cloudflare verwaltet sein) und dem Teamnamen.
-7. Zwei Access-Anwendungen (Self-hosted), Anmeldung *One-time PIN*, Regel *Allow* nur für die vier E-Mail-Adressen (**Frag Niko** nach den Adressen). AUD-Tags in die `.env` eintragen (AUD ist kein Passwort, aber behandle sie trotzdem sparsam), Wächter neu starten.
-8. Proben aus `server-einrichtung.md` Schritt 6 (vier Stück). Erst wenn alle stimmen: Quick-Tunnel und App auf Nikos Mac beenden lassen (**Niko** macht das, es ist sein Mac; die Gruppe nutzt aktuell die temporäre Adresse dorthin).
+**Phase 2: access from outside (C)** (you have the Cloudflare rights)
+6. Named tunnel `parture` with two host names (`app.<domain>`, `vorschau.<domain>`), installed as a service; config from `server\cloudflare\config.beispiel.yml`. **Ask Niko** for the domain (must be managed at Cloudflare) and the team name.
+7. Two Access applications (self-hosted), login *One-time PIN*, rule *Allow* only for the four e-mail addresses (**Ask Niko** for the addresses). Enter the AUD tags in the `.env` (an AUD is not a password, but still treat it sparingly), restart the watcher.
+8. Probes from `server-einrichtung.md` step 6 (four of them). Only when all are right: have the quick tunnel and the app on Niko's Mac ended (**Niko** does that, it is his Mac; the group currently uses the temporary address there).
 
-**Phase 3: Daten und Sicherung (D)**
-9. Erster `npm run export` auf PROD. **Bekannt:** Die eBay-Analytics-API hat ein hartes Abruflimit (HTTP 429). Der 90-Tage-Aufbau läuft deshalb über mehrere Läufe/Tage von selbst weiter (Zwischenspeicher). Bei 429 nicht wiederholt hämmern, sondern am nächsten Tag weiter. Fortschritt und Abdeckung im Tab *Log* prüfen; Abdeckung (Summe der Listings gegen Kontosumme) sollte nahe 100 % sein, unter 80 % ist ein Fehler. Daten dürfen erst als „fertig“ gelten, wenn die letzten 3 Tage nachgeprüft sind.
-10. `EBAY_TRAFFIC_AUTO=an`: am nächsten Tag prüfen, dass der Import um/nach 5 Uhr von selbst lief (Log: „Last successful import“ mit heutigem Datum).
-11. Sicherung: `npm run sicherung`, **Rücksicherung einmal wirklich testen** (Schritt 8 in `server-einrichtung.md`), `SICHERUNG_ZIEL2` auf ein anderes Laufwerk oder eine Cloud-Ablage (**Frag Niko**, wohin).
-12. Optional: `PM_DB` der Vorschau auf die `pm.db` von PROD zeigen lassen (nur lesend), damit dort dieselben Zahlen stehen.
+**Phase 3: data and backup (D)**
+9. First `npm run export` on PROD. **Known:** the eBay Analytics API has a hard request limit (HTTP 429). The 90-day build-up therefore continues by itself over several runs/days (cache). On a 429 do not hammer repeatedly, continue the next day. Check the progress and coverage in the tab *Log*; coverage (sum of listings against the account total) should be close to 100 %, below 80 % is an error. Data may count as "done" only when the last 3 days have been re-checked.
+10. `EBAY_TRAFFIC_AUTO=an`: check the next day that the import ran by itself at/after 5 a.m. (log: "Last successful import" with today's date).
+11. Backup: `npm run sicherung`, **really test the restore once** (step 8 in `server-einrichtung.md`), set `SICHERUNG_ZIEL2` to another drive or a cloud folder (**Ask Niko** where).
+12. Optional: let `PM_DB` of the preview point to the `pm.db` of PROD (read-only), so that the same figures are shown there.
 
-**Phase 4: Schreiben nach Freigabe (E)**
-13. Dry-run-Probe auf PROD (Schalter leer): zwei Angebote einreichen, freigeben, im Log steht **Dry run**, bei eBay ändert sich nichts.
-14. **Frag Niko:** Welche **4 Angebote** darf der erste echte Test ändern (Ladenhüter, kaum Verkäufe)? Erst danach `EBAY_SCHREIBEN=an` (Niko setzt es selbst), Wächter neu starten.
-15. Echter Mini-Test mit Niko vor Ort: Builder-Konto schlägt vor → Niko gibt frei → **bei eBay nachsehen**, dass der Titel geändert ist → Log prüfen → Test schließen mit „revert“ → Rückänderung freigeben → bei eBay nachsehen. Notiere, was eBay ablehnt (**erwartet:** eBay kann Titeländerungen bei Angeboten mit Verkäufen ablehnen; die App zeigt dann eBays Meldung, ändert nichts und protokolliert es).
-16. Telegram: Niko legt einen Bot an und trägt `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` selbst in die PROD-`.env` ein. Probe: Ein Builder reicht einen Vorschlag ein → Nachricht kommt bei Niko an.
+**Phase 4: writing after approval (E)**
+13. Dry-run probe on PROD (switch empty): submit two listings, approve, the log shows **Dry run**, nothing changes on eBay.
+14. **Ask Niko:** which **4 listings** may the first real test change (slow sellers, hardly any sales)? Only then `EBAY_SCHREIBEN=an` (Niko sets it himself), restart the watcher.
+15. Real mini test with Niko present: the builder account proposes → Niko approves → **look on eBay** that the title is changed → check the log → close the test with "revert" → approve the reverting change → look on eBay. Note what eBay refuses (**expected:** eBay can refuse title changes for listings with sales; the app then shows eBay's message, changes nothing and logs it).
+16. Telegram: Niko creates a bot and enters `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` himself in the PROD `.env`. Probe: a builder submits a proposal → the message arrives at Niko's.
 
-**Phase 5: Sicherheit und Übergabe an die Gruppe (F, G)**
-17. Niko ändert sein Passwort unter *Account* und löscht auf dem Mac die Datei `daten/erstes-passwort.txt` (**Niko**).
-18. `server-einrichtung.md` Schritt 10 komplett durchlaufen (Builder bekommt 403 auf Admin-Routen, Header, Cookie-Flags, Geheimnis-Scan, `/api/betrieb` der Vorschau zeigt `schreibenAn:false`).
-19. Probe „Test-PR bis auf PROD“ aus `docs/entwicklung.md` gemeinsam mit einem Builder. Alle drei melden sich an VORSCHAU und PROD an.
+**Phase 5: security and handover to the group (F, G)**
+17. Niko changes his password under *Account* and deletes the file `daten/erstes-passwort.txt` on the Mac (**Niko**).
+18. Run through `server-einrichtung.md` step 10 completely (a builder gets 403 on admin routes, headers, cookie flags, secret scan, `/api/betrieb` of the preview shows `schreibenAn:false`).
+19. The probe "test PR all the way to PROD" from `docs/entwicklung.md` together with a builder. All three log in to PREVIEW and PROD.
 
-**Phase 6: Präsentation (H)**
-20. Mit Niko die Vorführung durchspielen: Diagnose → Test ziehen → Titel (mit Titelhilfe) → Freigabe → eBay → Protokoll → Beispiel-Urteil. Ausfallplan: Screenshots oder kurzes Video, falls das Netz fehlt. Funktionsstopp einen Tag vor Abgabe.
+**Phase 6: presentation (H)**
+20. Play through the demo with Niko: diagnosis → draw a test → title (with the title help) → approval → eBay → log → example verdict. Fallback plan: screenshots or a short video in case the network is missing. Feature freeze one day before the hand-in.
 
-## 7. Bekannte Stolpersteine
+## 7. Known stumbling blocks
 
-- **Echtes Urteil gibt es in 6 Tagen nicht:** ein Test braucht mindestens die Prüfzeit (Standard 30 Tage, in *Settings* einstellbar) plus 3 Tage Datenverzug. Deshalb gibt es die Beispiel-Urteile. Nicht versprechen, dass ein echtes Ergebnis vorliegt.
-- **Chrome/Port:** 5060 gesperrt. Auch `ERR_UNSAFE_PORT` nicht mit „Server kaputt“ verwechseln.
-- **eBay Analytics:** Daten in LA-Zeit; `traffic_report` mit `listing_ids` in Paketen zu 200 (ein `offset` wird ignoriert); Limit 429.
-- **eBay Refresh-Token** läuft nach ca. 18 Monaten ab; bei Auth-Fehlern im Import zuerst das prüfen.
-- **macOS-Besonderheit** (falls der Server ein Mac ist): Hintergrunddienste scheitern an Datenschutzfreigaben für `Desktop`/`Documents`; Ordner außerhalb anlegen (z. B. `~/parture`). Symlinks wie `/tmp` → `/private/tmp` sind im Wächter berücksichtigt.
-- **`vorschau` wird hart überschrieben:** Was bleiben soll, gehört in einen Pull Request auf `main`.
-- **GitHub-Branch-Schutz** gibt es für ein privates Gratis-Repo nicht (GitHub Pro nötig, gratis im Student Developer Pack). Bis Niko das aktiviert hat, gilt „nie direkt auf `main`“ nur als Absprache. Das ist ein bekanntes Restrisiko, weise Niko darauf hin.
-- Die CI läuft erst, wenn die Workflow-Datei auf einem gepushten Branch liegt.
+- **There is no real verdict within 6 days:** a test needs at least the waiting time (default 30 days, adjustable in *Settings*) plus 3 days of data delay. That is why the example verdicts exist. Do not promise that a real result exists.
+- **Chrome/port:** 5060 is blocked. Do not mistake `ERR_UNSAFE_PORT` for "server broken" either.
+- **eBay Analytics:** data in LA time; `traffic_report` with `listing_ids` in batches of 200 (an `offset` is ignored); limit 429.
+- **The eBay refresh token** expires after about 18 months; on auth errors in the import check that first.
+- **macOS peculiarity** (if the server is a Mac): background services fail on privacy permissions for `Desktop`/`Documents`; create the folder outside (e.g. `~/parture`). Symlinks such as `/tmp` → `/private/tmp` are taken into account in the watcher.
+- **`vorschau` is overwritten hard:** whatever should stay belongs in a pull request to `main`.
+- **GitHub branch protection** does not exist for a private free repo (GitHub Pro needed, free in the Student Developer Pack). Until Niko has activated it, "never directly to `main`" is only an agreement. That is a known residual risk, point Niko to it.
+- The CI runs only once the workflow file lies on a pushed branch.
 
-## 8. Fertig ist es, wenn
+## 8. It is done when
 
-- [ ] `https://app.<domain>` und `https://vorschau.<domain>` sind nur mit Access (E-Mail-Code) und App-Login erreichbar; Probe 1 bis 4 bestanden.
-- [ ] Nach Neustart des Laptops laufen beide Umgebungen und der Tunnel ohne Zutun.
-- [ ] Ein Push auf `vorschau` ist nach spätestens 2 Minuten sichtbar; ein gemergter PR ist nach spätestens 10 Minuten auf PROD; ein PR mit roten Tests wird **nicht** ausgerollt (Log: ABGELEHNT).
-- [ ] Traffic kommt täglich von selbst; Abdeckung plausibel; Warnbanner erscheint bei Rückstand.
-- [ ] Sicherung läuft täglich, Rücksicherung wurde einmal getestet, zweiter Ort gesetzt.
-- [ ] Ein echter eBay-Mini-Test (Vorschlag → Freigabe → Titel bei eBay geändert → Log → Revert) ist durchgespielt und im Log nachvollziehbar.
-- [ ] Builder haben auf PROD keinen Weg zu eBay (403, keine Keys auf VORSCHAU).
-- [ ] Niko hat sein Passwort geändert, die Passwortdatei ist gelöscht, `node scripts/geheimnis-scan.mjs --historie` ist sauber.
-- [ ] `docs/server-checkliste.md` ist ehrlich abgehakt, offene Punkte stehen mit Grund drin.
+- [ ] `https://app.<domain>` and `https://vorschau.<domain>` are reachable only with Access (e-mail code) and app login; probes 1 to 4 passed.
+- [ ] After a restart of the laptop both environments and the tunnel run without any action.
+- [ ] A push to `vorschau` is visible after 2 minutes at most; a merged PR is on PROD after 10 minutes at most; a PR with red tests is **not** rolled out (log: REJECTED).
+- [ ] Traffic arrives by itself every day; coverage plausible; the warning banner appears when behind.
+- [ ] The backup runs daily, the restore was tested once, the second location is set.
+- [ ] A real eBay mini test (proposal → approval → title changed on eBay → log → revert) has been played through and can be traced in the log.
+- [ ] Builders have no way to eBay on PROD (403, no keys on PREVIEW).
+- [ ] Niko has changed his password, the password file is deleted, `node scripts/geheimnis-scan.mjs --historie` is clean.
+- [ ] `docs/server-checkliste.md` is ticked honestly, open points are in it with the reason.
 
-## 9. Was du von Niko brauchst („Frag Niko“)
+## 9. What you need from Niko ("Ask Niko")
 
-1. Domain bei Cloudflare, Teamname des Zero-Trust-Kontos.
-2. Die vier E-Mail-Adressen für Access.
-3. Ob Daten/Benutzer aus einer alten Installation (`C:\parture-pm`) übernommen werden sollen.
-4. Wohin die zweite Sicherungskopie gehen soll.
-5. Die 4 Angebote für den ersten echten Test und seinen Termin zum gemeinsamen Mini-Test.
-6. Telegram-Bot (er legt ihn an und trägt die Werte selbst ein).
-7. Abgabeformat und genauer Abgabetermin.
+1. The domain at Cloudflare, the team name of the Zero Trust account.
+2. The four e-mail addresses for Access.
+3. Whether data/users from an old installation (`C:\parture-pm`) should be taken over.
+4. Where the second backup copy should go.
+5. The 4 listings for the first real test and his date for the joint mini test.
+6. The Telegram bot (he creates it and enters the values himself).
+7. The hand-in format and the exact hand-in date.
 
-## 10. Kurzreferenz
+## 10. Quick reference
 
 ```
-npm test                          alle Tests (müssen grün sein)
-npm run scan [-- --historie]      Geheimnis-Scan
-npm run benutzer -- anlegen <name> [admin|builder] | passwort <name> | rolle <name> <rolle> | liste
-npm run export                    pm.db aus eBay bauen (PROD, mit Keys)
-npm run sicherung [-- liste | -- wiederherstellen <datei>]
-node app/waechter.mjs --branch main --intervall 600          PROD-Wächter (läuft als Aufgabe)
-node app/waechter.mjs --branch vorschau --hart --intervall 60   VORSCHAU-Wächter
-GET /healthz            Lebenszeichen mit Version (ohne Anmeldung)
-GET /api/betrieb        Status: Umgebung, Version, Schreibschalter, Sicherung, Traffic (angemeldet)
-Logs: daten\waechter.log (Wächter), daten\app.log (App), Tab "Log" in der App (fachliches Protokoll)
+npm test                          all tests (must be green)
+npm run scan [-- --historie]      secret scan
+npm run benutzer -- anlegen <name> [admin|builder] | passwort <name> | rolle <name> <role> | liste
+npm run export                    build pm.db from eBay (PROD, with keys)
+npm run sicherung [-- liste | -- wiederherstellen <file>]
+node app/waechter.mjs --branch main --intervall 600          PROD watcher (runs as a task)
+node app/waechter.mjs --branch vorschau --hart --intervall 60   PREVIEW watcher
+GET /healthz            sign of life with version (without login)
+GET /api/betrieb        status: environment, version, write switch, backup, traffic (logged in)
+Logs: daten\waechter.log (watcher), daten\app.log (app), tab "Log" in the app (the business log)
 ```
 
-Repo: `https://github.com/nik1231-alt/Parture-Groupwork` · eBay-Konto: `partureshop` (nur eBay, nur dieses Konto) · Rollen: Niko = admin, Alexius76 / giacomogrilli / EmbletonNova = builder.
+Repo: `https://github.com/nik1231-alt/Parture-Groupwork` · eBay account: `partureshop` (eBay only, only this account) · Roles: Niko = admin, Alexius76 / giacomogrilli / EmbletonNova = builder.

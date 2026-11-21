@@ -1,12 +1,12 @@
-// Beispielansicht für die Seite Results: ERFUNDENE Angebote (zwei Läufe) mit erfundenen Tageswerten, durch dieselbe Rechnung wie die echten Ergebnisse geschickt.
-// Ein echtes Ergebnis gibt es erst, wenn eine Prüfzeit (Standard 14 Tage) plus Datenverzug vorbei ist. Bis dahin zeigt die App damit,
-// wie die Seite aussieht und gelesen wird. Die Zahlen sind in der Oberfläche als Beispiel gekennzeichnet und berühren keine echten Daten.
-// Feste Startwerte: jeder Aufruf liefert dieselben Zahlen.
+// Example view for the page Results: INVENTED listings (two runs) with invented daily values, sent through the same calculation as the real results.
+// A real result exists only once a waiting time (default 14 days) plus data delay has passed. Until then the app uses this to show
+// what the page looks like and how it is read. The figures are marked as an example in the interface and touch no real data.
+// Fixed start values: every call returns the same figures.
 import { baueErgebnisse, PHASEN } from "./ergebnisse.mjs";
 import { netto } from "./auswertung.mjs";
 
 const TRAFFIC_BIS = "2026-11-10", START = "2026-08-03", GRENZE90 = 170, ANZAHL = 24, KONTROLLE = 20;
-// Wirkung je Phase (Faktor auf die Impressionen) und Streuung zwischen den Angeboten: Titel kaum, Werbung deutlich, Preis kaum
+// Effect per phase (factor on the impressions) and spread between the listings: title hardly, ads clearly, price hardly
 const WIRKUNG = { titel: [0.99, 0.5], werbung: [1.4, 0.5], preis: [0.8, 0.5] };
 
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -21,7 +21,7 @@ export function baueDemoErgebnisse(einst) {
   const kontrolle = Array.from({ length: KONTROLLE }, (_, i) => "K" + String(i + 1).padStart(2, "0"));
   const nr = new Map(listings.map((l) => [l.number, l]));
 
-  // Impressionen eines Tages: Grundwert × bisherige Wirkungen (in 4 Tagen eingeschwungen) × Wochentag × Zufall. Die Kontrollgruppe wächst leicht (3 %).
+  // Impressions of one day: base value × effects so far (settled within 4 days) × weekday × chance. The control group grows slightly (3 %).
   const tagWert = (n, datum) => {
     const l = nr.get(n);
     let f = 1;
@@ -34,12 +34,12 @@ export function baueDemoErgebnisse(einst) {
     const summe90 = (n, von, bis) => { let s = 0, k = 0; for (let d = von; d <= bis; d = plusTage(d, 1)) { s += tagWert(n, d); k++; } return Math.round((s / k) * 90); };
   const gruppe90 = (von, bis) => kontrolle.reduce((s, n) => s + summe90(n, von, bis), 0);
 
-  // Zwei Starts: die ersten 14 Angebote am Anfang, die übrigen 10 eine Woche später
+  // Two starts: the first 14 listings at the beginning, the other 10 one week later
   const lauf = (i) => (i < 14 ? 0 : 7);
   let aktiv = listings.map((l, i) => ({ l, start: plusTage(START, lauf(i) + (i % 3)) }));
   for (const [stufe] of PHASEN) {
     const naechste = [];
-    // Damit der Überblick auch laufende und wartende Angebote zeigt: in der Werbephase des ersten Starts laufen zwei noch, eines wartet auf Freigabe
+    // So that the overview also shows running and waiting listings: in the ads phase of the first start two are still running, one waits for approval
     const halt = new Map();
     if (stufe === "werbung") aktiv.filter((x) => listings.indexOf(x.l) < 14).slice(-3).forEach((x, k) => halt.set(x.l.number, k < 2 ? "laeuft" : "vorschlag"));
     for (const { l, start } of aktiv) {

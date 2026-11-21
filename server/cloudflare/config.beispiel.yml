@@ -1,11 +1,11 @@
-# Beispiel für ~/.cloudflared/config.yml bzw. C:\Users\<name>\.cloudflared\config.yml auf dem Server.
-# TUNNEL-ID und Benutzername ersetzen. Die Datei mit den Tunnel-Zugangsdaten (<TUNNEL-ID>.json) ist ein Geheimnis und gehört nie ins Repo.
+# Example for ~/.cloudflared/config.yml or C:\Users\<name>\.cloudflared\config.yml on the server.
+# Replace TUNNEL-ID and the user name. The file with the tunnel credentials (<TUNNEL-ID>.json) is a secret and never belongs in the repository.
 tunnel: TUNNEL-ID
-credentials-file: C:\Users\BENUTZERNAME\.cloudflared\TUNNEL-ID.json
+credentials-file: C:\Users\USERNAME\.cloudflared\TUNNEL-ID.json
 
 ingress:
-  - hostname: app.DEINE-DOMAIN.de          # PROD
+  - hostname: app.YOUR-DOMAIN.com          # PROD
     service: http://127.0.0.1:5070
-  - hostname: vorschau.DEINE-DOMAIN.de     # VORSCHAU
+  - hostname: vorschau.YOUR-DOMAIN.com     # PREVIEW
     service: http://127.0.0.1:5071
-  - service: http_status:404               # alles andere
+  - service: http_status:404               # everything else

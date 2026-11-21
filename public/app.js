@@ -1,7 +1,7 @@
-// Oberfläche: Listings (Diagnose), Tests (Gruppenvergleich nach dem Briefing), Approvals (Freigabe von Titeländerungen),
-// Team (Rollen, nur Admin), Log (Protokoll) und Settings (Regelwerte).
-// Wichtig: Texte aus den Daten (z. B. eBay-Titel) werden nur als Text eingesetzt (textContent), nie als HTML.
-// Sichtbare Texte sind auf Englisch.
+// Interface: Listings (diagnosis), Tests (group comparison according to the briefing), Approvals (approval of title changes),
+// Team (roles, admin only), Log (the log) and Settings (rule values).
+// Important: texts from the data (e.g. eBay titles) are inserted only as text (textContent), never as HTML.
+// Visible texts are in English.
 const $ = (s) => document.querySelector(s);
 
 function el(tag, props = {}, ...kinder) {
@@ -17,8 +17,8 @@ function el(tag, props = {}, ...kinder) {
   return n;
 }
 
-// Wie replaceChildren, aber Listen werden ausgepackt und null/false weggelassen (replaceChildren selbst schreibt sie als Text hin:
-// so stand auf der Seite Ladder "[object HTMLDivElement]" statt der Karten und "null" darunter)
+// Like replaceChildren, but lists are unpacked and null/false are left out (replaceChildren itself writes them as text:
+// that is how the page Ladder showed "[object HTMLDivElement]" instead of the cards and "null" below them)
 const fuelle = (ziel, ...kinder) => ziel.replaceChildren(...kinder.flat(Infinity).filter((k) => k != null && k !== false));
 
 const LOCALE = "en-GB";
@@ -29,13 +29,13 @@ const aenderung = (v) => (v == null ? "n/a" : (v >= 0 ? "+" : "") + Math.round(1
 const datum = (s) => (s && !Number.isNaN(Date.parse(s)) ? new Date(s).toLocaleDateString(LOCALE) : "–");
 const bildUrl = (u) => (typeof u === "string" && /^https:\/\//i.test(u) ? u : null);
 const SEITENGROESSE = 40;
-// Breite Tabellen scrollen in ihrem eigenen Kasten, nie die ganze Seite (Telefon-Breite)
+// Wide tables scroll in their own box, never the whole page (phone width)
 const rollbar = (tabelle) => el("div", { class: "rollbar" }, tabelle);
 
 const zustand = { ich: { name: "", rolle: "builder" }, daten: null, tests: null, einst: null, tab: "alle", funnel: null, funnelFilter: "alle", funnelSuche: "", funnelSichtbar: 50, suche: "", sortierung: "potential", sichtbar: SEITENGROESSE };
 
-// Kleiner Zwischenspeicher im Tab (sessionStorage): ungespeicherte Titel überstehen so eine abgelaufene Sitzung und die neue Anmeldung.
-// Kann fehlen oder gesperrt sein (privates Fenster): dann geht es ohne.
+// A small cache in the tab (sessionStorage): unsaved titles survive an expired session and the new login this way.
+// It may be missing or blocked (private window): then it works without.
 const entwurf = {
   lies: (k) => { try { return sessionStorage.getItem("entwurf:" + k); } catch { return null; } },
   merke: (k, v) => { try { sessionStorage.setItem("entwurf:" + k, v); } catch { /* ohne Zwischenspeicher */ } },
@@ -44,8 +44,8 @@ const entwurf = {
 
 async function api(pfad, optionen) {
   const r = await fetch(pfad, optionen);
-  // Sitzung abgelaufen: dieselbe Adresse neu laden. Der Server zeigt dann die Anmeldeseite, die Adresse (#tests/5) bleibt stehen,
-  // nach der Anmeldung geht es genau dorthin zurück, und eingetippte Titel liegen im Zwischenspeicher (entwurf).
+  // Session expired: reload the same address. The server then shows the login page, the address (#tests/5) stays,
+  // after the login it goes back exactly there, and typed titles are in the cache (entwurf = draft).
   if (r.status === 401) { location.reload(); throw new Error("Your session has expired. Please sign in again."); }
   let j;
   try { j = await r.json(); } catch { throw new Error("Unexpected response from the server."); }
@@ -70,7 +70,7 @@ function zeigeFehler(e, erneut) {
   box.hidden = false;
   fuelle(box, el("strong", { text: "Something went wrong. " }), document.createTextNode(e.message + " "), erneut ? el("button", { class: "knopf", type: "button", onclick: erneut, text: "Try again" }) : null);
 }
-// Zweistufiger Knopf für Folgenreiches: erster Klick fragt nach, zweiter führt aus (nach 4 Sekunden zurück)
+// Two-step button for consequential actions: the first click asks, the second executes (back after 4 seconds)
 function zweiStufig(knopf, frage, aktion) {
   const text = knopf.textContent; let t;
   knopf.addEventListener("click", () => {
@@ -81,13 +81,13 @@ function zweiStufig(knopf, frage, aktion) {
   return knopf;
 }
 
-// ======================================================= Laden und Routing
+// ======================================================= Loading and routing
 async function laden() {
   $("#fehler").hidden = true;
   try {
     const [daten, stand, leiterDaten] = await Promise.all([api("/api/bewertung"), api("/api/stand").catch(() => null), api("/api/leiter").catch(() => null)]);
     zustand.daten = daten;
-    // Funnel-Status je Produkt für die Hinweiszeile auf der Seite Products
+    // Funnel status per product for the note line on the page Products
     zustand.funnel = leiterDaten?.trichter ? new Map(leiterDaten.trichter.liste.map((x) => [x.number, x])) : null;
     $("#stand").textContent = stand ? `Data as of ${new Date(stand.exportiert_at).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" })}${stand.traffic_bis ? ` · traffic up to ${datum(stand.traffic_bis + "T12:00:00Z")}` : ""}` : "";
     zeichneListings();
@@ -95,7 +95,7 @@ async function laden() {
     ladeBetrieb();
   } catch (e) { zeigeFehler(e, laden); }
 }
-// Umgebung (PROD / VORSCHAU) im Kopf und eine Warnung, wenn die Traffic-Daten dem Soll hinterherhinken
+// Environment (PROD / PREVIEW) in the header and a warning when the traffic data lags behind the target
 async function ladeBetrieb() {
   try {
     const b = await api("/api/betrieb");
@@ -135,7 +135,7 @@ function route() {
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
   window.scrollTo(0, 0);
-  // Die Listings immer frisch laden: Tests und Einstellungen verändern, welche Angebote wo stehen
+  // Always load the listings fresh: tests and settings change which listings are where
   if (ansicht === "listings" && !ersterAufruf) laden();
   ersterAufruf = false;
   if (ansicht === "problem") ladeProblem();
@@ -214,7 +214,7 @@ function zeile(p) {
       hinweis, mehrInfo));
 }
 
-// Details eines Produkts erst beim Aufklappen laden: Varianten (Ausprägungen), Kanäle und alles, was mit ihm geschehen ist
+// Load the details of a product only when it is opened: variants (values), channels and everything that has happened to it
 async function ladeProduktMehr(nr, ziel) {
   try {
     const [p, v] = await Promise.all([api("/api/produkt?nr=" + encodeURIComponent(nr)), api("/api/produkt/verlauf?nr=" + encodeURIComponent(nr))]);
@@ -341,7 +341,7 @@ function detailVorbereitet(d) {
   const wegen = el("span", {});
   const fortschritt = el("span", { class: "leise", text: `${d.anzahl.titel} of ${d.anzahl.test} titles entered` });
   const aktualisiere = () => { const n = testAngebote(d).filter((a) => a.neu).length; fortschritt.textContent = `${n} of ${d.anzahl.test} titles entered`; start.disabled = n !== d.anzahl.test; if (manuell) manuell.disabled = n !== d.anzahl.test; };
-  const max = zustand.tests.titelMaxZeichen;   // vom Server (TITEL_MAX_ZEICHEN in regeln.mjs), keine eigene Kopie der Zahl
+  const max = zustand.tests.titelMaxZeichen;   // from the server (TITEL_MAX_ZEICHEN in regeln.mjs), no own copy of the number
   const zeilen = testAngebote(d).map((a) => {
     const feld = el("input", { class: "feld", type: "text", maxlength: String(max), "aria-label": "New title for product " + a.number, placeholder: `New title (up to ${max} characters)` });
     const schluessel = d.id + ":" + a.number;
@@ -356,12 +356,12 @@ function detailVorbereitet(d) {
       try { const r = await post("/api/experiment/titel", { id: d.id, number: a.number, neu: wert }); a.neu = r.neu; if (feld.value === wert) entwurf.weg(schluessel); stand.textContent = "Saved"; aktualisiere(); }
       catch (e) { feld.setAttribute("aria-invalid", "true"); stand.textContent = e.message; }
     };
-    // Ein Entwurf aus dem Zwischenspeicher (z. B. nach abgelaufener Sitzung) wird wieder eingesetzt und gespeichert
+    // A draft from the cache (e.g. after an expired session) is put back and saved
     const gemerkt = entwurf.lies(schluessel);
     if (gemerkt != null && gemerkt !== feld.value) { feld.value = gemerkt; zaehler.textContent = `${gemerkt.length} / ${max}`; stand.textContent = "Restored your unsaved title."; t = setTimeout(speichern, 300); }
     feld.addEventListener("input", () => { entwurf.merke(schluessel, feld.value); zaehler.textContent = `${feld.value.length} / ${max}`; clearTimeout(t); stand.textContent = ""; t = setTimeout(speichern, 700); });
     feld.addEventListener("change", () => { clearTimeout(t); speichern(); });
-    // Hinweise aus den eigenen Daten: Wörter der am besten gesehenen Angebote, die hier fehlen. Ein Klick hängt das Wort an (der Mensch entscheidet).
+    // Hints from the own data: words of the best-seen listings that are missing here. A click appends the word (the human decides).
     const hilfe = el("div", { class: "leise klein titelhilfe" });
     api("/api/titelhilfe?nr=" + encodeURIComponent(a.number)).then((h) => {
       if (!h.ok) return;
@@ -382,7 +382,7 @@ function detailVorbereitet(d) {
   ];
 }
 
-// Summen einer Gruppe (Ausgangszahlen bzw. aktuelle Zahlen)
+// Sums of a group (starting figures or current figures)
 function summe(zeilen, feld) {
   return zeilen.filter((z) => z.vorher && z.nachher).reduce((s, z) => ({ imp: s.imp + z[feld].imp, auf: s.auf + z[feld].auf, trans: s.trans + z[feld].trans }), { imp: 0, auf: 0, trans: 0 });
 }
@@ -393,7 +393,7 @@ function kasten(beschriftung, text, mitKopie) {
   return el("div", { class: "kasten", style: "margin:0" }, el("div", { class: "kasten-kopf" }, el("span", { class: "leise", text: beschriftung }), mitKopie ? el("button", { class: "knopf knopf-klein", type: "button", onclick: () => kopiere(text), text: "Copy" }) : null), el("div", { class: "kasten-text", text }));
 }
 
-// Test wartet auf die Freigabe durch einen Admin
+// Test waits for approval by an admin
 function detailFreigabe(d) {
   const platz = el("div", {}, el("p", { class: "leise", text: "Loading …" }));
   api("/api/freigaben").then((f) => { platz.replaceChildren(...gruppenKarten(f, (a) => a.experiment_id === d.id && a.art === "titel", () => neuLaden(d.id))); }).catch((e) => { platz.textContent = e.message; });
@@ -421,7 +421,7 @@ function detailLaeuft(d) {
   ];
 }
 
-// Auswertung mit Diagrammen (siehe diagramm.js). zwischenstand: Prüfzeit läuft noch, die Zahlen sind noch nicht das Urteil.
+// Evaluation with charts (see diagramm.js). zwischenstand = interim state: the waiting time is still running, the figures are not the verdict yet.
 function auswertungPanel(a, zwischenstand) {
   if (!a || (!a.test.anzahl && !a.kontrolle.anzahl)) return null;
   const block = (titel, erklaerung, svg) => el("div", { class: "d-block" }, el("h3", { text: titel }), el("p", { class: "leise klein", text: erklaerung }), el("div", { class: "d-rahmen" }, svg));
@@ -484,7 +484,7 @@ function detailAbgeschlossen(d) {
 const AENDERUNG_STATUS = { offen: ["Waiting", "vorbereitet"], angewendet: ["Changed on eBay", "gut"], abgelehnt: ["Rejected", "schlecht"], fehlgeschlagen: ["Failed", "schlecht"], verworfen: ["Dropped", ""] };
 const zeitpunkt = (s) => (s && !Number.isNaN(Date.parse(s)) ? new Date(s).toLocaleString(LOCALE, { dateStyle: "short", timeStyle: "short" }) : "–");
 
-// Baut je Test und Art (neue Titel / Rückänderung) eine Karte. filter wählt aus, welche Änderungen gezeigt werden.
+// Builds one card per test and kind (new titles / revert). filter chooses which changes are shown.
 function gruppenKarten(f, filter, danach) {
   const gruppen = new Map();
   for (const a of f.aenderungen.filter(filter)) { const k = a.experiment_id + ":" + a.art; if (!gruppen.has(k)) gruppen.set(k, []); gruppen.get(k).push(a); }
@@ -493,7 +493,7 @@ function gruppenKarten(f, filter, danach) {
 }
 
 function gruppenKarte(f, zeilen, danach) {
-  const erste = zeilen[zeilen.length - 1]; // die Liste kommt neueste zuerst
+  const erste = zeilen[zeilen.length - 1]; // the list comes newest first
   const offen = zeilen.filter((z) => z.status === "offen" || z.status === "fehlgeschlagen");
   const art = erste.art === "titel" ? "New titles" : "Back to the old titles";
   const fertig = async (pfad, body, text) => { try { const r = await post(pfad, body); meldung(typeof text === "function" ? text(r) : text); await danach(); ladeZaehler(); } catch (e) { meldung(e.message); danach(); } };
@@ -538,7 +538,7 @@ async function ladeFreigaben() {
   } catch (e) { zeigeFehler(e, ladeFreigaben); }
 }
 
-// ======================================================= Results (ergebnisse.mjs): wie haben sich die Impressionen verändert, und ist es mehr als Zufall?
+// ======================================================= Results (ergebnisse.mjs): how did impressions change, and is it more than chance?
 const PHASE_URTEIL = { up: ["gut", "Clear increase"], down: ["schlecht", "Clear decrease"], unclear: ["", "No clear effect"], too_few: ["warn", "Too early"] };
 
 async function ladeErgebnisse() {
@@ -552,7 +552,7 @@ async function ladeErgebnisse() {
 
 const LAUF_TEXT = (l) => (l.schluessel === "alle" ? "All runs" : datum(l.schluessel + "T12:00:00Z")) + ` · ${zahl(l.angebote)} listing${l.angebote === 1 ? "" : "s"}` + (l.phasen.some((p) => p.ausgewertet) ? "" : " · no results yet");
 
-// Zweiter Teil der Seite Results (aus #48, Elias): jede Phase Tag für Tag gegen die Kontrollgruppe (public/dashboard.js, /api/dashboard)
+// Second part of the page Results (from #48, Elias): every phase day by day against the control group (public/dashboard.js, /api/dashboard)
 function tagFuerTag() { queueMicrotask(() => Dashboard.lade()); return el("div", { id: "ansicht-dashboard", class: "tag-fuer-tag" }); }
 
 function zeichneErgebnisse(d) {
@@ -569,7 +569,7 @@ function zeichneErgebnisse(d) {
   const mitErgebnis = d.laeufe.slice(1).find((l) => l.phasen.some((p) => p.ausgewertet));
   let aktuell = d.laeufe.findIndex((l) => l.schluessel === zustand.ergebnisLauf);
   if (aktuell < 0) aktuell = d.laeufe.indexOf(mitErgebnis || d.laeufe[0]);
-  // Auswahl als Liste mit Vor/Zurück: bleibt übersichtlich, auch wenn es 50 Läufe sind
+  // Selection as a list with previous/next: stays clear even with 50 runs
   const auswahl = el("select", { class: "lauf-liste", "aria-label": "Run", onchange: () => zeige(auswahl.selectedIndex) },
     d.laeufe.map((l) => el("option", { value: l.schluessel, text: LAUF_TEXT(l) })));
   const zurueck = el("button", { class: "knopf knopf-klein", type: "button", "aria-label": "Previous run in the list", text: "‹", onclick: () => zeige(auswahl.selectedIndex - 1) });
@@ -589,7 +589,7 @@ function zeichneErgebnisse(d) {
   zeige(aktuell);
 }
 
-// Funnel-Überblick eines Laufs: wie viele Angebote sind in jeder Phase angekommen und was ist aus ihnen geworden
+// Funnel overview of a run: how many listings reached each phase and what became of them
 function flussPanel(l) {
   const f = l.fluss, gesamt = l.angebote;
   if (!gesamt) return null;
@@ -607,7 +607,7 @@ function flussPanel(l) {
     benutzt.length ? el("div", { class: "fluss-legende" }, benutzt.map(([k, b]) => el("span", { class: "leise klein" }, el("i", { class: "fluss-punkt d-f-" + k }), b))) : null);
 }
 
-// Oben je Phase eine Zeile mit der Grafik (alle Zeilen auf derselben Skala), darunter die Tabelle mit allen Zahlen.
+// At the top one row per phase with the graphic (all rows on the same scale), below it the table with all figures.
 function laufAnsicht(l, skala) {
   const pz = Diagramm.proz, a = Diagramm.achse(l.phasen);
   const zeile = (p) => {
@@ -637,7 +637,7 @@ function laufAnsicht(l, skala) {
       el("p", { class: "leise klein", text: "Impressions are per 90 days: the 30 days before a phase against the waiting time of the phase, scaled up. The control group is the shop's listings that got no change; it shows what happened in the shop meanwhile. Effect and range are for a typical listing compared with the control group." }))];
 }
 
-// ======================================================= Problem (problem.mjs): wie ungleich Sichtbarkeit und Verkäufe verteilt sind
+// ======================================================= Problem (problem.mjs): how unevenly visibility and sales are spread
 const SVG_NS = "http://www.w3.org/2000/svg";
 function svg(tag, attrs = {}, ...kinder) {
   const n = document.createElementNS(SVG_NS, tag);
@@ -687,7 +687,7 @@ function aussage(gross, satz, unter, klasse) {
   return el("div", { class: "aussage " + klasse }, el("div", { class: "aussage-zahl", text: gross }), el("div", { class: "aussage-satz", text: satz }), el("div", { class: "leise klein", text: unter }));
 }
 
-// Konzentrationskurve: x = Anteil der Produkte (beste zuerst), y = Anteil der Summe; Markierung beim 80-%-Punkt
+// Concentration curve: x = share of the products (best first), y = share of the sum; marker at the 80 % point
 function konzentrationsBild(d) {
   const B = 720, H = 330, l = 48, r = 20, o = 18, u = 42, w = B - l - r, h = H - o - u;
   const x = (p) => l + w * p, y = (a) => o + h * (1 - a);
@@ -708,7 +708,7 @@ function konzentrationsBild(d) {
     el("div", { class: "legende" }, el("span", { class: "leg phase", text: "eBay sales" }), el("span", { class: "leg kontrolle", text: "eBay impressions" }), el("span", { class: "leg gleich", text: "Every product equal" })));
 }
 
-// Vier Felder gesehen × verkauft: Fläche je Feld nach Anzahl, das Ziel des Funnels ist markiert
+// Four fields seen × sold: area per field by count, the funnel's target is marked
 function vierFelder(d) {
   const f = d.felder, summe = Math.max(1, f.gesehenVerkauft + f.gesehenNichtVerkauft + f.kaumGesehenVerkauft + f.kaumGesehenNichtVerkauft);
   const feld = (n, titel, unter, klasse) => el("div", { class: "feld4 " + klasse },
@@ -724,7 +724,7 @@ function vierFelder(d) {
     feld(f.kaumGesehenNichtVerkauft, "Invisible", "the Funnel's main target", "ziel"));
 }
 
-// Säulen der Impressions-Stufen; Stufen unter der Grenze sind orange
+// Columns of the impression bands; bands below the limit are orange
 function stufenBild(d) {
   const max = Math.max(1, ...d.stufen.map((s) => s.anzahl));
   const name = (s) => s.bis === 0 ? "0" : s.bis == null ? `${zahl(s.von)}+` : `${zahl(s.von)}–${zahl(s.bis)}`;
@@ -734,7 +734,7 @@ function stufenBild(d) {
     el("div", { class: "stufe-name", text: name(s) }))));
 }
 
-// ======================================================= Leiter (Titel -> Werbung -> Preis -> manuelle Prüfung)
+// ======================================================= Ladder (title -> ads -> price -> manual check)
 const STUFE_TEXT = { titel: "1 · New title", werbung: "2 · Ads", preis: "3 · Lower price", pruefung: "4 · Manual check", kontrolle: "Control group", raus: "Done" };
 const ERGEBNIS_LEITER = { erholt: "Seen again", ueberarbeiten: "Rework", offline: "Take offline", behalten: "Keep as is", abgebrochen: "Taken off", kontrolle: "Control time over" };
 const QUELLE_TEXT = { ki: "AI suggestion", regel: "From the title help (no AI)", hand: "Entered by hand" };
@@ -753,7 +753,7 @@ async function leiterAktion(pfad, body, ok) {
   await ladeLeiter(); ladeZaehler();
 }
 
-// Status im Funnel (siehe leiter.trichter): Name, Farbe und Reihenfolge der Filter
+// Status in the funnel (see leiter.trichter): name, colour and order of the filters
 const STATUS_TEXT = { nicht_geeignet: "Not eligible", geeignet: "Eligible", kontrolle: "Control group", titel: "Phase 1 · New title", werbung: "Phase 2 · Ads",
   preis: "Phase 3 · Lower price", pruefung: "Phase 4 · Manual check", erholt: "Seen again", raus: "Left, pausing" };
 const STATUS_KLASSE = { nicht_geeignet: "grau", geeignet: "offen", kontrolle: "kontrolle", titel: "phase", werbung: "phase", preis: "phase", pruefung: "warn", erholt: "gut", raus: "grau" };
@@ -761,12 +761,12 @@ const STATUS_REIHE = ["nicht_geeignet", "geeignet", "kontrolle", "titel", "werbu
 const GRUND_TEXT = { genug: "Enough impressions already", neu: "Too new or no data yet", kein_ebay: "No active eBay listing", gesperrt: "Blocked by a price test", im_test: "In a title test", verkauft: "Already sold on eBay" };
 const statusChip = (s) => el("span", { class: "status " + (STATUS_KLASSE[s] || ""), text: STATUS_TEXT[s] || s });
 
-// Funnel-Seite (Niko 20.11.: "sehr intuitiv durchbewegen, leicht verständlich, übersichtlich, anwendungsbezogen"):
-//   Kopf mit einem Satz und "How it works" zum Aufklappen, Band zum Datenstand, Schrittleiste 1–5 mit Zahlen,
+// Funnel page (Niko, 20 Nov: "move through very intuitively, easy to understand, clear, practical"):
+//   header with one sentence and "How it works" to unfold, band for the data state, step bar 1–5 with numbers,
 //   drei Reiter: Overview (Kennzahlen, Bild, Wirkung) · Work (losen, freigeben, warten, entscheiden) · All products (Tabelle).
-// Funnel-Seite (Niko 20.11.: "Overview gefällt mir viel besser, ist viel übersichtlicher — bitte mehr daran orientieren"):
-// EINE Ansicht. Oben Kennzahlen und das Bild "Where every product stands"; die Kreise der Leiter zeigen, was dort zu tun ist,
-// und ein Klick öffnet direkt darunter nur diese Stufe mit ihren Knöpfen. Darunter die Wirkung je Phase. Zweiter Reiter: alle Produkte.
+// Funnel page (Niko, 20 Nov: "I like the overview much better, it is much clearer — please follow it more"):
+// ONE view. At the top key figures and the picture "Where every product stands"; the circles of the ladder show what is to be done there,
+// and a click opens right below it only this step with its buttons. Below that the effect per phase. Second tab: all products.
 const FUNNEL_TABS = ["overview", "all"];
 const ARBEIT_STUFEN = ["geeignet", "titel", "werbung", "preis", "pruefung"];
 function zeichneLeiter(l) {
@@ -795,7 +795,7 @@ function zeichneLeiter(l) {
       : [kpiLeiste(l), trichterBild(l, arbeit), stufePanel(l, arbeit), wirkungTabelle(l), istAdmin() ? steuerZeile(l) : null]);
 }
 
-// Was in jeder Stufe der Leiter steht und was davon auf jemanden wartet (Vorschlag freigeben oder nach der Prüfzeit entscheiden)
+// What is in each step of the ladder and what of it is waiting for somebody (approve a suggestion or decide after the waiting time)
 function stufenArbeit(l) {
   const A = l.angebote.filter((a) => a.stufe !== "raus"), r = { geeignet: { alle: l.kandidatenListe || [], todo: 0 } };
   const vorbei = (a) => a.phase === "laeuft" && a.stand && a.stand.gelaufen >= a.stand.tage;
@@ -808,7 +808,7 @@ function stufenArbeit(l) {
   return r;
 }
 
-// Die gewählte Stufe unter dem Bild: kurzer Kopf mit den Zahlen, dann nur die Angebote, die gerade etwas brauchen, mit ihren Knöpfen
+// The chosen step below the picture: a short header with the figures, then only the listings that need something right now, with their buttons
 const STUFE_KOPF = {
   geeignet: ["Eligible", "Listings with low impressions that never sold on eBay. Draw some by lot to start."],
   titel: ["Phase 1 · New title", "Old title on the left, new one on the right; added words are highlighted."],
@@ -837,14 +837,14 @@ function stufePanel(l, arbeit) {
       el("summary", {}, `Waiting time running (${x.warten.length}) · next due ${x.warten[0].stand?.ende ? datum(x.warten[0].stand.ende + "T12:00:00Z") : "–"}`), zeilen(x.warten)) : null);
 }
 
-// Auf VORSCHAU deutlich sagen, dass hier nichts bei eBay passiert (20.11.: die erste Tranche wurde dort statt auf PROD gestartet)
+// On PREVIEW say clearly that nothing happens on eBay here (20 Nov: the first tranche was started there instead of on PROD)
 function vorschauBand() {
   if (zustand.betrieb?.umgebung !== "vorschau") return null;
   return el("div", { class: "hinweis hinweis-warnung band" }, el("strong", { text: "Preview: nothing here changes eBay. " }), "This copy has its own data and only does dry runs. Real changes happen on ",
     el("a", { href: "https://app.parture-team.com/#ladder/overview", text: "app.parture-team.com" }), ".");
 }
 
-// Band oben, solange die eBay-Daten alt sind: dann bewegen sich Prüfzeiten und Messungen nicht
+// Band at the top as long as the eBay data is old: then waiting times and measurements do not move
 function datenBand(l) {
   const bis = l.trafficBis;
   if (!bis) return null;
@@ -854,7 +854,7 @@ function datenBand(l) {
     `Waiting times count finished data days, so they only move on when new days arrive (normally with a lag of 1–3 days; now ${alter} days).`);
 }
 
-// Losen: Anzahl frei wählbar, Kontrollgruppe ja/nein, Vorschau genau der Angebote, die gezogen würden (in Losreihenfolge)
+// Drawing by lot: free choice of the number, control group yes/no, preview of exactly the listings that would be drawn (in draw order)
 function ziehenPanel(l) {
   const liste = l.kandidatenListe || [];
   const anzahl = el("input", { id: "zieh-anzahl", class: "feld", type: "number", min: 1, max: Math.max(1, liste.length), step: 1, value: String(Math.min(zustand.ziehAnzahl || 10, Math.max(1, liste.length))), "aria-label": "How many listings to put on the ladder" });
@@ -886,9 +886,9 @@ function ziehenPanel(l) {
     vorschau);
 }
 
-// Sammelfreigabe (Niko 20.11.: "einen Button für Bulk Approval"): ein großer Knopf "Approve all N" für die ganze Gruppe,
-// daneben "Approve ticked" für eine Auswahl über die Häkchen in den Zeilen. Jedes Angebot wird einzeln gegen eBay geprüft.
-// gruppe: "titel" oder "sonst" (Werbung und Preis); live: schreibt die App gerade wirklich bei eBay?
+// Bulk approval (Niko, 20 Nov: "a button for bulk approval"): one big button "Approve all N" for the whole group,
+// next to it "Approve ticked" for a selection through the ticks in the rows. Every listing is checked against eBay on its own.
+// gruppe: "titel" or "sonst" (ads and price); live: is the app really writing to eBay right now?
 function sammelFreigabe(liste, l, gruppe = "titel") {
   const freigebbar = liste.filter((a) => a.vorschlag && !a.vorschlag.nichtMoeglich);
   if (!freigebbar.length) return el("span", { class: "leise klein", text: gruppe === "titel" ? "No title suggestion yet: “Get AI titles” below, or open a row and type one." : "Nothing ready to approve yet." });
@@ -909,13 +909,13 @@ function sammelFreigabe(liste, l, gruppe = "titel") {
   };
   zweiStufig(alleKnopf, live ? `Really change all ${freigebbar.length} on eBay?` : `Run ${freigebbar.length} dry runs?`, () => los(freigebbar.map((a) => a.number), alleKnopf));
   zweiStufig(auswahlKnopf, live ? "Really change the ticked ones on eBay?" : "Run the dry runs?", () => los(gewaehlt(), auswahlKnopf));
-  // Ein Listener für alle Häkchen der Seite (nicht bei jedem Neuzeichnen einen neuen)
+  // One listener for all ticks of the page (not a new one on every redraw)
   if (!window.__sammelHaken) { window.__sammelHaken = true; document.addEventListener("change", (ev) => { if (ev.target.classList?.contains("zeile-haken")) zustand.sammelAktualisieren?.forEach((f) => f()); }); }
   (zustand.sammelAktualisieren ||= new Set()).add(aktualisiere);
   return el("span", { class: "sammel" }, alleKnopf, el("label", { class: "sammel-alle" }, alle, " tick all"), auswahlKnopf);
 }
 
-// Eine Zeile der Arbeitsliste: Bild, Titel (alt → neu), Kennzahlen, Status, ein Hauptknopf; Aufklappen für alles Weitere
+// One row of the work list: image, title (old → new), figures, status, one main button; unfold for everything else
 function leiterZeile(a, l) {
   const b = bildUrl(a.image_url), v = a.vorschlag;
   const live = a.stufe === "titel" ? l.schreiben?.titel : a.stufe === "werbung" ? l.schreiben?.werbung : l.schreiben?.preis;
@@ -924,7 +924,7 @@ function leiterZeile(a, l) {
     el("span", { class: "status " + (a.stufe === "raus" ? (a.ergebnis === "erholt" ? "gut" : "grau") : a.phase === "laeuft" ? "phase" : a.phase === "offen" ? "warn" : "offen"), text: a.stufe === "raus" ? ERGEBNIS_LEITER[a.ergebnis] || a.ergebnis : STUFE_TEXT[a.stufe] }),
     a.beworben && a.stufe !== "raus" ? el("span", { class: "status grau", title: `Already advertised in “${a.beworben}”: skips Phase 2`, text: "advertised → skips ads" }) : null,
     a.verlauf?.some((e) => e.ereignis === "aufgenommen" && e.details?.vonHand) ? el("span", { class: "status grau", title: "Added by hand, no control partner", text: "added by hand" }) : null];
-  // Inhalt je Stufe
+  // Content per step
   let mitte = null, haupt = null, haken = null;
   if (a.phase === "vorschlag" && a.stufe === "titel") {
     mitte = v ? titelDiff(v.alt, v.titel) : el("p", { class: "leise klein", text: (zustand.leiterStatus?.ki ? "No suggestion yet." : "No AI key: enter a title below.") + " Open the row to enter one or ask the AI." });
@@ -959,13 +959,13 @@ function leiterZeile(a, l) {
     el("div", { class: "lzeile-aktion" }, haupt));
 }
 
-// Freigabeknopf: sagt, ob gerade wirklich bei eBay geschrieben wird oder nur zur Probe
+// Approval button: says whether the app is really writing to eBay right now or only as a trial
 function freigabeKnopf(a, live) {
   return zweiStufig(el("button", { class: "knopf knopf-klein " + (live ? "knopf-live" : "knopf-akzent"), type: "button", title: live ? "Writes to the live eBay listing" : "Dry run: everything is checked, nothing changes on eBay", text: live ? "Approve · LIVE on eBay" : "Approve · dry run" }),
     live ? "Really change on eBay?" : "Run the dry run?", () => leiterAktion("/api/leiter/freigabe", { number: a.number }, (r) => r.text));
 }
 
-// Alt → neu als Wörter: gestrichene durchgestrichen, neue hervorgehoben; Zeichen gezählt
+// Old → new as words: removed ones struck through, new ones highlighted; characters counted
 function titelDiff(alt, neu) {
   const w = (s) => String(s || "").split(/\s+/).filter(Boolean), norm = (x) => x.toLowerCase().replace(/[.,;:!?()]/g, "");
   const altSet = new Set(w(alt).map(norm)), neuSet = new Set(w(neu).map(norm));
@@ -975,7 +975,7 @@ function titelDiff(alt, neu) {
     el("div", { class: "diff-neu" }, el("span", { class: "diff-tag", text: "new" }), ...w(neu).map((x) => wort(x, altSet, "mark")), el("span", { class: "leise klein", text: `${String(neu || "").length}/80` })));
 }
 
-// Empfehlung für eine laufende Prüfzeit aus den Zahlen (der Admin entscheidet)
+// Recommendation for a running waiting time from the figures (the admin decides)
 function empfehlung(a, l) {
   const s = a.stand, grenze = l.grenze90;
   if (!s || s.jetzt90 == null) return { ziel: null, klasse: "grau", text: "No new traffic data since the start yet." };
@@ -985,7 +985,7 @@ function empfehlung(a, l) {
   return { ziel: null, klasse: "grau", text: `So far ${zahl(s.jetzt90)} per 90 days (before ${zahl(s.vorher90)})${netto}. Waiting time still running.` };
 }
 
-// Aufgeklappt: Zwischenstand, eigener Titel, Überspringen, von Hand gemacht, von der Leiter nehmen, Verlauf
+// Unfolded: interim state, own title, skip, done by hand, take off the ladder, history
 function zeileMehr(a, l) {
   const teile = [];
   if (a.phase === "laeuft" && a.stand) teile.push(zwischenstand(a.stand));
@@ -1008,7 +1008,7 @@ function zeileMehr(a, l) {
   return teile;
 }
 
-// Steuerzeile ganz unten: Schalter, Lauf, Neustart
+// Control row at the very bottom: switches, run, restart
 function steuerZeile(l) {
   const st = l.status;
   const schalter = (name, an, text) => el("li", {}, name + ":", el("span", { class: an ? "an" : "aus", text }));
@@ -1026,7 +1026,7 @@ function steuerZeile(l) {
       behalten ? zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Start over" }), "Really reset everything not changed on eBay?", () => leiterAktion("/api/leiter/neustart", { grund: "Start over" }, (r) => `${r.zurueckgesetzt} listings are eligible again${r.behalten ? `, ${r.behalten} stay (already changed on eBay)` : ""}.`)) : null));
 }
 
-// Kennzahlen oben: wie groß der Shop ist, wie viele Impressionen er hat und wo die Produkte gerade stehen
+// Key figures at the top: how big the shop is, how many impressions it has and where the products stand right now
 function kpiLeiste(l) {
   const f = l.trichter, k = f.kpi;
   const kachel = (titel, wert, unter, klasse = "") => el("div", { class: "kpi " + klasse }, el("div", { class: "kpi-titel", text: titel }), el("div", { class: "kpi-wert", text: wert }), unter ? el("div", { class: "kpi-unter", text: unter }) : null);
@@ -1038,10 +1038,10 @@ function kpiLeiste(l) {
     kachel("Seen again", zahl(l.raus.erholt), "left the ladder with enough impressions", "gut"));
 }
 
-// Der Funnel als Bild (Niko 20.11.: visuell statt Text, Methodik unverändert):
-//   1. alle Produkte als ein gestapelter Balken nach Status, 2. warum nicht geeignet: je Grund "x von N" als Balken,
-//   3. die Leiter als Fluss: geeignet → Los → Phase 1 … 4 → wieder gesehen, Abzweig Kontrollgruppe; Kreisfläche ~ Anzahl.
-// Ein Klick auf jeden Teil filtert die Tabelle aller Produkte unten.
+// The funnel as a picture (Niko, 20 Nov: visual instead of text, method unchanged):
+//   1. all products as one stacked bar by status, 2. why not eligible: per reason "x of N" as a bar,
+//   3. the ladder as a flow: eligible → draw → phase 1 … 4 → seen again, branch to the control group; circle area ~ count.
+// A click on any part filters the table of all products below.
 function trichterBild(l, arbeit = null) {
   const f = l.trichter, N = Math.max(1, f.kpi.produkte);
   const filtern = (status) => { zustand.funnelFilter = status; zustand.funnelSichtbar = 50; zustand.funnelTab = "all"; zeichneLeiter(l); $("#funnel-tabelle")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
@@ -1056,7 +1056,7 @@ function trichterBild(l, arbeit = null) {
     el("span", { class: "gr-balken" }, el("i", { style: `width:${(100 * n) / N}%` })),
     el("span", { class: "gr-wert" }, el("strong", { text: zahl(n) }), ` of ${zahl(N)} · ${anteil(n)}`)));
   const maxP = Math.max(1, f.zahl.geeignet, f.zahl.kontrolle, f.zahl.titel, f.zahl.werbung, f.zahl.preis, f.zahl.pruefung, f.zahl.erholt);
-  // Mit Arbeit (Funnel-Seite): die Kreise der Leiter wählen die Stufe darunter und tragen ein Abzeichen "N to approve / to decide"
+  // With work (funnel page): the circles of the ladder choose the step below and carry a badge "N to approve / to decide"
   const knoten = (status, titel, unter) => {
     const n = f.zahl[status] || 0, d = Math.round(46 + 50 * Math.sqrt(n / maxP));
     const w = arbeit && ARBEIT_STUFEN.includes(status) ? arbeit[status] : null, gewaehlt = !!w && zustand.funnelStufe === status;
@@ -1090,7 +1090,7 @@ function trichterBild(l, arbeit = null) {
             el("span", { class: "leise klein pl-erklaerung", text: "Half of every draw stays unchanged, so each phase is measured against listings that got nothing." }))))));
 }
 
-// Wirkung je Phase gegen die Kontrollgruppe (leiter.wirkung): erst wenn eine Prüfzeit vorbei ist, gibt es Zahlen
+// Effect per phase against the control group (leiter.wirkung): only once a waiting time is over are there figures
 function wirkungTabelle(l) {
   const w = l.wirkung, phasen = [["titel", "Phase 1 · New title"], ["werbung", "Phase 2 · Ads"], ["preis", "Phase 3 · Lower price"]];
   const ende = l.angebote.filter((a) => a.stand?.ende).map((a) => a.stand.ende).sort()[0];
@@ -1109,7 +1109,7 @@ function wirkungTabelle(l) {
     leer ? el("p", { class: "leere-hinweis leise", text: ende ? `No phase has finished its waiting time yet. The first result is due on ${datum(ende + "T12:00:00Z")} (when the traffic data for that day is complete).` : "No phase is running yet. The first result comes one waiting time after the first approval." }) : rollbar(tabelle));
 }
 
-// Alle Produkte mit Status und Grund; Filter über die Chips oder einen Klick im Funnel, Suche nach Nummer oder Wort
+// All products with status and reason; filter through the chips or a click in the funnel, search by number or word
 function statusTabelle(f) {
   return el("section", { id: "funnel-tabelle", class: "funnel-tabelle" },
     el("div", { class: "abschnitt-kopf" }, el("h2", { text: "All products and why they are where they are" })),
@@ -1127,7 +1127,7 @@ function statusInhalt(f) {
     b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
     el("div", { class: "name" }, el("div", { class: "titel", text: x.title || "(untitled)" }), el("div", { class: "nummer", text: `No. ${x.number} · ${zahl(x.impressionen_90d)} impressions · ${zahl(x.units_90d ?? 0)} eBay sales in 90 days` })),
     el("div", {}, statusChip(x.status)), el("div", { class: "grund leise", text: x.grund })); };
-  // Nur Trefferliste neu zeichnen, damit das Suchfeld beim Tippen den Fokus behält
+  // Only redraw the hit list, so that the search field keeps the focus while typing
   function zeichneTreffer() {
     const q = (zustand.funnelSuche || "").trim().toLowerCase();
     const liste = f.liste.filter((x) => (filter === "alle" || x.status === filter) && (!q || `${x.number} ${x.title || ""}`.toLowerCase().includes(q)));
@@ -1141,7 +1141,7 @@ function statusInhalt(f) {
     el("div", { class: "werkzeuge" }, el("label", { class: "suche" }, suche)), treffer, tabelle, mehr];
 }
 
-// Admin: ein bestimmtes Angebot aus allen Kandidaten wählen und sofort auf die Leiter setzen (der KI-Titel kommt gleich mit)
+// Admin: choose a specific listing from all candidates and put it onto the ladder at once (the AI title comes along)
 function auswahlAufnehmen(liste) {
   const option = (p) => el("option", { value: p.number, text: `${p.number} · ${p.title || "(untitled)"} · ${zahl(p.impressionen_90d)} impressions / 90 days · ${zahl(p.units_90d)} eBay sales` });
   const wahl = el("select", { "aria-label": "Listing for the ladder" }, el("option", { value: "", text: liste.length ? `Choose one of ${zahl(liste.length)} listings …` : "No listing qualifies right now" }), ...liste.map(option));
@@ -1158,7 +1158,7 @@ function auswahlAufnehmen(liste) {
 
 const naechsteStufe = (s) => ({ titel: "werbung", werbung: "preis", preis: "pruefung" })[s];
 
-// Zwischenstand der laufenden Prüfzeit als kleine Balken: Angebot vorher/jetzt und Kontrollgruppe vorher/jetzt, dazu der Nettoeffekt
+// Interim state of the running waiting time as small bars: listing before/now and control group before/now, plus the net effect
 function zwischenstand(s) {
   if (s.jetzt90 == null) return el("p", { class: "leise klein", text: "No traffic data since the start yet, so nothing to compare." });
   const k = s.kontrolle, max = Math.max(1, s.vorher90, s.jetzt90, k?.vorher90 || 0, k?.nachher90 || 0);
@@ -1171,7 +1171,7 @@ function zwischenstand(s) {
     s.netto != null ? el("div", { class: "zs-netto" }, el("span", { class: "leise klein", text: "Net effect so far" }), el("span", { class: "status " + (s.netto >= 0.2 ? "gut" : s.netto <= -0.2 ? "schlecht" : "grau"), text: aenderung(s.netto) })) : null);
 }
 
-// Titel von Hand eintragen oder die KI noch einmal fragen (Builder und Admin). Der Server prüft jeden Titel mit dem Regelprüfer.
+// Enter a title by hand or ask the AI once more (builder and admin). The server checks every title with the rule checker.
 function titelEingabe(a, v) {
   const feld = el("input", { class: "feld", type: "text", maxlength: String(zustand.betrieb?.regeln?.titelMaxZeichen || 80), value: v?.titel || "", "aria-label": "Your own title for product " + a.number, placeholder: "Your own title" });
   const zaehler = el("span", { class: "leise klein", text: `${feld.value.length} / ${feld.maxLength}` });
@@ -1208,7 +1208,7 @@ function lebenslauf(a) {
   return el("details", { class: "klein", style: "margin-top:10px" }, el("summary", { style: "cursor:pointer", text: `History (${a.verlauf.length})` }), el("ol", { class: "lebenslauf" }, a.verlauf.map(zeile)));
 }
 
-// ======================================================= Konto (Passwort ändern)
+// ======================================================= Account (change password)
 function zeichneKonto() {
   const root = $("#ansicht-account");
   const alt = el("input", { class: "feld", type: "password", autocomplete: "current-password", required: true, maxlength: 200, "aria-label": "Current password" });
@@ -1265,7 +1265,7 @@ const LOG_TEXT = {
   ladder_run: "Ladder run", ladder_added: "Put on the ladder", ladder_freigegeben: "Ladder step changed on eBay", ladder_probelauf: "Ladder step: dry run", ladder_fehlgeschlagen: "Ladder step failed", ladder_started_manually: "Ladder step started by hand",
   ladder_skipped: "Ladder step skipped", ladder_decided: "Manual check decided", ladder_removed: "Taken off the ladder",
 };
-// Die Protokoll-Details haben deutsche Schlüssel (so stehen sie in der Datenbank); angezeigt werden sie englisch
+// The log details have German keys (that is how they are in the database); they are shown in English
 const DETAIL_TEXT = {
   ausgewertet: "checked", erholt: "seen again", aufgenommen: "on the ladder", titelVorschlaege: "title suggestions", ohneVorschlag: "without suggestion", ki: "AI",
   stufe: "step", vorschlag: "suggestion", titel: "title", quelle: "source", modell: "model", satz: "ad rate", text: "result", vonHand: "by hand", entscheidung: "decision", notiz: "note",
@@ -1277,7 +1277,7 @@ const DETAIL_TEXT = {
 };
 const WERT_TEXT = { titel: "new title", zurueck: "revert", behalten: "keep", true: "yes", false: "no" };
 const ERGEBNIS_TEXT = { ok: "ok", error: "error", dry_run: "dry run", refused: "refused" };
-// Verschachtelte Werte (z. B. der Vorschlag einer Leiterstufe) lesbar statt als JSON: das Wichtigste zuerst, Prüfdetails weg
+// Nested values (e.g. the suggestion of a ladder step) readable instead of as JSON: the important part first, check details removed
 const WICHTIG = ["titel", "alt", "satz", "neu", "quelle", "modell"];
 const wertText = (v) => {
   if (v === null || typeof v !== "object") return WERT_TEXT[String(v)] ?? v;
@@ -1358,7 +1358,7 @@ function zeichneEinstellungen() {
   const zuruecksetzen = zweiStufig(el("button", { class: "knopf", type: "button", text: "Reset to defaults" }), "Really reset?", async () => {
     try { await post("/api/einstellungen/zuruecksetzen", {}); meldung("Settings reset to the defaults."); await ladeEinstellungen(); laden(); } catch (x) { fehler.textContent = x.message; }
   });
-  // Regeln ändern nur Admins (Werbesatz und Preisschritt kosten Geld); der Server prüft das ebenfalls
+  // Only admins change rules (ad rate and price step cost money); the server checks this as well
   const form = el("form", { novalidate: true }, abschnitte, fehler, istAdmin() ? el("div", { class: "aktionen" }, speichern, zuruecksetzen) : el("p", { class: "leise klein", text: "Only an admin can change the rules." }));
   if (!istAdmin()) for (const z of zeilen) z.eingabe.disabled = true;
   form.addEventListener("submit", async (ev) => {
@@ -1385,4 +1385,4 @@ $("#abmelden").addEventListener("click", async () => {
 });
 const ichGeladen = api("/api/ich").then((d) => { zustand.ich = { name: d.name || "", rolle: d.rolle || "builder" }; $("#benutzer").textContent = d.name ? `${d.name} (${d.rolle === "admin" ? "admin" : "builder"})` : ""; $("#nav-team").hidden = d.rolle !== "admin"; }).catch(() => {});
 
-ichGeladen.then(laden).then(route); // erst die Rolle kennen, dann zeichnen
+ichGeladen.then(laden).then(route); // first know the role, then draw

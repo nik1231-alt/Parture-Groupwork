@@ -1,7 +1,7 @@
-// Auswertung eines Tests für die Diagramme: Zahlen je Gruppe und die Veränderung jedes einzelnen Angebots.
-// Reine Rechnung ohne Datenbank. Das Urteil selbst (besser / kein Unterschied / schlechter) bleibt in experimente.mjs (urteile);
-// hier geht es darum zu zeigen, WORAUS es entsteht, damit man ihm nicht blind glauben muss: Summen vorher und nachher,
-// der Nettoeffekt gegen die Kontrollgruppe und die Streuung über die einzelnen Angebote (ein Ausreißer allein soll kein Urteil tragen).
+// Evaluation of a test for the charts: figures per group and the change of every single listing.
+// Pure calculation without a database. The verdict itself (better / no difference / worse) stays in experimente.mjs (urteile);
+// this file is about showing WHAT it is made of, so that nobody has to believe it blindly: sums before and after,
+// the net effect against the control group and the spread over the single listings (one outlier alone must not carry a verdict).
 
 const leer = () => ({ imp: 0, auf: 0, trans: 0 });
 const addiere = (a, b) => ({ imp: a.imp + b.imp, auf: a.auf + b.auf, trans: a.trans + b.trans });
@@ -15,8 +15,8 @@ export function median(werte) {
   return w.length % 2 ? w[m] : (w[m - 1] + w[m]) / 2;
 }
 
-// Nettoeffekt wie in experimente.urteile: (Testgruppe nachher/vorher) / (Kontrolle nachher/vorher) - 1.
-// Ist die Kontrolle unbrauchbar (Ausgangswert 0), zählt die Rohveränderung der Testgruppe.
+// Net effect as in experimente.urteile: (test group after/before) / (control after/before) - 1.
+// If the control is unusable (starting value 0), the raw change of the test group counts.
 export function netto(test, kontrolle) {
   const eigen = test.vorher > 0 ? test.nachher / test.vorher : test.nachher > 0 ? Infinity : 1;
   let ctrl = kontrolle.vorher > 0 ? kontrolle.nachher / kontrolle.vorher : kontrolle.nachher > 0 ? Infinity : 1;
@@ -25,7 +25,7 @@ export function netto(test, kontrolle) {
 }
 
 // zeilen: [{ number, gruppe: "test" | "kontrolle", vorher: {imp,auf,trans} | null, nachher: {imp,auf,trans} | null }]
-// Angebote ohne Ausgangszahlen oder ohne aktuelle Zahlen (z. B. nicht mehr bei eBay gelistet) zählen nicht mit und werden gemeldet.
+// Listings without starting figures or without current figures (e.g. no longer listed on eBay) are not counted and are reported.
 export function baueAuswertung(zeilen, einst) {
   const gruppe = (name) => {
     const dabei = zeilen.filter((z) => z.gruppe === name && z.vorher && z.nachher);

@@ -1,17 +1,17 @@
-// Baut daten/pm.db selbst aus der eBay-API (Konto partureshop). Nur Lesezugriffe.
-// Aufruf: npm run export   (braucht EBAY_APP_ID, EBAY_CERT_ID, EBAY_REFRESH_TOKEN in der .env)
-//         npm run export:team   (wie oben, schreibt zusätzlich die Team-Kopie daten-team/pm.db ohne Tagesdaten)
-// Läuft auch automatisch einmal täglich im Server (EBAY_TRAFFIC_AUTO=an), siehe server.mjs.
+// Builds daten/pm.db itself from the eBay API (account partureshop). Read access only.
+// Call: npm run export   (needs EBAY_APP_ID, EBAY_CERT_ID, EBAY_REFRESH_TOKEN in the .env)
+//       npm run export:team   (as above, also writes the team copy daten-team/pm.db without daily values)
+// Also runs automatically once a day in the server (EBAY_TRAFFIC_AUTO=an), see server.mjs.
 //
-// Traffic: Es werden Tageswerte je Listing geholt (Tabelle traffic_tag) und daraus die 30- und 90-Tage-Summen (Tabelle traffic)
-// gebildet, jeweils bis zum Stichtag = heute minus 3 Tage (TRAFFIC_VERZOEGERUNG_TAGE). Siehe traffic.mjs.
+// Traffic: daily values per listing are fetched (table traffic_tag) and the 30- and 90-day sums (table traffic) are formed
+// from them, each up to the cut-off day = today minus 3 days (TRAFFIC_VERZOEGERUNG_TAGE). See traffic.mjs.
 //
-// Whitelist wie in der README: Katalog, Kanal, Menge, Preis, Bilder. NICHT übernommen werden
-// Käufer, Adressen, Gebühren, Kosten, Umsatz in Euro. Bestellungen werden nur zu Stückzahl,
-// Durchschnittspreis und letztem Verkaufsdatum pro Artikel zusammengezählt, einzelne Bestellungen werden nicht gespeichert.
+// Whitelist as in the README: catalogue, channel, quantity, price, images. NOT taken over are
+// buyers, addresses, fees, costs, revenue in euros. Orders are added up only into quantity,
+// average price and last sale date per item; single orders are not stored.
 //
-// Aus eBay nicht ableitbar (bleiben leer): grams, print_s, ship_method, variant_meta.
-// Nur der Kanal "ebay" wird befüllt (Amazon, Etsy, Shop, TikTok brauchen eigene Quellen).
+// Not derivable from eBay (stay empty): grams, print_s, ship_method, variant_meta.
+// Only the channel "ebay" is filled (Amazon, Etsy, shop, TikTok need their own sources).
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,12 +24,12 @@ const { EBAY_APP_ID, EBAY_CERT_ID, EBAY_REFRESH_TOKEN } = process.env;
 const TEAM = process.argv.includes("--team");
 const DB_PFAD = path.resolve(WURZEL, process.env.PM_DB || "daten/pm.db");
 const TEAM_PFAD = path.resolve(WURZEL, "daten-team/pm.db");
-// Zwischenspeicher der Tageswerte: bleibt erhalten, wenn ein Lauf abbricht (z. B. eBay-Limit), der nächste macht dort weiter.
+// Cache of the daily values: stays when a run aborts (e.g. eBay limit), the next run continues there.
 const CACHE_PFAD = path.resolve(WURZEL, process.env.PM_TRAFFIC_CACHE || "daten/traffic-tage.db");
 const VERZOEGERUNG = verzoegerungTage();
-const MIN_ABDECKUNG = Number(process.env.TRAFFIC_MIN_ABDECKUNG) || 0.8; // darunter gilt der Lauf als fehlerhaft und die alte Datei bleibt
+const MIN_ABDECKUNG = Number(process.env.TRAFFIC_MIN_ABDECKUNG) || 0.8; // below this the run counts as faulty and the old file stays
 const SITE_DE = "77";
-const TAGE_HISTORIE = 360; // so weit zurück werden Bestellungen gelesen (für last_sold_at)
+const TAGE_HISTORIE = 360; // orders are read this far back (for last_sold_at)
 
 function ladeEnv(p) {
   if (!fs.existsSync(p)) return;
@@ -51,7 +51,7 @@ async function accessToken() {
   return j.access_token;
 }
 
-// ---- kleine XML-Helfer (die Trading-API liefert XML) -------------------------------------------
+// ---- small XML helpers (the Trading API returns XML) -------------------------------------------
 const tag = (x, t) => { const m = x.match(new RegExp(`<${t}(?:\\s[^>]*)?>([\\s\\S]*?)</${t}>`)); return m ? m[1].trim() : null; };
 const alle = (x, t) => [...x.matchAll(new RegExp(`<${t}(?:\\s[^>]*)?>([\\s\\S]*?)</${t}>`, "g"))].map((m) => m[1]);
 const entities = (s) => (s == null ? s : s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&"));
@@ -90,7 +90,7 @@ async function aktiveListings(token) {
   return items;
 }
 
-// Bestellungen nur zu Zählern je Artikel verdichten (keine Käuferdaten, keine einzelnen Bestellungen speichern).
+// Condense orders only into counters per item (store no buyer data, no single orders).
 async function verkaeufe(token) {
   const je = new Map(); // itemId -> { stk, stk90, summe, letzte }
   const grenze90 = Date.now() - 90 * 864e5;
@@ -100,7 +100,7 @@ async function verkaeufe(token) {
     for (let offset = 0; ; offset += 200) {
       const url = `https://api.ebay.com/sell/fulfillment/v1/order?filter=${encodeURIComponent(`creationdate:[${von}..${bis}]`)}&limit=200&offset=${offset}`;
       const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
-      if (!r.ok) { console.warn(`  Bestellungen ${von.slice(0, 10)}..${bis.slice(0, 10)}: HTTP ${r.status} (übersprungen)`); break; }
+      if (!r.ok) { console.warn(`  Orders ${von.slice(0, 10)}..${bis.slice(0, 10)}: HTTP ${r.status} (skipped)`); break; }
       const j = await r.json();
       for (const o of j.orders || []) {
         const t = Date.parse(o.creationDate);
@@ -120,7 +120,7 @@ async function verkaeufe(token) {
   return je;
 }
 
-// Zwischenspeicher der Tageswerte (eigene Datei, wird beim Neubau von pm.db nicht angefasst).
+// Cache of the daily values (a file of its own, not touched when pm.db is rebuilt).
 function oeffneCache() {
   fs.mkdirSync(path.dirname(CACHE_PFAD), { recursive: true });
   const c = new Database(CACHE_PFAD);
@@ -142,7 +142,7 @@ function speichereTag(c, datum, m) {
   })();
 }
 
-// Artikelnummer = führende Ziffern der SKU ("234 -  -" -> 234, "1254_Gr" -> 1254). Variantenlistings: erste Varianten-SKU.
+// Item number = leading digits of the SKU ("234 -  -" -> 234, "1254_Gr" -> 1254). Variant listings: the first variant SKU.
 function artikelnummer(it) {
   for (const s of [it.sku, ...it.varianten.map((v) => v.sku)]) { const m = s && s.match(/^\s*(\d{1,6})/); if (m) return m[1]; }
   return null;
@@ -214,19 +214,19 @@ const token = await accessToken();
 console.log("Token ok. Lese aktive Listings …");
 const items = await aktiveListings(token);
 console.log(`  ${items.length} aktive Listings`);
-console.log("Lese Bestellungen (nur zählen) …");
+console.log("Reading orders (counting only) …");
 const vk = await verkaeufe(token);
-console.log(`  ${vk.size} Artikel mit Verkäufen in ${TAGE_HISTORIE} Tagen`);
+console.log(`  ${vk.size} items with sales in ${TAGE_HISTORIE} days`);
 
-// ---- Traffic: nur fertige Tage (heute minus VERZOEGERUNG), fehlende Tage nachholen, die letzten Tage nachprüfen ----
+// ---- Traffic: finished days only (today minus VERZOEGERUNG), catch up missing days, re-check the last days ----
 const stichtag = laDatum(new Date(), VERZOEGERUNG);
 const alleTage = tageListe(stichtag, FENSTER_TAGE);
 const cache = oeffneCache();
 const alt = leseCache(cache, alleTage[0]);
 const nachpruef = new Set(alleTage.slice(-NACHPRUEFEN_TAGE));
-// Reihenfolge: erst die Nachprüfung der letzten Tage, dann die fehlenden Tage vom neuesten zum ältesten
+// Order: first the re-check of the last days, then the missing days from the newest to the oldest
 const holen = planeTage([...alt.keys()], alleTage).sort((a, b) => (nachpruef.has(b) - nachpruef.has(a)) || (a < b ? 1 : -1));
-console.log(`Traffic bis ${stichtag} (Verzögerung ${VERZOEGERUNG} Tage): ${alt.size} von ${alleTage.length} Tagen im Zwischenspeicher, ${holen.length} werden geholt (davon ${holen.filter((d) => alt.has(d)).length} zur Nachprüfung) …`);
+console.log(`Traffic up to ${stichtag} (delay ${VERZOEGERUNG} days): ${alt.size} of ${alleTage.length} days in the cache, fetching ${holen.length} (${holen.filter((d) => alt.has(d)).length} of them to re-check) …`);
 const ids = items.map((i) => i.itemId);
 let abweichungen = 0, nachgeprueft = 0, geholt = 0, limit = null;
 const tage = new Map(alt);
@@ -238,14 +238,14 @@ for (const d of holen) {
   speichereTag(cache, d, m); tage.set(d, m); geholt++;
 }
 const vollstaendig = alleTage.every((d) => tage.has(d));
-if (limit) console.log(`  eBay-Limit erreicht nach ${geholt} Tagen: ${limit}. Der Fortschritt ist gespeichert, der nächste Lauf macht weiter.`);
-console.log(`  ${tage.size} von ${alleTage.length} Tagen vorhanden${vollstaendig ? " (vollständig)" : ""}.`);
-if (nachgeprueft) console.log(`  Nachprüfung: ${nachgeprueft} Tage erneut gelesen, ${abweichungen} Zeilen hat eBay nachträglich geändert (überschrieben).`);
+if (limit) console.log(`  eBay limit reached after ${geholt} days: ${limit}. Progress is saved, the next run continues.`);
+console.log(`  ${tage.size} of ${alleTage.length} days available${vollstaendig ? " (complete)" : ""}.`);
+if (nachgeprueft) console.log(`  Re-check: ${nachgeprueft} days read again, eBay changed ${abweichungen} rows afterwards (overwritten).`);
 
-// Solange die 90 Tage nicht vollständig sind, kommen die Summen direkt von eBay (Zeitraum-Abfragen, wenige Aufrufe).
+// As long as the 90 days are not complete, the sums come directly from eBay (period queries, few calls).
 let fenster = null;
 if (!vollstaendig) {
-  console.log("  Tageswerte noch unvollständig: die 30- und 90-Tage-Summen kommen als Zeitraum-Summen direkt von eBay.");
+  console.log("  Daily values still incomplete: the 30- and 90-day sums come as period sums directly from eBay.");
   try {
     fenster = {};
     for (const n of [30, 90]) fenster[n] = await holeZeitraum(token, tageListe(stichtag, n)[0], stichtag, ids, { drosselMs: 300 });
@@ -257,16 +257,16 @@ if (!vollstaendig) {
 cache.close();
 const kontrolle = await holeKontrolle(token, alleTage[0], stichtag);
 const ab = abdeckung(tage, kontrolle, alleTage);
-if (ab) console.log(`  Kontrolle gegen die Kontosumme: im Mittel ${(100 * ab.mittel).toFixed(1)} %, schwächster Tag ${ab.schlechtester} mit ${(100 * ab.min).toFixed(1)} % (${ab.tage} Tage geprüft)`);
-else console.log("  Kontrolle gegen die Kontosumme war nicht möglich.");
+if (ab) console.log(`  Check against the account total: on average ${(100 * ab.mittel).toFixed(1)} %, weakest day ${ab.schlechtester} with ${(100 * ab.min).toFixed(1)} % (${ab.tage} days checked)`);
+else console.log("  The check against the account total was not possible.");
 if (ab && ab.mittel < MIN_ABDECKUNG) throw new Error(`Traffic check failed: the listings explain only ${(100 * ab.mittel).toFixed(1)} % of the account total on average (limit ${(100 * MIN_ABDECKUNG).toFixed(0)} %). The old file stays unchanged.`);
 
 const { produkte, nK, nB, nT } = schreibe(items, vk, tage, stichtag, { abdeckung: ab, fenster });
 const ohneNr = [...produkte.keys()].filter((k) => k.startsWith("ID")).length;
 console.log(`Fertig in ${Math.round((Date.now() - t0) / 1000)} s: ${produkte.size} Produkte, ${nK} Kanal-Zeilen, ${nB} Bilder, ${nT} Traffic-Summen, Tagesdaten bis ${stichtag} -> ${DB_PFAD}`);
-if (ohneNr) console.log(`Hinweis: ${ohneNr} Listings ohne erkennbare Artikelnummer in der SKU (als "ID<ItemID>" angelegt).`);
+if (ohneNr) console.log(`Note: ${ohneNr} listings without a recognisable item number in the SKU (created as "ID<ItemID>").`);
 
-// Team-Kopie: dieselben Daten ohne die Tagesdaten (klein halten, die App braucht dort nur die Summen)
+// Team copy: the same data without the daily data (keep it small, the app needs only the sums there)
 if (TEAM) {
   fs.mkdirSync(path.dirname(TEAM_PFAD), { recursive: true });
   const tmp = TEAM_PFAD + ".neu";

@@ -1,256 +1,256 @@
-# Checkliste: das Tool bis zur Abgabe und Vorführung
+# Checklist: the tool up to the hand-in and the demo
 
-Stand 18.11.2026, gemessen am Repo (main = b4435b1, vorschau = 4213d27) und auf dem Server. Jeder Punkt hat eine
-Zuständigkeit, einen **Beleg** (woran man sieht, dass er erledigt ist) und einen Termin. Wer einen Punkt erledigt,
-hakt ihn hier ab und nennt im Pull Request die Nummer (z. B. „A3.4“). Die Zuordnung an Personen ist ein Vorschlag:
-in der Gruppe verteilen, aber jeder Punkt braucht genau einen Namen.
+Status 18 Nov 2026, measured on the repo (main = b4435b1, vorschau = 4213d27) and on the server. This is a working document: the status
+columns are from 18/19 Nov and later work is tracked in the issues and pull requests. Every item has a
+responsible person, a **proof** (how you can see that it is done) and a date. Whoever completes an item
+ticks it here and names the number in the pull request (e.g. "A3.4"). The assignment to people is a suggestion:
+distribute it in the group, but every item needs exactly one name.
 
-| Termin | Was |
+| Date | What |
 |---|---|
-| **22.11.2026** | Abgabe: Code steht. Danach nur noch Fehlerbehebung, Doku, Probe. Keine neuen Funktionen. |
-| 23.11. bis 03.12. | eBay-Live-Weg, echter Testlauf mit Daten, Generalprobe. |
-| **04.12.2026** | Vorführung (ca. 8 Minuten, Ablauf in `docs/vorfuehrung.md`). |
+| **22 Nov 2026** | Hand-in: the code is done. Afterwards only bug fixes, docs, rehearsal. No new features. |
+| 23 Nov to 3 Dec | eBay live path, real test run with data, dress rehearsal. |
+| **4 Dec 2026** | Demo (about 8 minutes, run in `docs/vorfuehrung.md`). |
 
-Der Kurs bewertet: **Code-Qualität und Tests, Git-Zusammenarbeit, Funktion und Oberfläche, Präsentation und Doku,
-Sicherheit.** Die Abschnitte A1 bis A6 folgen genau diesen fünf Kriterien plus dem Datenweg.
+The course grades: **code quality and tests, Git collaboration, function and interface, presentation and docs,
+security.** Sections A1 to A6 follow exactly these five criteria plus the data path.
 
-## Abgearbeitet am 19.11.2026 (Server-KI, im Auftrag von Niko)
+## Worked off on 19 Nov 2026 (server AI, on behalf of Niko)
 
-Alles liegt als Pull Request bereit und zusammen auf VORSCHAU (Stand `df0ccd8`, 172 Tests grün). **Gemergt nach `main`
-ist noch nichts**: das macht die Gruppe nach Review (A5.2). Reihenfolge zum Mergen: #10 → #11 → #29 → #30, dann #12, #13, #14.
+Everything is ready as pull requests and together on PREVIEW (version `df0ccd8`, 172 tests green). **Nothing is merged into `main`
+yet**: the group does that after review (A5.2). Order of merging: #10 → #11 → #29 → #30, then #12, #13, #14.
 
-| Punkt | Stand | Beleg |
+| Item | Status | Proof |
 |---|---|---|
-| A1.3, B1.4 Los reproduzierbar, gleich groß, nichts doppelt, Sperrliste, nur laufende eBay-Angebote | erledigt | #30, `app/test-los.mjs`; Hub liefert `sperre` (50 Angebote bis 01.12.) |
-| A1.4, A1.6, A1.7 Titelregeln, Probelauf, Protokoll | erledigt | #30 `test-durchlauf.mjs`, bestehende Tests in `test-freigabe.mjs` |
-| A1.8 Evaluation-Panel nach `main` | PR offen | #11 (Code von EmbletonNova) |
-| A1.10 Fehlerbilder | erledigt (Sitzung abgelaufen in der Oberfläche ohne automatischen Test) | #30 `test-fehlerbilder-http.mjs` |
-| A1.11 nur Englisch | erledigt | #30 `test-oberflaeche.mjs` |
-| A1.12 Telefonbreite | erledigt, gemessen 400/360 px | #30 |
-| A1.1, A1.2, A1.5, A1.9, A6.6 Screenshots | offen (Gruppe) | Issue #19 |
-| A2.1 Datenzugriffe | erledigt | #14 `docs/architektur.md` |
-| A2.2, A4.8 Konstanten | erledigt | #30, `/api/betrieb.regeln` |
-| A2.3 Team-Kopie | erledigt | #13 |
-| A2.4 Meldung bei altem Datenstand | offen (kein Muss, Telegram auf PROD fehlt, B2.6) | — |
-| A3.1–A3.13, A6.3 Sicherheit | erledigt | #29 `docs/sicherheit.md`, `test-routen-schutz.mjs`, `test-xss.mjs` |
-| A4.1 Modul → Test | erledigt | #14 `docs/tests.md` |
-| A4.2 Ende-zu-Ende-Test | erledigt | #30 |
-| A4.3 Laufzeit, Kindprozesse abwarten | erledigt (ca. 37 s) | #12 |
-| A4.4, A4.6 Konvention, toter Code | erledigt | #30, `npm run tote` |
-| A4.5 CI auf Windows | fertig, nicht gepusht (Token ohne Scope `workflow`) | Issue #18 |
-| A4.7 Kommentare | offen (Review) | Issue #21 |
-| A5.1, A5.2, A5.3 Verteilung, Reviews, Branch-Schutz | offen (Gruppe, Niko) | Issues #15, #16, #17 |
-| A5.4 Issues | erledigt | #15–#28 |
-| A5.5 PR-Vorlage, A5.7 `.mailmap`, A5.8 KI-Anteil | erledigt, A5.8 von der Gruppe zu prüfen | #14 |
-| A5.6 alte Branches löschen | offen: erst nach dem Merge | — |
-| A6.1, A6.2, A6.4, A6.5 README, Architektur, Entwicklung, Glossar | erledigt; A6.1 blind nachmachen offen | #14, #12, Issue #20 |
-| B1.1 Lions Freigabe | erledigt: Lion per Telegram 19.11. „Ja 1123“ | Nachrichtenzentrale #1123 |
-| B1.5, B1.9 Shopify-Hinweis, Revert-Plan | erledigt (Vorlage) | #14 `docs/belege/revert-plan.md` |
-| B1.10 kein eigener Analytics-Abruf | geprüft: `EBAY_TRAFFIC_AUTO` auf PROD leer | — |
-| B2.2, B2.3 Sicherung, Wächter-Logs | geprüft 19.11.: Sicherung 18.11. an beiden Orten, Logs ohne Fehler seit dem Fix vom 18.11. | vor der Vorführung wiederholen |
-| B1.2, B1.3, B1.6–B1.8, B2.1, B2.4–B2.6, B3, C | offen (Menschen) | Issues #22–#28 |
+| A1.3, B1.4 Draw reproducible, equally large, nothing twice, block list, only running eBay listings | done | #30, `app/test-los.mjs`; the hub delivers `sperre` (50 listings until 1 Dec) |
+| A1.4, A1.6, A1.7 Title rules, dry run, log | done | #30 `test-durchlauf.mjs`, existing tests in `test-freigabe.mjs` |
+| A1.8 Evaluation panel to `main` | PR open | #11 (code by EmbletonNova) |
+| A1.10 Error cases | done (session expired in the interface without an automatic test) | #30 `test-fehlerbilder-http.mjs` |
+| A1.11 English only | done | #30 `test-oberflaeche.mjs` |
+| A1.12 Phone width | done, measured 400/360 px | #30 |
+| A1.1, A1.2, A1.5, A1.9, A6.6 Screenshots | open (group) | issue #19 |
+| A2.1 Data access | done | #14 `docs/architektur.md` |
+| A2.2, A4.8 Constants | done | #30, `/api/betrieb.regeln` |
+| A2.3 Team copy | done | #13 |
+| A2.4 Message on an old data version | open (not a must, Telegram on PROD is missing, B2.6) | — |
+| A3.1–A3.13, A6.3 Security | done | #29 `docs/sicherheit.md`, `test-routen-schutz.mjs`, `test-xss.mjs` |
+| A4.1 Module → test | done | #14 `docs/tests.md` |
+| A4.2 End-to-end test | done | #30 |
+| A4.3 Run time, wait for child processes | done (about 37 s) | #12 |
+| A4.4, A4.6 Convention, dead code | done | #30, `npm run tote` |
+| A4.5 CI on Windows | ready, not pushed (token without the `workflow` scope) | issue #18 |
+| A4.7 Comments | open (review) | issue #21 |
+| A5.1, A5.2, A5.3 Distribution, reviews, branch protection | open (group, Niko) | issues #15, #16, #17 |
+| A5.4 Issues | done | #15–#28 |
+| A5.5 PR template, A5.7 `.mailmap`, A5.8 AI share | done, A5.8 to be checked by the group | #14 |
+| A5.6 Delete old branches | open: only after the merge | — |
+| A6.1, A6.2, A6.4, A6.5 README, architecture, development, glossary | done; A6.1 blind rehearsal open | #14, #12, issue #20 |
+| B1.1 Lion's approval | done: Lion by Telegram on 19 Nov "Yes 1123" | message centre #1123 |
+| B1.5, B1.9 Shopify note, revert plan | done (template) | #14 `docs/belege/revert-plan.md` |
+| B1.10 No own Analytics calls | checked: `EBAY_TRAFFIC_AUTO` on PROD is empty | — |
+| B2.2, B2.3 Backup, watcher logs | checked 19 Nov: backup of 18 Nov in both places, logs without errors since the fix of 18 Nov | repeat before the demo |
+| B1.2, B1.3, B1.6–B1.8, B2.1, B2.4–B2.6, B3, C | open (people) | issues #22–#28 |
 
-Nebenbei gefunden und im Hub behoben: `pm.db` trug als `created_at` die Uhrzeit des nächtlichen Neubaus, dadurch stand
-auf PROD jedes Angebot auf „Wait“ und kein Test fand Kandidaten. Seit dem 19.11. steht dort das echte Anlagedatum.
+Found on the side and fixed in the hub: `pm.db` carried the time of the nightly rebuild as `created_at`, so
+on PROD every listing was on "Wait" and no test found candidates. Since 19 Nov the real creation date is there.
 
-## Ist-Stand (gemessen 18.11.2026, nicht geschätzt)
+## Current state (measured 18 Nov 2026, not estimated)
 
-| Messung | Wert | Bedeutung für die Checkliste |
+| Measurement | Value | Meaning for the checklist |
 |---|---|---|
-| Tests | **120** in 11 Dateien (`node:test`), `npm test` grün auf Ubuntu (CI) und Windows (Server) | Basis ist gut. Lücken: Auswertung (nur auf `vorschau`), Ende-zu-Ende-Durchlauf, Windows in der CI. |
-| API-Routen | 32 unter `/api/*` plus `/healthz` | Jede Route braucht einen Test für „ohne Login 401“ und „Builder auf Admin-Route 403“ (A3.2). |
-| Seiten | Listings, Tests, Approvals, Team (nur Admin), Log, Settings; Login | Evaluation-Panel (defd8b5) liegt nur auf `vorschau`, noch nicht in `main` (A1.8). |
-| Code | ca. 4.300 Zeilen in `app/` und `public/`, **eine** Abhängigkeit (better-sqlite3), kein Framework | Stärke für die Präsentation: begründen können, warum (A6.3). |
-| Sicherheit | scrypt-Passwörter, Sperre nach Fehlversuchen, Cookies HttpOnly + SameSite=Strict + Secure, Origin-Prüfung, CSP, X-Frame-Options, Rollen serverseitig, Access-JWT-Prüfung, Protokoll nur anhängen (DB-Trigger), Geheimnis-Scan in der CI, Schreibschalter `EBAY_SCHREIBEN` | Vorhanden, aber nirgends als Ganzes beschrieben und nicht jede Maßnahme hat einen Test (A3). |
-| Git | 9 gemergte Pull Requests, **0 Reviews**, 0 Issues, Commits: nik1231-alt 10, Niko 5, EmbletonNova 4, Server-KI 4, **Alexius76 0, giacomogrilli 0** | Für „Zusammenarbeit“ der kritischste Befund (A5). |
-| CI | `.github/workflows/pruefung.yml`: npm ci, Geheimnis-Scan mit Historie, Tests, nur Ubuntu | Zwei Windows-spezifische Fehler (EPERM/EBUSY) wurden erst auf dem Server gefunden (A4.5). |
-| Betrieb | PROD `app.parture-team.com` (main) und VORSCHAU `vorschau.parture-team.com` (vorschau) hinter Cloudflare Access, Wächter mit Testschranke, tägliche Sicherung, Rücksicherung geprobt | Fertig. Offen: eBay-Keys auf PROD und Lions Freigabe (B1). |
-| Daten | `pm.db` nächtlich 04:30 vom Hub: 984 Produkte, 2.155 Kanäle, 6.357 Bilder, Traffic 120 Tage (98 Tage vorhanden, Abdeckung 98,6 %) | Fertig. Team-Kopie `daten-team/pm.db` ist älter und ohne Traffic-Tabellen (A2.3). |
+| Tests | **120** in 11 files (`node:test`), `npm test` green on Ubuntu (CI) and Windows (server) | The base is good. Gaps: evaluation (only on `vorschau`), end-to-end run, Windows in the CI. |
+| API routes | 32 under `/api/*` plus `/healthz` | Every route needs a test for "401 without login" and "builder on an admin route 403" (A3.2). |
+| Pages | Listings, Tests, Approvals, Team (admin only), Log, Settings; login | The evaluation panel (defd8b5) is only on `vorschau`, not yet in `main` (A1.8). |
+| Code | about 4,300 lines in `app/` and `public/`, **one** dependency (better-sqlite3), no framework | A strength for the presentation: be able to explain why (A6.3). |
+| Security | scrypt passwords, lock after failed attempts, cookies HttpOnly + SameSite=Strict + Secure, origin check, CSP, X-Frame-Options, roles on the server, Access JWT check, append-only log (DB trigger), secret scan in the CI, write switch `EBAY_SCHREIBEN` | Present, but described nowhere as a whole and not every measure has a test (A3). |
+| Git | 9 merged pull requests, **0 reviews**, 0 issues, commits: nik1231-alt 10, Niko 5, EmbletonNova 4, server AI 4, **Alexius76 0, giacomogrilli 0** | The most critical finding for "collaboration" (A5). |
+| CI | `.github/workflows/pruefung.yml`: npm ci, secret scan with history, tests, Ubuntu only | Two Windows-specific errors (EPERM/EBUSY) were found only on the server (A4.5). |
+| Operation | PROD `app.parture-team.com` (main) and PREVIEW `vorschau.parture-team.com` (vorschau) behind Cloudflare Access, watcher with a test gate, daily backup, restore rehearsed | Done. Open: eBay keys on PROD and Lion's approval (B1). |
+| Data | `pm.db` every night 04:30 from the hub: 984 products, 2,155 channels, 6,357 images, traffic 120 days (98 days present, coverage 98.6 %) | Done. The team copy `daten-team/pm.db` is older and without traffic tables (A2.3). |
 
 ---
 
-## A. Bis zur Abgabe am 22.11.: Code steht
+## A. Until the hand-in on 22 Nov: the code is done
 
-### A1. Funktion: der eine Durchlauf muss sitzen (Kriterium „Funktion und Oberfläche“)
+### A1. Function: the one run must work (criterion "function and interface")
 
-Der Kern des Tools ist ein einziger Weg: Angebot mit wenig Impressionen finden → Test ziehen → Titel vorschlagen →
-freigeben → bei eBay ändern → protokollieren → auswerten. Jeder Schritt wird einmal **mit echten Daten auf
-VORSCHAU** durchgespielt und das Ergebnis als Screenshot in `docs/belege/` abgelegt.
+The core of the tool is a single path: find a listing with low impressions → draw a test → propose a title →
+approve → change on eBay → log → evaluate. Every step is played through once **with real data on
+PREVIEW** and the result is stored as a screenshot in `docs/belege/`.
 
-| # | Punkt | Wer | Beleg | Bis |
+| # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| A1.1 | Listings: Filter „Low impressions“ zeigt die richtigen Angebote (Stichprobe gegen `pm.db`: 5 Angebote per SQL nachrechnen) | Builder 1 | Screenshot + die 5 SQL-Zeilen in `docs/belege/a1-1.md` | 20.11. |
-| A1.2 | Kopfzeile: Umgebung (PREVIEW/LIVE), Datenstand, „traffic up to“ stimmen mit `stand` in `pm.db` überein | Builder 1 | Screenshot | 20.11. |
-| A1.3 | Tests → „Draw a new test“: Los ist reproduzierbar (Seed im Protokoll), Gruppen gleich groß, kein Angebot doppelt, Angebote der Preis-Abstieg-Liste sind ausgeschlossen (Liste kommt vom Hub, siehe B1.4) | Builder 2 | Test in `app/test-freigabe.mjs` oder `app/experimente`-Test, der genau diese vier Eigenschaften prüft | 21.11. |
-| A1.4 | Titel eintragen als Builder: Längenregel 80 Zeichen, Titelhilfe zeigt nur belegte Hinweise, „Send for approval“ sperrt den Vorschlag gegen weitere Änderung | Builder 2 | Test vorhanden? Wenn nein: ergänzen. Screenshot | 21.11. |
-| A1.5 | Approvals als Admin: alt und neu nebeneinander, Approve/Reject, Obergrenze 50 je Freigabe, Builder bekommt 403 (bereits getestet: `test-rollen-http.mjs`) | Niko | bestehender Test genannt, Screenshot | 20.11. |
-| A1.6 | eBay-Schreiben im Probelauf (`EBAY_SCHREIBEN` aus): die App zeigt, was sie ändern würde, ändert nichts, Protokoll bekommt den Eintrag „Probelauf“ | Niko | Protokollzeile als Screenshot | 20.11. |
-| A1.7 | Log: jeder Schritt aus A1.3 bis A1.6 steht mit Zeit, Person, alt/neu drin; Versuch, eine Zeile zu ändern oder zu löschen, scheitert am Trigger (Test vorhanden: nennen) | Builder 3 | Testname + Screenshot | 20.11. |
-| A1.8 | **Evaluation-Panel (defd8b5) per Pull Request nach `main`**, mit `app/test-auswertung.mjs`; Review durch eine andere Person | Niko (PR), Builder 3 (Review) | PR-Nummer, CI grün, Merge | **19.11.** |
-| A1.9 | „Show an example verdict“: Beispielzahlen sind klar als Beispiel beschriftet (Text „example data“ sichtbar), die drei Diagramme rendern auch bei leeren Daten ohne Fehler in der Konsole | Builder 3 | Screenshot Konsole leer | 21.11. |
-| A1.10 | Fehlerbilder: `pm.db` fehlt → 503 mit verständlichem Text; eBay lehnt ab → eBays Meldung sichtbar, nichts geändert; Sitzung abgelaufen → zurück zum Login ohne Datenverlust des Formulars | Builder 1 | 3 Screenshots | 21.11. |
-| A1.11 | Oberfläche auf Englisch, einheitliche Begriffe (Listing, Test, Approval, Log, Settings), keine deutschen Reste in sichtbaren Texten (`grep` über `public/`) | Builder 1 | `grep`-Ergebnis leer | 21.11. |
-| A1.12 | Telefon-Breite (400 px): keine horizontale Scrollleiste auf Listings/Approvals/Log | Builder 2 | Screenshot | 21.11. |
+| A1.1 | Listings: the filter "Low impressions" shows the right listings (spot check against `pm.db`: recalculate 5 listings by SQL) | Builder 1 | Screenshot + the 5 SQL lines in `docs/belege/a1-1.md` | 20 Nov |
+| A1.2 | Header: environment (PREVIEW/LIVE), data age, "traffic up to" agree with `stand` in `pm.db` | Builder 1 | Screenshot | 20 Nov |
+| A1.3 | Tests → "Draw a new test": the draw is reproducible (seed in the log), groups equally large, no listing twice, listings of the price-decrease list are excluded (list comes from the hub, see B1.4) | Builder 2 | Test in `app/test-freigabe.mjs` or an `app/experimente` test that checks exactly these four properties | 21 Nov |
+| A1.4 | Enter titles as builder: length rule 80 characters, the title help shows only evidence-based hints, "Send for approval" locks the proposal against further changes | Builder 2 | Does a test exist? If not: add one. Screenshot | 21 Nov |
+| A1.5 | Approvals as admin: old and new side by side, Approve/Reject, limit of 50 per approval, a builder gets 403 (already tested: `test-rollen-http.mjs`) | Niko | Existing test named, screenshot | 20 Nov |
+| A1.6 | eBay writing as a dry run (`EBAY_SCHREIBEN` off): the app shows what it would change, changes nothing, the log gets the entry "dry run" | Niko | Log line as a screenshot | 20 Nov |
+| A1.7 | Log: every step from A1.3 to A1.6 is in it with time, person, old/new; an attempt to change or delete a row fails at the trigger (test exists: name it) | Builder 3 | Test name + screenshot | 20 Nov |
+| A1.8 | **Evaluation panel (defd8b5) by pull request into `main`**, with `app/test-auswertung.mjs`; review by another person | Niko (PR), Builder 3 (review) | PR number, CI green, merge | **19 Nov** |
+| A1.9 | "Show an example verdict": the example figures are clearly labelled as an example (text "example data" visible), the three charts render even with empty data without an error in the console | Builder 3 | Screenshot, console empty | 21 Nov |
+| A1.10 | Error cases: `pm.db` missing → 503 with an understandable text; eBay refuses → eBay's message visible, nothing changed; session expired → back to the login without losing the form data | Builder 1 | 3 screenshots | 21 Nov |
+| A1.11 | Interface in English, consistent terms (listing, test, approval, log, settings), no German left in visible texts (`grep` over `public/`) | Builder 1 | `grep` result empty | 21 Nov |
+| A1.12 | Phone width (400 px): no horizontal scroll bar on Listings/Approvals/Log | Builder 2 | Screenshot | 21 Nov |
 
-### A2. Datenweg: woher die Zahlen kommen und wie frisch sie sind
+### A2. Data path: where the figures come from and how fresh they are
 
-| # | Punkt | Wer | Beleg | Bis |
+| # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| A2.1 | Die App liest **nur** `pm.db` (Whitelist des Hubs: Produkt, Kanal, Bild, Traffic). Kein Code greift auf andere Dateien oder APIs zu, außer `export-ebay.mjs` (Admin, lokal) und `ebay-schreiben.mjs` (PROD) | Server-KI | `grep` nach `fetch(`/`Database(` in `app/` mit Liste der Stellen | 19.11. |
-| A2.2 | Datenverzug 3 Tage und „letzte Tage nachgeprüft“ sind im Code und in der Kopfzeile dieselbe Zahl (eine Konstante) | Builder 2 | Konstante benannt | 20.11. |
-| A2.3 | **Team-Kopie** `daten-team/pm.db` aus der aktuellen Server-`pm.db` erneuern (mit Traffic-Tabellen), damit lokal und im Ausfallplan dieselbe Oberfläche erscheint wie live. Enthält keine Kosten, keine Kunden (Whitelist). | Niko | Commit, Dateigröße, `stand`-Zeile | 20.11. |
-| A2.4 | Was passiert, wenn der Hub nachts nicht liefert: App zeigt den alten Stand mit Datum, Admin bekommt eine Telegram-Meldung, wenn der Stand älter als 2 Tage ist (prüfen, ob vorhanden; sonst Issue, kein Muss bis 22.11.) | Server-KI | Testlauf mit verstelltem Datum | 25.11. |
+| A2.1 | The app reads **only** `pm.db` (the hub's whitelist: product, channel, image, traffic). No code accesses other files or APIs, except `export-ebay.mjs` (admin, local) and `ebay-schreiben.mjs` (PROD) | Server AI | `grep` for `fetch(`/`Database(` in `app/` with a list of the places | 19 Nov |
+| A2.2 | The data delay of 3 days and "last days re-checked" are the same number in the code and in the header (one constant) | Builder 2 | Constant named | 20 Nov |
+| A2.3 | Renew the **team copy** `daten-team/pm.db` from the current server `pm.db` (with traffic tables), so that locally and in the fallback plan the same interface appears as live. It contains no costs, no customers (whitelist). | Niko | Commit, file size, `stand` row | 20 Nov |
+| A2.4 | What happens if the hub does not deliver at night: the app shows the old version with its date, the admin gets a Telegram message when the version is older than 2 days (check whether it exists; otherwise an issue, not a must until 22 Nov) | Server AI | Test run with a shifted date | 25 Nov |
 
-### A3. Sicherheit (eigenes Bewertungskriterium)
+### A3. Security (its own grading criterion)
 
-Was es gibt, muss als Ganzes **beschrieben und je Punkt mit einem Test belegt** sein. Eine Seite `docs/sicherheit.md`
-mit genau dieser Tabelle, jede Zeile verweist auf den Test.
+What exists must be **described as a whole and proven with a test for each item**. A page `docs/sicherheit.md`
+with exactly this table, every row pointing to the test.
 
-| # | Punkt | Wer | Beleg | Bis |
+| # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| A3.1 | `docs/sicherheit.md`: Bedrohungsmodell in zehn Zeilen (wer könnte was wollen: Fremder im Netz, Builder ohne Admin-Recht, verlorener Laptop, geleakter Commit) und die Maßnahme je Fall | Builder 3 | Datei im PR | 21.11. |
-| A3.2 | **Jede** der 32 Routen: ohne Login 401, Builder auf Admin-Route 403. Ein Test, der die Routenliste aus `server.mjs` liest und alle durchprobiert, statt einer Handvoll ausgewählter | Builder 3 | Test zählt 32 Routen; schlägt fehl, wenn eine neue Route ungeschützt ist | 21.11. |
-| A3.3 | Login: scrypt mit Salz, Sperre nach N Fehlversuchen (N nennen), Mindestlänge 10, Passwortwechsel beendet andere Sitzungen, Logout löscht die Sitzung serverseitig | Niko | Tests in `test.mjs`/`test-http.mjs` genannt | 20.11. |
-| A3.4 | Cookies: HttpOnly, SameSite=Strict, Secure nur über HTTPS (lokal bewusst nicht: begründen), Sitzungsdauer begrenzt | Niko | Test genannt, Begründung in `docs/sicherheit.md` | 20.11. |
-| A3.5 | CSRF: Origin-Prüfung bei POST (Test vorhanden); Formulare ohne `action` auf fremde Hosts | Builder 3 | Test genannt | 20.11. |
-| A3.6 | XSS: alle Daten per `textContent`, kein `innerHTML` mit Daten (Stand: 33× `textContent`, 0× `innerHTML`); CSP-Header; Test, der einen Titel mit `<script>` durchschiebt und prüft, dass er als Text erscheint | Builder 1 | neuer Test | 21.11. |
-| A3.7 | Eingaben werden im Modul geprüft (Typ, Länge, Zustand): Titel 80 Zeichen, Angebotsnummer numerisch, Zustände der Freigabe als Zustandsautomat (offen → freigegeben/abgelehnt → geschrieben), unerlaubte Übergänge 409 | Builder 2 | Tests in `test-freigabe.mjs` genannt oder ergänzt | 21.11. |
-| A3.8 | Geheimnisse: `.env` und `*.db` in `.gitignore`, `npm run scan` sauber (Stand: 55 Dateien), CI prüft die ganze Historie; keine Tokens im Protokoll oder in Logs (`grep` nach `EBAY_`, `TOKEN` in `daten/*.log` nach einem Durchlauf) | Niko | Scan-Ausgabe, `grep` leer | 20.11. |
-| A3.9 | Rollen serverseitig: Builder kann nicht freigeben, Rollen ändern, sichern, eBay-Schalter setzen (Test vorhanden: `test-rollen-http.mjs`); Oberfläche blendet nur aus, der Server entscheidet | Niko | Test genannt | 20.11. |
-| A3.10 | Außenzugang: Cloudflare Access vor beiden Umgebungen, App prüft zusätzlich das Access-JWT (Aud, Ablauf, Signatur); Ports nur 127.0.0.1 (Server-Probe 17.11. bestanden) | Server-KI | Probenprotokoll in `docs/server-checkliste.md` | erledigt |
-| A3.11 | eBay-Schreibweg: nur mit Keys **und** `EBAY_SCHREIBEN=an`, Lesen-vor-Schreiben (Titel weicht ab → nichts), Obergrenze 50, alles im Protokoll. Ein Test je Riegel | Niko | Tests genannt | 21.11. |
-| A3.12 | `npm audit` ohne bekannte Lücken in der einen Abhängigkeit; Node-Version festgelegt (`engines` in `package.json`, `.nvmrc`) | Builder 2 | Ausgabe im PR | 20.11. |
-| A3.13 | Keine Kunden- oder Käuferdaten in der App, in `pm.db` oder im Protokoll (`export-ebay.mjs` aggregiert Bestellungen nur zu Zahlen). Satz dazu in `docs/sicherheit.md` | Niko | Satz + `grep` | 20.11. |
+| A3.1 | `docs/sicherheit.md`: threat model in ten rows (who might want what: stranger on the net, builder without admin rights, lost laptop, leaked commit) and the measure in each case | Builder 3 | File in the PR | 21 Nov |
+| A3.2 | **Every** one of the 32 routes: 401 without login, builder on an admin route 403. One test that reads the route list from `server.mjs` and tries all of them, instead of a handful of chosen ones | Builder 3 | The test counts 32 routes; fails if a new route is unprotected | 21 Nov |
+| A3.3 | Login: scrypt with salt, lock after N failed attempts (name N), minimum length 10, a password change ends other sessions, logout deletes the session on the server | Niko | Tests in `test.mjs`/`test-http.mjs` named | 20 Nov |
+| A3.4 | Cookies: HttpOnly, SameSite=Strict, Secure only over HTTPS (deliberately not locally: justify), limited session duration | Niko | Test named, justification in `docs/sicherheit.md` | 20 Nov |
+| A3.5 | CSRF: origin check on POST (test exists); forms without `action` to foreign hosts | Builder 3 | Test named | 20 Nov |
+| A3.6 | XSS: all data via `textContent`, no `innerHTML` with data (status: 33× `textContent`, 0× `innerHTML`); CSP header; a test that pushes a title with `<script>` through and checks that it appears as text | Builder 1 | New test | 21 Nov |
+| A3.7 | Input is checked in the module (type, length, state): title 80 characters, listing number numeric, approval states as a state machine (open → approved/rejected → written), illegal transitions 409 | Builder 2 | Tests in `test-freigabe.mjs` named or added | 21 Nov |
+| A3.8 | Secrets: `.env` and `*.db` in `.gitignore`, `npm run scan` clean (status: 55 files), the CI checks the whole history; no tokens in the log or in logs (`grep` for `EBAY_`, `TOKEN` in `daten/*.log` after a run) | Niko | Scan output, `grep` empty | 20 Nov |
+| A3.9 | Roles on the server: a builder cannot approve, change roles, back up, set the eBay switch (test exists: `test-rollen-http.mjs`); the interface only hides, the server decides | Niko | Test named | 20 Nov |
+| A3.10 | Access from outside: Cloudflare Access in front of both environments, the app also checks the Access JWT (aud, expiry, signature); ports 127.0.0.1 only (server probe on 17 Nov passed) | Server AI | Probe record in `docs/server-checkliste.md` | done |
+| A3.11 | eBay write path: only with keys **and** `EBAY_SCHREIBEN=an`, read-before-write (title differs → nothing), limit 50, everything in the log. One test per latch | Niko | Tests named | 21 Nov |
+| A3.12 | `npm audit` without known gaps in the one dependency; Node version fixed (`engines` in `package.json`, `.nvmrc`) | Builder 2 | Output in the PR | 20 Nov |
+| A3.13 | No customer or buyer data in the app, in `pm.db` or in the log (`export-ebay.mjs` aggregates orders only into numbers). A sentence about this in `docs/sicherheit.md` | Niko | Sentence + `grep` | 20 Nov |
 
-### A4. Code-Qualität und Tests
+### A4. Code quality and tests
 
-| # | Punkt | Wer | Beleg | Bis |
+| # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| A4.1 | Jedes Modul in `app/` hat eine Testdatei oder steht begründet auf einer Ausnahmeliste in `docs/entwicklung.md` (heute ohne eigenen Test: `bewertung.mjs`, `einstellungen.mjs`, `regeln.mjs`, `protokoll.mjs`, `ebay-schreiben.mjs`, `export-ebay.mjs`) | Builder 3 | Tabelle Modul → Testdatei | 21.11. |
-| A4.2 | **Ein Ende-zu-Ende-Test** über den ganzen Weg aus A1 gegen den laufenden Server (Login Builder → Vorschlag → Login Admin → Freigabe → Probelauf-Schreiben → Protokoll → Auswertung) | Builder 2 | `app/test-durchlauf.mjs` | 21.11. |
-| A4.3 | `npm test` unter 60 Sekunden, keine wackligen Tests (zwei Windows-Aufräumfehler wurden am 17./18.11. behoben: Prozessende abwarten, dann löschen). Regel in `docs/entwicklung.md`: Kindprozesse immer mit `once("exit")` abwarten | Server-KI | Laufzeit im PR, Regel im Doc | 19.11. |
-| A4.4 | Konvention `{ ok, wert }` / `{ ok: false, status, fehler }` überall; Stichprobe 10 Funktionen; Abweichungen angleichen | Builder 1 | Liste der 10 | 21.11. |
-| A4.5 | CI auch auf **Windows** (`runs-on: [ubuntu-latest, windows-latest]` als Matrix), weil der Server Windows ist und zwei Fehler nur dort auftraten | Server-KI | grüner Lauf auf beiden | 19.11. |
-| A4.6 | Kein toter Code: Funktionen, die niemand importiert, entfernen oder begründen (einfaches Skript: jede exportierte Funktion gegen `grep` im Repo) | Builder 1 | Skriptausgabe leer | 21.11. |
-| A4.7 | Kommentare sagen das **Warum**, nicht das Was; Kopf jeder Datei nennt Zweck in zwei Sätzen (Stichprobe aller 20 `app/*.mjs`) | alle | im Review abgehakt | 22.11. |
-| A4.8 | Keine Zahlen doppelt: Verzug 3 Tage, Obergrenze 50, Marke +20 %, Sperre nach N Fehlversuchen jeweils genau eine Konstante mit Namen, von Tests und Oberfläche gleich benutzt | Builder 2 | `grep` nach den Literalen zeigt je eine Stelle | 21.11. |
+| A4.1 | Every module in `app/` has a test file or is on an exception list with a reason in `docs/entwicklung.md` (today without their own test: `bewertung.mjs`, `einstellungen.mjs`, `regeln.mjs`, `protokoll.mjs`, `ebay-schreiben.mjs`, `export-ebay.mjs`) | Builder 3 | Table module → test file | 21 Nov |
+| A4.2 | **One end-to-end test** over the whole path from A1 against the running server (login builder → proposal → login admin → approval → dry-run writing → log → evaluation) | Builder 2 | `app/test-durchlauf.mjs` | 21 Nov |
+| A4.3 | `npm test` under 60 seconds, no flaky tests (two Windows clean-up errors were fixed on 17/18 Nov: wait for the end of the process, then delete). Rule in `docs/entwicklung.md`: always wait for child processes with `once("exit")` | Server AI | Run time in the PR, rule in the doc | 19 Nov |
+| A4.4 | Convention `{ ok, wert }` / `{ ok: false, status, fehler }` everywhere; spot check 10 functions; align deviations | Builder 1 | List of the 10 | 21 Nov |
+| A4.5 | CI also on **Windows** (`runs-on: [ubuntu-latest, windows-latest]` as a matrix), because the server is Windows and two errors occurred only there | Server AI | Green run on both | 19 Nov |
+| A4.6 | No dead code: remove functions that nobody imports or justify them (simple script: every exported function against `grep` in the repo) | Builder 1 | Script output empty | 21 Nov |
+| A4.7 | Comments say the **why**, not the what; the head of every file names its purpose in two sentences (spot check of all 20 `app/*.mjs`) | all | Ticked off in the review | 22 Nov |
+| A4.8 | No numbers twice: delay of 3 days, limit 50, mark +20 %, lock after N failed attempts each exactly one named constant, used the same by tests and interface | Builder 2 | `grep` for the literals shows one place each | 21 Nov |
 
-### A5. Git-Zusammenarbeit (heute der schwächste Punkt)
+### A5. Git collaboration (the weakest point today)
 
-Messung 18.11.: 9 gemergte PRs, **kein einziges Review**, keine Issues, zwei Mitglieder ohne Commit. Bewerter sehen das
-in einer Minute. Bis zur Abgabe muss das Bild stimmen, und zwar durch echte Arbeit, nicht durch kosmetische Commits.
+Measured on 18 Nov: 9 merged PRs, **not a single review**, no issues, two members without a commit. Assessors see that
+in a minute. By the hand-in the picture must be right, and through real work, not through cosmetic commits.
 
-| # | Punkt | Wer | Beleg | Bis |
+| # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| A5.1 | **Alexius76 und giacomogrilli** übernehmen je mindestens zwei Punkte aus A1 bis A4 und liefern sie als eigene PRs (Vorschlag: Builder 1 = Alexius76, Builder 2 = giacomogrilli, Builder 3 = EmbletonNova) | Niko verteilt | PR-Liste je Person | 19.11. (Verteilung), 22.11. (Merge) |
-| A5.2 | **Jeder PR ab jetzt hat ein Review** einer anderen Person mit mindestens einem inhaltlichen Kommentar, der Autor merged nie selbst | alle | GitHub-Review sichtbar | ab sofort |
-| A5.3 | **Branch-Schutz auf `main`** einschalten: Niko holt das GitHub Student Developer Pack (GitHub Pro kostenlos), dann Regel: PR Pflicht, 1 Review Pflicht, CI Pflicht, kein Force-Push. Bis dahin gilt die Absprache aus `docs/entwicklung.md` | Niko | Screenshot der Regel | 20.11. |
-| A5.4 | Issues als Arbeitsliste: jeder Punkt dieser Checkliste, der Code braucht, wird ein Issue mit Nummer, Zuständigem und Termin; PRs schließen Issues („closes #12“) | Niko legt an, alle nutzen | Issue-Liste | 19.11. |
-| A5.5 | PR-Vorlage `.github/pull_request_template.md`: Was, Warum, Wie getestet, Checklisten-Nummer, Screenshot bei Oberfläche | Builder 3 | Datei im Repo | 19.11. |
-| A5.6 | Alte Branches löschen, wenn gemergt (`admin/*`, `emb/*`, `fix/*`, `server/*`); offen bleiben nur `main`, `vorschau` und aktive Arbeitsbranches | Niko | `git branch -r` zeigt ≤ 5 Branches | 22.11. |
-| A5.7 | Commit-Nachrichten sagen das Warum (Stichprobe der letzten 20); Autorennamen stimmen (ein Mitglied taucht heute doppelt auf: `nik1231-alt` und `Niko`; `.mailmap` oder Git-Config vereinheitlichen) | Niko | `git shortlog` zeigt 4 Personen + Server-KI | 20.11. |
-| A5.8 | Beitrag der Server-KI ist als solcher gekennzeichnet (Committer „Parture Server-KI“, Co-Authored-By) und in der Präsentation ehrlich benannt: Server-Betrieb, Wächter, Datenexport. Der fachliche Kern (Test-Logik, Freigabe, Auswertung, Oberfläche) ist Arbeit der Gruppe | Niko | Satz in `docs/vorfuehrung.md` | 21.11. |
+| A5.1 | **Alexius76 and giacomogrilli** each take at least two items from A1 to A4 and deliver them as their own PRs (suggestion: Builder 1 = Alexius76, Builder 2 = giacomogrilli, Builder 3 = EmbletonNova) | Niko distributes | PR list per person | 19 Nov (distribution), 22 Nov (merge) |
+| A5.2 | **Every PR from now on has a review** by another person with at least one comment on the content, the author never merges themself | all | GitHub review visible | from now on |
+| A5.3 | Switch on **branch protection on `main`**: Niko gets the GitHub Student Developer Pack (GitHub Pro for free), then the rule: PR mandatory, 1 review mandatory, CI mandatory, no force push. Until then the agreement from `docs/entwicklung.md` applies | Niko | Screenshot of the rule | 20 Nov |
+| A5.4 | Issues as a work list: every item of this checklist that needs code becomes an issue with a number, a responsible person and a date; PRs close issues ("closes #12") | Niko creates, all use | Issue list | 19 Nov |
+| A5.5 | PR template `.github/pull_request_template.md`: what, why, how tested, checklist number, screenshot for interface changes | Builder 3 | File in the repo | 19 Nov |
+| A5.6 | Delete old branches once merged (`admin/*`, `emb/*`, `fix/*`, `server/*`); only `main`, `vorschau` and active work branches stay open | Niko | `git branch -r` shows ≤ 5 branches | 22 Nov |
+| A5.7 | Commit messages say the why (spot check of the last 20); author names are right (one member appears twice today: `nik1231-alt` and `Niko`; unify with `.mailmap` or Git config) | Niko | `git shortlog` shows 4 people + server AI | 20 Nov |
+| A5.8 | The server AI's contribution is marked as such (committer "Parture Server-KI", Co-Authored-By) and named honestly in the presentation: server operation, watcher, data export. The subject core (test logic, approval, evaluation, interface) is the group's work | Niko | Sentence in `docs/vorfuehrung.md` | 21 Nov |
 
-### A6. Dokumentation (Kriterium „Präsentation und Doku“)
+### A6. Documentation (criterion "presentation and docs")
 
-| # | Punkt | Wer | Beleg | Bis |
+| # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| A6.1 | `README.md` auf Stand: Abschnitt „Aufbau“ nennt heute nur 5 Routen und die alte Oberfläche; neu: Zweck in drei Sätzen, Seiten, Rollen, Datenweg, Start lokal, Link auf die Docs. Alles, was im README steht, muss beim Nachmachen funktionieren (eine Person macht es blind nach) | Builder 1 schreibt, Builder 2 probiert | Protokoll des Nachmachens | 21.11. |
-| A6.2 | `docs/architektur.md` (eine Seite): Bild aus `vorfuehrung.md` plus Datenfluss `pm.db` → App → eBay, und die Tabelle „Entscheidung → Warum → Alternative“ (kein Framework, SQLite, Whitelist-Daten, zwei Umgebungen, Wächter statt Hosting-Dienst, Los-Verfahren statt Vorher/Nachher) | Builder 3 | Datei | 21.11. |
-| A6.3 | `docs/sicherheit.md` (siehe A3.1) | Builder 3 | Datei | 21.11. |
-| A6.4 | `docs/entwicklung.md` ergänzen: Wächter-Fix 18.11. (App stoppt vor npm ci), Regel „Kindprozesse abwarten“, Hinweis „Wächter-Prozess lädt Code nur beim Start, nach Wächter-Änderungen Aufgabe neu starten“ | Server-KI | Commit | 19.11. |
-| A6.5 | Glossar (10 Begriffe, englisch/deutsch): Listing, Impressions, Test group / Control group, Approval, Verdict, Safety metric (sales), Data lag, Preview/Live, Watcher, Append-only log | Builder 2 | Abschnitt im README | 21.11. |
-| A6.6 | Screenshots der 8 Demo-Schritte in `docs/belege/` (auch Ausfallplan) | Builder 1 | Dateien | 22.11. |
+| A6.1 | `README.md` up to date: the section "Structure" names only 5 routes and the old interface today; new: purpose in three sentences, pages, roles, data path, local start, link to the docs. Everything in the README must work when followed (one person follows it blind) | Builder 1 writes, Builder 2 tries | Record of the rehearsal | 21 Nov |
+| A6.2 | `docs/architektur.md` (one page): picture from `vorfuehrung.md` plus the data flow `pm.db` → app → eBay, and the table "decision → why → alternative" (no framework, SQLite, whitelist data, two environments, watcher instead of a hosting service, draw procedure instead of before/after) | Builder 3 | File | 21 Nov |
+| A6.3 | `docs/sicherheit.md` (see A3.1) | Builder 3 | File | 21 Nov |
+| A6.4 | Extend `docs/entwicklung.md`: watcher fix of 18 Nov (app stops before npm ci), rule "wait for child processes", note "the watcher process loads code only at start, restart the task after watcher changes" | Server AI | Commit | 19 Nov |
+| A6.5 | Glossary (10 terms, English/German): Listing, Impressions, Test group / Control group, Approval, Verdict, Safety metric (sales), Data lag, Preview/Live, Watcher, Append-only log | Builder 2 | Section in the README | 21 Nov |
+| A6.6 | Screenshots of the 8 demo steps in `docs/belege/` (also the fallback plan) | Builder 1 | Files | 22 Nov |
 
 ---
 
-## B. Zwischen Abgabe und Vorführung (23.11. bis 03.12.)
+## B. Between the hand-in and the demo (23 Nov to 3 Dec)
 
-### B1. eBay live: die echte Titeländerung
+### B1. eBay live: the real title change
 
-Reihenfolge ist Pflicht, kein Schritt wird übersprungen. Der Schalter `EBAY_SCHREIBEN` steht außerhalb der Proben
-und der Vorführung auf **aus**.
+The order is mandatory, no step is skipped. Outside the probes and the demo the switch `EBAY_SCHREIBEN` stays **off**.
 
-| # | Punkt | Wer | Beleg | Bis |
+| # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| B1.1 | Lions Freigabe in der Nachrichtenzentrale des Hubs (#1123): eBay-Zugang für die App, die vier Testangebote, Titeltest mit Revert. Ohne diesen Klick passiert nichts Scharfes | Lion | Antwort an #1123 | so bald wie möglich |
-| B1.2 | eBay-Developer-App (Nikos Konto) mit **nur** den nötigen Scopes; Consent auf dem Verkäuferkonto; Keys **von Niko selbst** in `C:\parture\prod\.env` getippt (Editor wird vom Server geöffnet, nichts über Chat oder Repo) | Niko | `.env` zeigt „gesetzt“ (nie den Wert) | nach B1.1 |
-| B1.3 | Wächter PROD neu starten (Aufgabe stoppen, App-Prozess beenden, Aufgabe starten); `/api/betrieb` zeigt `zugangsdaten: true`, `schreibenAn: false` | Server-KI | Ausgabe | nach B1.2 |
-| B1.4 | Sperrliste aus dem Hub: die 50 Angebote des laufenden Preis-Abstieg-Tests (bis 24.11.) dürfen in keinen Titeltest; Liste in `pm.db` als Tabelle `sperre` (Whitelist-Export erweitern) und vom Los berücksichtigt (A1.3) | Server-KI (Export), Builder 2 (Los) | Test: gesperrtes Angebot wird nie gezogen | 21.11. |
-| B1.5 | Shopify-Zwillinge: die vier Testangebote haben Shopify-Gegenstücke; der Hub schreibt Shopify-Titeländerungen binnen 10 Minuten nach eBay. **Während eines Tests Shopify-Titel dieser Produkte nicht anfassen.** Satz in `docs/vorfuehrung.md` und Hinweis in der App auf der Approvals-Seite | Niko (Absprache mit Lion), Builder 1 (Hinweis) | Satz + Screenshot | 24.11. |
-| B1.6 | Probelauf auf PROD mit zwei Angeboten bei Schalter aus: Protokoll zeigt „would change“, eBay unverändert | Niko | Protokoll | 24.11. |
-| B1.7 | **Mini-Test mit Lion anwesend**: Schalter an, ein Angebot, Vorschlag → Freigabe → bei eBay prüfen → Protokoll → Revert über die App („Rückänderung“) → bei eBay prüfen → Schalter aus | Niko + Lion | 4 Screenshots | 24./25.11. |
-| B1.8 | **Echten Test früh starten** (spätestens 25.11., Los aus den vier Angeboten plus Kontrolle), damit am 04.12. mit 3 Tagen Verzug **mindestens 7 Tage echte Daten** im Evaluation-Panel liegen und nicht nur das Beispiel-Urteil | Niko | Teststart im Protokoll | 25.11. |
-| B1.9 | Revert-Plan schriftlich: welche Angebote, alter Titel, wer klickt, wann; nach der Vorführung alle Titel zurück oder bewusst behalten (Lion entscheidet) | Niko | `docs/belege/revert-plan.md` | 25.11. |
-| B1.10 | eBay-Tageslimit der Analytics-API: Traffic kommt aus dem Hub, die App ruft Analytics nicht selbst (prüfen: `EBAY_TRAFFIC_AUTO` bleibt aus) | Server-KI | `.env` zeigt aus | 24.11. |
+| B1.1 | Lion's approval in the hub's message centre (#1123): eBay access for the app, the four test listings, title test with revert. Without this click nothing live happens | Lion | Answer to #1123 | as soon as possible |
+| B1.2 | eBay developer app (Niko's account) with **only** the necessary scopes; consent on the seller account; keys typed **by Niko himself** into `C:\parture\prod\.env` (the editor is opened by the server, nothing via chat or repo) | Niko | `.env` shows "set" (never the value) | after B1.1 |
+| B1.3 | Restart the PROD watcher (stop the task, end the app process, start the task); `/api/betrieb` shows `zugangsdaten: true`, `schreibenAn: false` | Server AI | Output | after B1.2 |
+| B1.4 | Block list from the hub: the 50 listings of the running price-decrease test (until 24 Nov) must not go into any title test; list in `pm.db` as table `sperre` (extend the whitelist export) and taken into account by the draw (A1.3) | Server AI (export), Builder 2 (draw) | Test: a blocked listing is never drawn | 21 Nov |
+| B1.5 | Shopify twins: the four test listings have Shopify counterparts; the hub writes Shopify title changes to eBay within 10 minutes. **During a test do not touch the Shopify titles of these products.** A sentence in `docs/vorfuehrung.md` and a note in the app on the Approvals page | Niko (agreement with Lion), Builder 1 (note) | Sentence + screenshot | 24 Nov |
+| B1.6 | Dry run on PROD with two listings with the switch off: the log shows "would change", eBay unchanged | Niko | Log | 24 Nov |
+| B1.7 | **Mini test with Lion present**: switch on, one listing, proposal → approval → check on eBay → log → revert via the app ("reverting change") → check on eBay → switch off | Niko + Lion | 4 screenshots | 24/25 Nov |
+| B1.8 | **Start the real test early** (25 Nov at the latest, draw from the four listings plus control), so that on 4 Dec with 3 days of delay **at least 7 days of real data** are in the evaluation panel and not only the example verdict | Niko | Test start in the log | 25 Nov |
+| B1.9 | Revert plan in writing: which listings, old title, who clicks, when; after the demo revert all titles or keep them deliberately (Lion decides) | Niko | `docs/belege/revert-plan.md` | 25 Nov |
+| B1.10 | eBay daily limit of the Analytics API: traffic comes from the hub, the app does not call Analytics itself (check: `EBAY_TRAFFIC_AUTO` stays off) | Server AI | `.env` shows off | 24 Nov |
 
-### B2. Betrieb und Server
+### B2. Operation and server
 
-| # | Punkt | Wer | Beleg | Bis |
+| # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| B2.1 | Jeder der vier Zugänge einmal auf PROD **und** VORSCHAU angemeldet (Access-PIN + App-Login), Passwort geändert; die Übergabedateien `C:\parture\zugang-*.txt` und `erste-passwoerter-*.txt` danach gelöscht | alle; Server-KI löscht | Meldung „drin“ je Person, `ls` leer | 20.11. |
-| B2.2 | Sicherung: tägliche Kopie in `daten/sicherung` und auf `SICHERUNG_ZIEL2` (Google Drive) vorhanden; Rücksicherung einmal auf VORSCHAU geprobt (17.11. erledigt), vor der Vorführung noch einmal | Server-KI | Dateiliste mit Datum | 02.12. |
-| B2.3 | Wächter-Logs beider Umgebungen ohne FEHLER/ABGELEHNT in den letzten 7 Tagen vor der Vorführung; `/healthz`-Version = `main` | Server-KI | Log-Auszug | 03.12. |
-| B2.4 | Server-Laptop: freier Arbeitsspeicher (am 17.11. nur ca. 500 MB), unnötige Fenster und Sitzungen geschlossen, keine Windows-Updates am 03./04.12. | Niko mit Lion | Messung | 03.12. |
-| B2.5 | Nach Neustart des Servers läuft nichts, bis sich jemand anmeldet (keine automatische Anmeldung). Am Vorführungstag ist jemand am Server oder der Server bleibt an | Lion/Niko | Absprache | 03.12. |
-| B2.6 | Telegram-Meldung an den Admin bei neuem Vorschlag funktioniert auf PROD (Bot anlegen, `TELEGRAM_*` in `.env`) oder bewusst weglassen und in der Demo nicht behaupten | Niko | Testmeldung oder Satz gestrichen | 25.11. |
+| B2.1 | Each of the four accesses logged in once on PROD **and** PREVIEW (Access PIN + app login), password changed; the handover files `C:\parture\zugang-*.txt` and `erste-passwoerter-*.txt` deleted afterwards | all; the server AI deletes | Message "in" per person, `ls` empty | 20 Nov |
+| B2.2 | Backup: daily copy in `daten/sicherung` and on `SICHERUNG_ZIEL2` (Google Drive) exists; restore rehearsed once on PREVIEW (done 17 Nov), once more before the demo | Server AI | File list with dates | 2 Dec |
+| B2.3 | Watcher logs of both environments without ERROR/REJECTED in the last 7 days before the demo; `/healthz` version = `main` | Server AI | Log excerpt | 3 Dec |
+| B2.4 | Server laptop: free memory (on 17 Nov only about 500 MB), unnecessary windows and sessions closed, no Windows updates on 3/4 Dec | Niko with Lion | Measurement | 3 Dec |
+| B2.5 | After a restart of the server nothing runs until somebody logs on (no automatic logon). On the demo day somebody is at the server or the server stays on | Lion/Niko | Agreement | 3 Dec |
+| B2.6 | The Telegram message to the admin on a new proposal works on PROD (create a bot, `TELEGRAM_*` in `.env`) or deliberately leave it out and do not claim it in the demo | Niko | Test message or sentence deleted | 25 Nov |
 
-### B3. Generalprobe (zweimal, mit Stoppuhr)
+### B3. Dress rehearsal (twice, with a stopwatch)
 
-| # | Punkt | Wer | Beleg | Bis |
+| # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| B3.1 | Ablauf aus `docs/vorfuehrung.md` komplett auf PROD, zweites Fenster mit dem eBay-Angebot, Zeit messen (Ziel 8 Minuten, Grenze 10) | alle | Zeit notiert | 27.11. und 02.12. |
-| B3.2 | Sprecherrollen: wer sagt was bei welchem Schritt; jeder spricht mindestens einmal; Übergaben geübt | Niko | Zuteilung im Doc | 27.11. |
-| B3.3 | Ausfallplan: Bildschirmvideo der 9 Schritte (ohne Ton oder mit), Screenshots, lokale App mit frischer Team-Kopie auf dem Vorführ-Laptop, offline geprobt (WLAN aus) | Builder 1 | Video + Offline-Probe | 28.11. |
-| B3.4 | Fragenliste mit Antworten (siehe B4) laut durchgesprochen | alle | Doc | 02.12. |
-| B3.5 | Vorführ-Laptop: Browser mit beiden Access-Sitzungen (gelten 7 Tage: am 28.11. oder später einmal anmelden), eBay-Login im zweiten Fenster, Zoom 125 %, Benachrichtigungen aus | Niko | Checkliste abgehakt | 03.12. |
+| B3.1 | The run from `docs/vorfuehrung.md` completely on PROD, second window with the eBay listing, measure the time (target 8 minutes, limit 10) | all | Time noted | 27 Nov and 2 Dec |
+| B3.2 | Speaker roles: who says what at which step; everyone speaks at least once; hand-overs practised | Niko | Assignment in the doc | 27 Nov |
+| B3.3 | Fallback plan: screen video of the 9 steps (without sound or with), screenshots, local app with a fresh team copy on the demo laptop, rehearsed offline (Wi-Fi off) | Builder 1 | Video + offline rehearsal | 28 Nov |
+| B3.4 | Question list with answers (see B4) talked through aloud | all | Doc | 2 Dec |
+| B3.5 | Demo laptop: browser with both Access sessions (valid 7 days: log in once on 28 Nov or later), eBay login in the second window, zoom 125 %, notifications off | Niko | Checklist ticked | 3 Dec |
 
-### B4. Ehrliche Antworten vorbereiten
+### B4. Prepare honest answers
 
-Aus `docs/vorfuehrung.md` übernommen und ergänzt. Jede Antwort in zwei Sätzen, eine Person zuständig.
+Taken from `docs/vorfuehrung.md` and extended. Every answer in two sentences, one person responsible.
 
-1. Warum kein Framework? (4.300 Zeilen, eine Abhängigkeit, alles lesbar, kein Build-Schritt; Kosten: Routing und Sitzungen selbst geschrieben, dafür getestet.)
-2. Warum SQLite? (Eine Datei, atomarer Austausch der Nachtlauf-Datei, Trigger für das Protokoll, keine Server-Komponente.)
-3. Warum gibt es keine Kosten, keinen Gewinn, keine Kunden in den Daten? (Whitelist-Export, Firmenregel; die Aufgabe wird über Impressionen, Menge und Preis formuliert.)
-4. Wie ist sichergestellt, dass ein Builder nichts bei eBay ändert? (Serverseitige Rollen mit Test, Keys nur auf PROD, Schalter, Lesen-vor-Schreiben, Protokoll.)
-5. Was, wenn eBay die Änderung ablehnt? (Meldung wird angezeigt, nichts geändert, Protokolleintrag.)
-6. Korrelation oder Ursache? (Los mit Kontrollgruppe, Verkäufe als Schutzkennzahl, +20 %-Marke; ein echtes Urteil braucht 30 Tage, wir zeigen den Zwischenstand nach x Tagen plus das Beispiel.)
-7. Was hat die KI gemacht, was die Gruppe? (A5.8: Server-Betrieb, Wächter, Export durch die Server-KI; fachlicher Kern durch die Gruppe. Offen sagen.)
-8. Was würdet ihr mit einem weiteren Monat tun? (Automatisches Urteil nach 30 Tagen, mehr Kanäle, Titelhilfe mit mehr Daten.)
-9. Wie habt ihr zusammengearbeitet? (Branches, PRs mit Review, CI, Vorschau nach 1 Minute, PROD nur über main mit Tests. Zahlen aus `git shortlog` nennen.)
-10. Wie schützt ihr Zugangsdaten? (A3.8, A3.10, Geheimnis-Scan über die Historie, Access vor der App.)
+1. Why no framework? (4,300 lines, one dependency, everything readable, no build step; cost: routing and sessions written ourselves, but tested.)
+2. Why SQLite? (One file, atomic replacement of the nightly file, triggers for the log, no server component.)
+3. Why are there no costs, no profit, no customers in the data? (Whitelist export, company rule; the task is phrased around impressions, quantity and price.)
+4. How is it ensured that a builder changes nothing on eBay? (Roles on the server with a test, keys only on PROD, switch, read-before-write, log.)
+5. What if eBay refuses the change? (The message is shown, nothing changed, a log entry.)
+6. Correlation or cause? (Draw with a control group, sales as a safety figure, +20 % mark; a real verdict needs 30 days, we show the interim state after x days plus the example.)
+7. What did the AI do, what did the group do? (A5.8: server operation, watcher, export by the server AI; subject core by the group. Say it openly.)
+8. What would you do with another month? (Automatic verdict after 30 days, more channels, title help with more data.)
+9. How did you work together? (Branches, PRs with review, CI, preview after 1 minute, PROD only through main with tests. Name the figures from `git shortlog`.)
+10. How do you protect credentials? (A3.8, A3.10, secret scan over the history, Access in front of the app.)
 
 ---
 
-## C. Der Tag der Vorführung (04.12.)
+## C. The day of the demo (4 Dec)
 
-30 Minuten vorher, Niko hakt ab:
+30 minutes before, Niko ticks off:
 
-- [ ] `https://app.parture-team.com/healthz` und `https://vorschau.parture-team.com/healthz` antworten, Version von PROD = `main`.
-- [ ] Beide Access-Sitzungen auf dem Vorführ-Laptop gültig, App-Login als Builder **und** als Admin funktioniert (zwei Browserprofile oder zwei Browser).
-- [ ] eBay-Angebot für Schritt 6 im zweiten Fenster offen, eingeloggt.
-- [ ] `EBAY_SCHREIBEN=an` wird **erst unmittelbar vor Schritt 5** gesetzt (Wächter-Neustart vorher geprobt, dauert 30 Sekunden) und direkt nach Schritt 6 wieder auf aus.
-- [ ] Revert-Plan (B1.9) liegt ausgedruckt daneben.
-- [ ] Ausfallplan griffbereit: Video, Screenshots, lokale App gestartet.
-- [ ] Telefon von Niko zeigt die Telegram-Meldung (B2.6) oder der Satz dazu wird weggelassen.
-- [ ] Nach der Vorführung: Schalter aus, Protokoll exportieren (Screenshot), Revert nach B1.9, kurze Nachricht an Lion.
+- [ ] `https://app.parture-team.com/healthz` and `https://vorschau.parture-team.com/healthz` answer, version of PROD = `main`.
+- [ ] Both Access sessions on the demo laptop are valid, app login as builder **and** as admin works (two browser profiles or two browsers).
+- [ ] The eBay listing for step 6 is open in the second window, logged in.
+- [ ] `EBAY_SCHREIBEN=an` is set **only immediately before step 5** (watcher restart rehearsed beforehand, takes 30 seconds) and set back to off right after step 6.
+- [ ] The revert plan (B1.9) lies next to it as a printout.
+- [ ] Fallback plan at hand: video, screenshots, local app started.
+- [ ] Niko's phone shows the Telegram message (B2.6) or the sentence about it is left out.
+- [ ] After the demo: switch off, export the log (screenshot), revert according to B1.9, a short message to Lion.
 
 ---
 
-## D. Nicht bauen (Scope-Schutz)
+## D. Do not build (scope protection)
 
-Ab 22.11. kommt nichts Neues dazu. Ausdrücklich nicht: Amazon oder weitere Marktplätze, Kosten- oder Gewinnzahlen,
-Kundendaten, KI-generierte Titel, automatische Freigabe, Preisänderungen, ein zweites Datenformat neben `pm.db`.
-Wer eine Idee hat, legt ein Issue mit Label „nach der Vorführung“ an.
+From 22 Nov nothing new is added. Explicitly not: Amazon or further marketplaces, cost or profit figures,
+customer data, AI-generated titles, automatic approval, price changes, a second data format next to `pm.db`.
+Whoever has an idea creates an issue with the label "after the demo".
 
-## Zuständigkeiten im Überblick (Vorschlag)
+## Responsibilities at a glance (suggestion)
 
-| Wer | Schwerpunkt | Punkte |
+| Who | Focus | Items |
 |---|---|---|
-| **Niko** (Admin) | eBay, Lion, Freigabe, Branch-Schutz, Issues, Präsentationsleitung | A1.5, A1.6, A1.8, A2.3, A3.3, A3.4, A3.8, A3.9, A3.11, A3.13, A5.1, A5.3, A5.4, A5.6, A5.7, A5.8, B1.*, B2.4, B2.6, B3.2, B3.5, C |
-| **Builder 1** (Vorschlag Alexius76) | Oberfläche, Listings, README, Belege, Ausfallplan | A1.1, A1.2, A1.10, A1.11, A3.6, A4.4, A4.6, A6.1, A6.6, B1.5, B3.3 |
-| **Builder 2** (Vorschlag giacomogrilli) | Los, Freigabe-Zustände, Konstanten, Ende-zu-Ende-Test | A1.3, A1.4, A1.12, A2.2, A3.7, A3.12, A4.2, A4.8, A6.5, B1.4 |
-| **Builder 3** (Vorschlag EmbletonNova) | Auswertung, Sicherheit, Protokoll, Architektur-Doc, PR-Vorlage | A1.7, A1.8 (Review), A1.9, A3.1, A3.2, A3.5, A4.1, A5.5, A6.2, A6.3 |
-| **Server-KI** | Export, Sperrliste, Wächter, CI-Windows, Server-Proben | A2.1, A2.4, A4.3, A4.5, A6.4, B1.3, B1.4, B1.10, B2.1 (Löschen), B2.2, B2.3 |
+| **Niko** (admin) | eBay, Lion, approval, branch protection, issues, presentation lead | A1.5, A1.6, A1.8, A2.3, A3.3, A3.4, A3.8, A3.9, A3.11, A3.13, A5.1, A5.3, A5.4, A5.6, A5.7, A5.8, B1.*, B2.4, B2.6, B3.2, B3.5, C |
+| **Builder 1** (suggestion Alexius76) | interface, listings, README, proofs, fallback plan | A1.1, A1.2, A1.10, A1.11, A3.6, A4.4, A4.6, A6.1, A6.6, B1.5, B3.3 |
+| **Builder 2** (suggestion giacomogrilli) | draw, approval states, constants, end-to-end test | A1.3, A1.4, A1.12, A2.2, A3.7, A3.12, A4.2, A4.8, A6.5, B1.4 |
+| **Builder 3** (suggestion EmbletonNova) | evaluation, security, log, architecture doc, PR template | A1.7, A1.8 (review), A1.9, A3.1, A3.2, A3.5, A4.1, A5.5, A6.2, A6.3 |
+| **Server AI** | export, block list, watcher, CI Windows, server probes | A2.1, A2.4, A4.3, A4.5, A6.4, B1.3, B1.4, B1.10, B2.1 (deleting), B2.2, B2.3 |
 
-Nachgetragen wird hier, nicht in Chats: Wer etwas erledigt, setzt das Häkchen im selben PR.
+Updates are made here, not in chats: whoever completes something ticks the box in the same PR.

@@ -1,6 +1,6 @@
-// Tests für den Wächter (app/waechter.mjs): Ausrollen mit Testschranke, Rückfall bei durchgefallenen Tests, Blockaden,
-// Geheimnisse bleiben aus dem Testlauf, und der ganze Prozess (Start, Auto-Deploy, Absturz, hängende App).
-// Alles in temporären Ordnern mit lokalen Git-Repos, ohne Netz.
+// Tests for the watcher (app/waechter.mjs): rolling out with a test gate, fall back on failed tests, blocks,
+// secrets stay out of the test run, and the whole process (start, auto-deploy, crash, hanging app).
+// Everything in temporary folders with local Git repos, without network.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
@@ -14,14 +14,14 @@ const sh = (cwd, ...a) => execFileSync("git", a, { cwd, encoding: "utf8", stdio:
 const gitIn = (cwd) => (...a) => sh(cwd, ...a);
 const schreibe = (ordner, datei, inhalt) => { fs.mkdirSync(path.dirname(path.join(ordner, datei)), { recursive: true }); fs.writeFileSync(path.join(ordner, datei), inhalt); };
 
-// Bare-Repo als "GitHub", ein Arbeitsordner zum Pushen
+// Bare repo as "GitHub", a working folder for pushing
 const quelle = path.join(wurzel, "github.git");
 const werk = path.join(wurzel, "werk");
 execFileSync("git", ["init", "--bare", "-b", "main", quelle], { stdio: "ignore" });
 execFileSync("git", ["clone", "-q", quelle, werk], { stdio: "ignore" });
 const w = gitIn(werk);
 w("config", "user.email", "t@example.com"); w("config", "user.name", "Test");
-// Der "Test" des Projekts: besteht, wenn Datei ok.txt vorhanden ist und kein eBay-Geheimnis in der Umgebung steht
+// The project's "test": passes if the file ok.txt exists and no eBay secret is in the environment
 const PRUEFUNG = `import fs from "node:fs"; if (process.env.EBAY_APP_ID || process.env.PM_TOKEN) { console.error("GEHEIMNIS IM TESTLAUF"); process.exit(1); } if (!fs.existsSync("ok.txt")) { console.error("ok.txt fehlt"); process.exit(1); }`;
 schreibe(werk, "pruefung.mjs", PRUEFUNG);
 schreibe(werk, "ok.txt", "1");
@@ -32,13 +32,13 @@ const push = (nachricht) => { schreibe(werk, "verlauf.txt", String(++zaehler)); 
 const klone = (name, branch = "main") => { const d = path.join(wurzel, name); execFileSync("git", ["clone", "-q", "-b", branch, quelle, d], { stdio: "ignore" }); return d; };
 const TEST = [process.execPath, ["pruefung.mjs"]];
 
-test("unverändert: nichts zu tun, wenn der Stand gleich ist", async () => {
+test("unchanged: nothing to do when the version is the same", async () => {
   const prod = klone("prod1");
   const e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(e.status, "unveraendert");
 });
 
-test("neuer Stand mit bestandenen Tests wird ausgerollt und gemerkt", async () => {
+test("a new version with passing tests is rolled out and remembered", async () => {
   const prod = klone("prod2");
   const neu = push("gute Änderung");
   const e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
@@ -47,7 +47,7 @@ test("neuer Stand mit bestandenen Tests wird ausgerollt und gemerkt", async () =
   assert.equal(leseStatus(prod).commit, neu);
 });
 
-test("durchgefallene Tests: Rückfall auf den alten Stand, der schlechte Stand wird nicht erneut getestet, ein neuer schon", async () => {
+test("failed tests: fall back to the old version, the bad version is not tested again, a new one is", async () => {
   const prod = klone("prod3");
   const gut = gitIn(prod)("rev-parse", "HEAD");
   fs.rmSync(path.join(werk, "ok.txt")); const schlecht = push("kaputt");
@@ -55,51 +55,51 @@ test("durchgefallene Tests: Rückfall auf den alten Stand, der schlechte Stand w
   assert.equal(e.status, "abgelehnt");
   assert.match(e.ausgabe, /ok\.txt fehlt/);
   assert.equal(gitIn(prod)("rev-parse", "HEAD"), gut, "alter Stand bleibt");
-  assert.ok(!fs.existsSync(path.join(prod, "ok.txt")) === false, "Dateien sind wieder die alten");
+  assert.ok(!fs.existsSync(path.join(prod, "ok.txt")) === false, "files are the old ones again");
   assert.equal(leseStatus(prod).abgelehnt, schlecht);
   const nochmal = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(nochmal.status, "unveraendert");
-  assert.match(nochmal.grund, /abgelehnt/);
+  assert.match(nochmal.grund, /rejected/);
   schreibe(werk, "ok.txt", "1"); const repariert = push("repariert");
   const e2 = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(e2.status, "ausgerollt");
   assert.equal(gitIn(prod)("rev-parse", "HEAD"), repariert);
-  assert.equal(leseStatus(prod).abgelehnt, null, "Ablehnung ist aufgehoben");
+  assert.equal(leseStatus(prod).abgelehnt, null, "the rejection is lifted");
 });
 
-test("geänderte package.json: die App wird VOR npm ci gestoppt, genau einmal; ohne Änderung an den Abhängigkeiten gar nicht", async () => {
-  // Parture-Server 18.11.2026: npm ci scheiterte unter Windows, weil die laufende App better_sqlite3.node offen hielt (EPERM).
+test("changed package.json: the app is stopped BEFORE npm ci, exactly once; not at all without a change to the dependencies", async () => {
+  // Parture server, 18 Nov 2026: npm ci failed on Windows because the running app kept better_sqlite3.node open (EPERM).
   const prod = klone("prod-install");
-  // Ersatz für npm ci: schreibt eine Marke in den Ordner. Der Stopp-Haken merkt sich, ob die Marke da schon existierte.
+  // Replacement for npm ci: writes a marker into the folder. The stop hook remembers whether the marker already existed then.
   const INSTALL = [process.execPath, ["-e", "require('fs').writeFileSync('installiert.txt', '1')"]];
   const reihenfolge = [];
   const stopp = async () => { reihenfolge.push(fs.existsSync(path.join(prod, "installiert.txt")) ? "stopp NACH install" : "stopp"); };
-  // 1) nur Code geändert: kein Stopp, kein Install
+  // 1) only code changed: no stop, no install
   push("nur Code");
   let e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST, installBefehl: INSTALL, vorInstallation: stopp });
   assert.equal(e.status, "ausgerollt");
   assert.equal(e.appGestoppt, false);
   assert.deepEqual(reihenfolge, []);
-  assert.ok(!fs.existsSync(path.join(prod, "installiert.txt")), "ohne Abhängigkeitsänderung kein npm ci");
-  // 2) package.json geändert (nur die Version, wie bei defd8b5): Stopp, dann Install, dann Tests, dann ausgerollt
+  assert.ok(!fs.existsSync(path.join(prod, "installiert.txt")), "no npm ci without a change to the dependencies");
+  // 2) package.json changed (only the version, as with defd8b5): stop, then install, then tests, then rolled out
   schreibe(werk, "package.json", JSON.stringify({ name: "probe", version: "0.2.0" })); push("Version hoch");
   e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST, installBefehl: INSTALL, vorInstallation: stopp });
   assert.equal(e.status, "ausgerollt");
-  assert.equal(e.appGestoppt, true, "der Aufrufer muss wissen, dass die App gestoppt wurde");
-  assert.deepEqual(reihenfolge, ["stopp"], "genau ein Stopp, und zwar vor dem Install");
+  assert.equal(e.appGestoppt, true, "the caller must know that the app was stopped");
+  assert.deepEqual(reihenfolge, ["stopp"], "exactly one stop, and before the install");
   assert.ok(fs.existsSync(path.join(prod, "installiert.txt")));
-  // 3) package.json geändert UND Tests fallen durch: Stopp einmal, Rückfall installiert den alten Stand erneut, appGestoppt gemeldet
+  // 3) package.json changed AND tests fail: stop once, the fall back installs the old version again, appGestoppt (app stopped) reported
   fs.rmSync(path.join(prod, "installiert.txt")); reihenfolge.length = 0;
   schreibe(werk, "package.json", JSON.stringify({ name: "probe", version: "0.3.0" })); fs.rmSync(path.join(werk, "ok.txt")); push("Version hoch, aber kaputt");
   e = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST, installBefehl: INSTALL, vorInstallation: stopp });
   assert.equal(e.status, "abgelehnt");
   assert.equal(e.appGestoppt, true);
-  assert.deepEqual(reihenfolge, ["stopp"], "auch beim Rückfall wird nur einmal gestoppt");
-  assert.ok(fs.existsSync(path.join(prod, "installiert.txt")), "Rückfall hat die alten Abhängigkeiten wieder installiert");
+  assert.deepEqual(reihenfolge, ["stopp"], "also on the fall back it is stopped only once");
+  assert.ok(fs.existsSync(path.join(prod, "installiert.txt")), "the fall back installed the old dependencies again");
   schreibe(werk, "ok.txt", "1"); push("repariert");
 });
 
-test("lokale Änderungen am Code blockieren das Ausrollen, nichts wird überschrieben", async () => {
+test("local changes to the code block the rollout, nothing is overwritten", async () => {
   const prod = klone("prod4");
   const vorher = gitIn(prod)("rev-parse", "HEAD");
   push("noch eine");
@@ -110,7 +110,7 @@ test("lokale Änderungen am Code blockieren das Ausrollen, nichts wird überschr
   assert.equal(fs.readFileSync(path.join(prod, "ok.txt"), "utf8"), "von Hand geändert");
 });
 
-test("Geheimnisse aus der Umgebung des Wächters kommen nicht in den Testlauf", async () => {
+test("Secrets from the watcher's environment do not reach the test run", async () => {
   const prod = klone("prod5");
   push("wieder was");
   process.env.EBAY_APP_ID = "geheim"; process.env.PM_TOKEN = "geheim";
@@ -120,24 +120,24 @@ test("Geheimnisse aus der Umgebung des Wächters kommen nicht in den Testlauf", 
   } finally { delete process.env.EBAY_APP_ID; delete process.env.PM_TOKEN; }
 });
 
-test("kein Fast-Forward (lokaler Commit auf dem Server): PROD blockiert. Umgeschriebene Historie: VORSCHAU (hart) folgt", async () => {
+test("no fast-forward (local commit on the server): PROD blocks. Rewritten history: PREVIEW (hard) follows", async () => {
   const prod = klone("prod6"); const vorschau = klone("vorschau6");
-  // PROD hat einen eigenen Commit, den es auf GitHub nicht gibt, und GitHub bekommt einen anderen
+  // PROD has its own commit that does not exist on GitHub, and GitHub gets a different one
   schreibe(prod, "lokal.txt", "x"); gitIn(prod)("add", "-A"); gitIn(prod)("-c", "user.email=a@b.c", "-c", "user.name=a", "commit", "-q", "-m", "lokaler Commit");
   const lokal = gitIn(prod)("rev-parse", "HEAD");
   push("auf GitHub weiter");
   const b = await aktualisiere({ ordner: prod, branch: "main", testBefehl: TEST });
   assert.equal(b.status, "blockiert");
-  assert.match(b.grund, /Fast-Forward/);
+  assert.match(b.grund, /fast-forward/);
   assert.equal(gitIn(prod)("rev-parse", "HEAD"), lokal, "PROD bleibt unangetastet");
-  // GitHub-Historie wird umgeschrieben (Force-Push): VORSCHAU zieht hart nach
+  // GitHub history is rewritten (force push): PREVIEW pulls hard
   w("reset", "--hard", "--quiet", "HEAD~1"); schreibe(werk, "anders.txt", "x"); w("add", "-A"); w("commit", "-q", "-m", "umgeschrieben"); w("push", "-q", "--force", "origin", "main");
   const h = await aktualisiere({ ordner: vorschau, branch: "main", hart: true, testBefehl: TEST });
   assert.equal(h.status, "ausgerollt", h.ausgabe);
   assert.equal(gitIn(vorschau)("rev-parse", "HEAD"), w("rev-parse", "HEAD"));
 });
 
-test("kein Netz bzw. Quelle weg: Status fehler, nichts geht kaputt", async () => {
+test("no network or source gone: status error, nothing breaks", async () => {
   const prod = klone("prod7");
   const vorher = gitIn(prod)("rev-parse", "HEAD");
   gitIn(prod)("remote", "set-url", "origin", path.join(wurzel, "gibt-es-nicht.git"));
@@ -146,11 +146,11 @@ test("kein Netz bzw. Quelle weg: Status fehler, nichts geht kaputt", async () =>
   assert.equal(gitIn(prod)("rev-parse", "HEAD"), vorher);
 });
 
-// ---------- ganzer Prozess ----------
+// ---------- whole process ----------
 const warte = async (fn, ms = 20000, schritt = 150) => { const bis = Date.now() + ms; for (;;) { try { const r = await fn(); if (r) return r; } catch { /* noch nicht */ } if (Date.now() > bis) throw new Error("Zeitüberschreitung"); await new Promise((r) => setTimeout(r, schritt)); } };
 
-test("Wächter-Prozess: startet die App, rollt neuen Stand aus, startet nach Absturz und bei hängender App neu", async () => {
-  // Ein kleines "Projekt": app/server.mjs ist eine Attrappe, app/waechter.mjs die echte Datei
+test("Watcher process: starts the app, rolls out a new version, restarts after a crash and with a hanging app", async () => {
+  // A small "project": app/server.mjs is a dummy, app/waechter.mjs the real file
   const port = 4300 + Math.floor(Math.random() * 90);
   schreibe(werk, "app/server.mjs", `import http from "node:http"; import fs from "node:fs"; import path from "node:path";
 const w = path.resolve(import.meta.dirname, "..");
@@ -170,32 +170,32 @@ http.createServer((q, s) => {
   const prod = klone("prod8");
   schreibe(prod, ".env", `PM_PORT=${port}\n`);
   const kind = spawn(process.execPath, [path.join(prod, "app", "waechter.mjs"), "--branch", "main", "--intervall", "1"], { cwd: prod, env: { ...process.env, WAECHTER_GESUNDHEIT_S: "1", WAECHTER_ANLAUF_S: "0", PM_PORT: String(port) }, stdio: "ignore" });
-  let appPid = null;   // die App ist ein Kind des Wächters: kill() auf den Wächter beendet sie unter Windows nicht mit
+  let appPid = null;   // the app is a child of the watcher: kill() on the watcher does not end it on Windows
   const hole = async () => { const x = await (await fetch(`http://127.0.0.1:${port}/x`, { signal: AbortSignal.timeout(1500) })).json(); appPid = x.pid ?? appPid; return x; };
   try {
     const a = await warte(hole);
-    assert.equal(a.stand, "eins", "App läuft");
-    // Auto-Deploy: neuer Stand auf GitHub (Tests des Mini-Projekts bestehen über npm test) → App läuft danach mit dem neuen Stand
+    assert.equal(a.stand, "eins", "app is running");
+    // Auto-deploy: new version on GitHub (the mini project's tests pass through npm test) → the app then runs with the new version
     schreibe(werk, "stand.txt", "zwei"); const neuerStand = push("Stand zwei");
     const z = await warte(async () => { const x = await hole(); return x.stand === "zwei" ? x : null; }, 30000);
-    assert.notEqual(z.pid, a.pid, "App wurde neu gestartet");
+    assert.notEqual(z.pid, a.pid, "the app was restarted");
     assert.equal(leseStatus(prod).commit, neuerStand);
     a.pid = z.pid;
-    // Absturz: App beendet sich, der Wächter startet sie neu (andere PID)
+    // Crash: the app ends itself, the watcher restarts it (different PID)
     await fetch(`http://127.0.0.1:${port}/absturz`).catch(() => {});
     const b = await warte(async () => { const x = await hole(); return x.pid !== a.pid ? x : null; });
-    assert.ok(b.pid !== a.pid, "nach Absturz neu gestartet");
-    // Hängende App: antwortet nicht mehr, der Wächter beendet und startet sie neu
+    assert.ok(b.pid !== a.pid, "restarted after a crash");
+    // Hanging app: no longer answers, the watcher ends and restarts it
     schreibe(prod, "haengt", "1");
     const c = await warte(async () => { const x = await hole(); return x.pid !== b.pid ? x : null; }, 30000);
-    assert.ok(c.pid !== b.pid, "hängende App neu gestartet");
-    assert.ok(fs.existsSync(path.join(prod, "daten", "waechter.log")), "Log wird geschrieben");
+    assert.ok(c.pid !== b.pid, "hanging app restarted");
+    assert.ok(fs.existsSync(path.join(prod, "daten", "waechter.log")), "the log is written");
     assert.match(fs.readFileSync(path.join(prod, "daten", "waechter.log"), "utf8"), /App gestartet/);
   } catch (e) {
     try { process.stderr.write("\nLOG:\n" + fs.readFileSync(path.join(prod, "daten", "waechter.log"), "utf8").slice(-1500), fs.existsSync(path.join(prod, "daten", "app.log")) ? fs.readFileSync(path.join(prod, "daten", "app.log"), "utf8").slice(-800) : ""); } catch { /* kein Log */ }
     throw e;
   } finally {
-    // Erst Wächter UND App beenden und auf beide warten, dann aufräumen: sonst hält die App Dateien offen (EBUSY unter Windows)
+    // First end watcher AND app and wait for both, then clean up: otherwise the app keeps files open (EBUSY on Windows)
     if (kind.exitCode === null) { const weg = new Promise((r) => kind.once("exit", r)); kind.kill(); await weg; }
     if (appPid) { try { process.kill(appPid); } catch { /* schon beendet */ } }
     for (let i = 0; i < 30; i++) { try { await fetch(`http://127.0.0.1:${port}/x`, { signal: AbortSignal.timeout(200) }); } catch { break; } await new Promise((r) => setTimeout(r, 100)); }

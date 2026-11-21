@@ -1,122 +1,122 @@
-# Checkliste: Parture-Tool auf dem Server, mit Zugang, Coden, Live-Traffic und Freigabe
+# Checklist: Parture tool on the server, with access, coding, live traffic and approval
 
-Stand: 17.11.2026 (Abend; alles Gebaute liegt auf dem Branch `admin/server-betrieb`, lokal committet, noch nicht gepusht) · Frist: ca. 23.11.2026 · Legende: ☐ offen · ◐ gebaut bzw. vorbereitet, aber noch nicht auf dem Server oder von Niko bestätigt · ☑ erledigt und mit der Probe geprüft · **[C]** macht Claude · **[N]** macht Niko · **[G]** macht die Gruppe
+Status: 17 Nov 2026 (evening; everything built is on the branch `admin/server-betrieb`, committed locally, not yet pushed) · Deadline: about 23 Nov 2026 · Legend: ☐ open · ◐ built or prepared, but not yet on the server or confirmed by Niko · ☑ done and checked with the probe · **[C]** Claude does it · **[N]** Niko does it · **[G]** the group does it
 
-## Zielbild
+## Target picture
 
 ```
-GitHub ── main (geprüft) ─────────► PROD   (Server, mit eBay-Keys, Schreiben nach Freigabe, Traffic-Import täglich)
-   └──── vorschau (Builder pushen) ► VORSCHAU (Server, OHNE Keys, zeigt Änderungen sofort, kann nichts bei eBay ändern)
-Alle Zugriffe: Browser → Cloudflare (Login per E-Mail-Code) → Tunnel → App (nur 127.0.0.1) → eigener Login mit Rolle
+GitHub ── main (reviewed) ─────────► PROD    (server, with eBay keys, writing after approval, daily traffic import)
+   └──── vorschau (builders push) ─► PREVIEW (server, WITHOUT keys, shows changes at once, cannot change anything on eBay)
+All access: browser → Cloudflare (login by e-mail code) → tunnel → app (127.0.0.1 only) → own login with a role
 ```
 
-- **PROD** übernimmt nur Code, der per Pull Request geprüft und auf `main` gemergt wurde.
-- **VORSCHAU** übernimmt jeden Push auf den Branch `vorschau` innerhalb von 1 bis 2 Minuten. Dort liegen keine Keys.
-- „Schreibbefehle nach Approval kommen zu mir“ heißt: Ein Builder sendet einen Vorschlag, Niko (Admin) gibt frei, die PROD-App ändert dann mit **Nikos** eBay-Zugang den Titel und protokolliert es. Niko bekommt eine Benachrichtigung, sobald ein Vorschlag wartet (Block E).
+- **PROD** takes only code that was reviewed by pull request and merged into `main`.
+- **PREVIEW** takes every push to the branch `vorschau` within 1 to 2 minutes. There are no keys there.
+- "Write commands after approval come to me" means: a builder sends a proposal, Niko (admin) approves, and the PROD app then changes the title with **Niko's** eBay access and logs it. Niko gets a notification as soon as a proposal is waiting (block E).
 
 ---
 
-## A. Code und Zusammenarbeit auf GitHub
+## A. Code and collaboration on GitHub
 
-- ☐ A1 **[C]** Pull Request für den Login (`emb/login` → `main`) öffnen *(Vorschlag: PR #4 enthält den Login-Commit schon, ihn auf `main` umhängen statt zwei PRs; wartet auf Nikos Ja)*
-- ☐ A2 **[N]** Login-PR prüfen und mergen (mit EmbletonNova abstimmen)
-- ☐ A3 **[N]** PR #4 (Rollen, Freigabe, Protokoll, Import) prüfen und mergen (wechselt dann automatisch auf `main`)
-- ☐ A4 **[N]** `main` schützen: nur über Pull Request, mindestens 1 Review (GitHub Pro über das Student Developer Pack)
-- ☐ A5 **[C]** Branch `vorschau` anlegen und festlegen: Builder arbeiten auf `vorschau` oder eigenen Branches und mergen dorthin
-- ◐ A6 **[C]** Automatische Tests auf GitHub (`npm test` bei jedem PR, ohne Keys) einrichten *(Workflow `.github/workflows/pruefung.yml` geschrieben; läuft erst nach dem ersten Push)*
-- ☑ A7 **[C]** Geheimnis-Scan in der Pipeline (kein Key, Token oder Passwort im Code) *(`npm run scan`; Dateien und gesamte Historie sauber, Gegenprobe mit Testfund bestanden)*
-- ☑ A8 **[C]** README: Entwicklerleitfaden (klonen, lokal starten, Benutzer anlegen, Branch, PR, Review, Merge) *(`docs/entwicklung.md`)*
+- ☐ A1 **[C]** Open a pull request for the login (`emb/login` → `main`) *(suggestion: PR #4 already contains the login commit, re-target it to `main` instead of two PRs; waiting for Niko's yes)*
+- ☐ A2 **[N]** Review and merge the login PR (agree with EmbletonNova)
+- ☐ A3 **[N]** Review and merge PR #4 (roles, approval, log, import) (it then switches to `main` automatically)
+- ☐ A4 **[N]** Protect `main`: only through a pull request, at least 1 review (GitHub Pro through the Student Developer Pack)
+- ☐ A5 **[C]** Create the branch `vorschau` and define: builders work on `vorschau` or their own branches and merge there
+- ◐ A6 **[C]** Set up automatic tests on GitHub (`npm test` on every PR, without keys) *(workflow `.github/workflows/pruefung.yml` written; runs only after the first push)*
+- ☑ A7 **[C]** Secret scan in the pipeline (no key, token or password in the code) *(`npm run scan`; files and whole history clean, counter-test with a planted finding passed)*
+- ☑ A8 **[C]** README: developer guide (clone, start locally, create a user, branch, PR, review, merge) *(`docs/entwicklung.md`)*
 
-## B. Server vorbereiten (einmalig)
+## B. Prepare the server (once)
 
-- ☐ B1 **[N]** Server festlegen: Betriebssystem, Zugriff (Remote), läuft er dauerhaft, Strom und Netz stabil
-- ☐ B2 **[N]** Energieoptionen: Ruhezustand und Standby aus, nach Stromausfall automatisch starten
-- ☐ B3 **[N]** Node 22 oder neuer und Git installieren, `node -v` und `git -v` prüfen
-- ☑ B4 **[C]** Einrichtungsanleitung für den Server schreiben (Schritt für Schritt, für Windows und Mac) *(`docs/server-einrichtung.md`, jeder Schritt mit Probe)*
-- ☐ B5 **[N]** Repo zweimal klonen: Ordner `prod` (Branch `main`) und `vorschau` (Branch `vorschau`)
-- ☑ B6 **[C]** Vorlagen `.env` für PROD und VORSCHAU (eigene Ports, eigene Datenbanken, VORSCHAU ohne Keys und ohne Schreibschalter) *(`server/env.prod.beispiel`, `server/env.vorschau.beispiel`)*
-- ☐ B7 **[N]** `.env` auf dem Server ausfüllen (PROD: eBay-Keys, `EBAY_SCHREIBEN`, `EBAY_TRAFFIC_AUTO`)
-- ◐ B8 **[C]** Start-Skripte, die die App nach Neustart und Absturz selbst wieder hochfahren (Aufgabenplanung bzw. Dienst) *(`server/windows/installiere.ps1` geschrieben, noch nicht auf Windows ausgeführt)*
-- ◐ B9 **[C]** Auto-Deploy: PROD holt nur `main` (nur Fast-Forward), baut, startet neu. VORSCHAU holt `vorschau` jede Minute *(Wächter `app/waechter.mjs`: 8 Tests inkl. Prozesstest mit Auto-Deploy, Absturz und hängender App, auf dem Mac; auf Windows noch nicht gelaufen)*
-- ☑ B10 **[C]** Deploy bricht ab, wenn `npm test` fehlschlägt, die alte Version läuft weiter *(getestet: durchgefallene Tests → Rückfall auf alten Stand, schlechter Stand wird nicht erneut getestet)*
-- ☐ B11 **[N]** Prüfen: App lauscht nur auf `127.0.0.1`, keine eingehenden Ports in der Firewall geöffnet
+- ☐ B1 **[N]** Decide the server: operating system, access (remote), does it run permanently, power and network stable
+- ☐ B2 **[N]** Power options: hibernation and standby off, start automatically after a power failure
+- ☐ B3 **[N]** Install Node 22 or newer and Git, check `node -v` and `git -v`
+- ☑ B4 **[C]** Write the setup guide for the server (step by step, for Windows and Mac) *(`docs/server-einrichtung.md`, every step with a probe)*
+- ☐ B5 **[N]** Clone the repo twice: folder `prod` (branch `main`) and `vorschau` (branch `vorschau`)
+- ☑ B6 **[C]** `.env` templates for PROD and PREVIEW (own ports, own databases, PREVIEW without keys and without a write switch) *(`server/env.prod.beispiel`, `server/env.vorschau.beispiel`)*
+- ☐ B7 **[N]** Fill in the `.env` on the server (PROD: eBay keys, `EBAY_SCHREIBEN`, `EBAY_TRAFFIC_AUTO`)
+- ◐ B8 **[C]** Start scripts that bring the app back up by themselves after a restart and a crash (task scheduler or service) *(`server/windows/installiere.ps1` written, not yet run on Windows)*
+- ◐ B9 **[C]** Auto-deploy: PROD fetches only `main` (fast-forward only), builds, restarts. PREVIEW fetches `vorschau` every minute *(watcher `app/waechter.mjs`: 8 tests including a process test with auto-deploy, crash and a hanging app, on the Mac; not yet run on Windows)*
+- ☑ B10 **[C]** The deploy aborts if `npm test` fails, the old version keeps running *(tested: failed tests → fall back to the old version, the bad version is not tested again)*
+- ☐ B11 **[N]** Check: the app listens only on `127.0.0.1`, no incoming ports opened in the firewall
 
-## C. Zugang von außen (Cloudflare)
+## C. Access from outside (Cloudflare)
 
-- ☐ C1 **[N]** Cloudflare-Konto anlegen
-- ☐ C2 **[N]** Domain bei Cloudflare einrichten (vorhandene verbinden oder neue kaufen)
-- ☐ C3 **[N]** Named Tunnel auf dem Server als Dienst installieren (läuft nach Neustart wieder)
-- ☑ C4 **[C]** Konfigurationsvorlage und Schritte für zwei Adressen: `app.<domain>` (PROD) und `vorschau.<domain>` *(`server/cloudflare/config.beispiel.yml`, Anleitung in `server-einrichtung.md` Schritt 6; gegen echtes Cloudflare noch ungetestet)*
-- ☐ C5 **[N]** Cloudflare Access: Anmeldung per E-Mail-Code für die vier Adressen (Niko und die drei)
-- ☐ C6 **[N]** `CF_ACCESS_TEAM_DOMAIN` und `CF_ACCESS_AUD` in beide `.env` eintragen
-- ☐ C7 **[C]** Test von außen: ohne Access → 401, mit Access → Anmeldeseite, mit Login → App
-- ☐ C8 **[C]** Mac-Quick-Tunnel beenden, Mac-App stoppen, sobald PROD läuft
+- ☐ C1 **[N]** Create a Cloudflare account
+- ☐ C2 **[N]** Set up the domain at Cloudflare (connect an existing one or buy a new one)
+- ☐ C3 **[N]** Install a named tunnel on the server as a service (runs again after a restart)
+- ☑ C4 **[C]** Configuration template and steps for two addresses: `app.<domain>` (PROD) and `vorschau.<domain>` *(`server/cloudflare/config.beispiel.yml`, guide in `server-einrichtung.md` step 6; still untested against real Cloudflare)*
+- ☐ C5 **[N]** Cloudflare Access: login by e-mail code for the four addresses (Niko and the three others)
+- ☐ C6 **[N]** Enter `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` in both `.env` files
+- ☐ C7 **[C]** Test from outside: without Access → 401, with Access → login page, with login → app
+- ☐ C8 **[C]** End the Mac quick tunnel, stop the Mac app as soon as PROD runs
 
-## D. Daten und Live-Traffic
+## D. Data and live traffic
 
-- ☐ D1 **[N]** Entscheiden: Benutzer und Tests vom Mac (`daten/app.db`) auf den Server mitnehmen oder neu anfangen
-- ☐ D2 **[C]** Wenn mitnehmen: Datei sicher übertragen, Rollen prüfen
-- ☐ D3 **[N]** Erster Export auf dem Server (`npm run export`), Stand der Daten prüfen
-- ◐ D4 **[C]** 90-Tage-Nachladen läuft über mehrere Tage, bis eBay das Limit freigibt (Fortschritt im Log kontrollieren) *(Import ist fortsetzbar und limit-sicher gebaut und getestet; das Nachladen selbst steht noch aus, eBay-Limit)*
-- ◐ D5 **[C]** Täglicher Import ab 5 Uhr automatisch, 3 Tage Verzögerung, Kontrolle gegen die Kontosumme *(gebaut und getestet; live noch nicht bestätigt)*
-- ☑ D6 **[C]** Status in der App: zuletzt erfolgreich, letzter Fehler, Alter der Daten. Warnhinweis, wenn Daten älter als 2 Tage sind *(Warnbanner und Status im Tab Log; per HTTP-Test und Browser-Screenshot geprüft)*
-- ☑ D7 **[C]** Tägliche Sicherung von `app.db` und `traffic-tage.db` an einen zweiten Ort, Rücksicherung einmal getestet *(`npm run sicherung`, tägliche Sicherung im Server, Rücksicherung im Test geprüft; Rücksicherung auf dem Server und zweiter Ort stehen noch aus)*
-- ☐ D8 **[C]** Team-Kopie `daten-team/pm.db` regelmäßig aus PROD erneuern (für lokale Entwicklung der Builder)
+- ☐ D1 **[N]** Decide: take users and tests from the Mac (`daten/app.db`) to the server or start fresh
+- ☐ D2 **[C]** If taking them: transfer the file safely, check the roles
+- ☐ D3 **[N]** First export on the server (`npm run export`), check the age of the data
+- ◐ D4 **[C]** The 90-day backfill runs over several days until eBay lifts the limit (check the progress in the log) *(the import is built resumable and limit-safe and tested; the backfill itself is still to come, eBay limit)*
+- ◐ D5 **[C]** Daily import from 5 a.m. automatically, 3 days delay, control against the account total *(built and tested; not yet confirmed live)*
+- ☑ D6 **[C]** Status in the app: last success, last error, age of the data. A warning when data is older than 2 days *(warning banner and status in the Log tab; checked by an HTTP test and a browser screenshot)*
+- ☑ D7 **[C]** Daily backup of `app.db` and `traffic-tage.db` to a second location, restore tested once *(`npm run sicherung`, daily backup inside the server, restore checked in a test; restore on the server and the second location are still to come)*
+- ☐ D8 **[C]** Renew the team copy `daten-team/pm.db` regularly from PROD (for the builders' local development)
 
-## E. Schreiben nach Freigabe
+## E. Writing after approval
 
-- ☐ E1 **[N]** eBay-Keys nur auf PROD, nirgends sonst. VORSCHAU ohne Keys bestätigen
-- ☐ E2 **[C]** Probelauf auf PROD (Schreibschalter aus): Angebote werden gefunden, Titel erkannt
-- ☐ E3 **[N]** Festlegen, welche 4 Angebote der erste echte Test ändern darf
-- ☐ E4 **[C]** Echter Mini-Test: vorschlagen → freigeben → bei eBay prüfen → Protokoll prüfen
-- ☐ E5 **[C]** Rückänderung (Revert) einmal komplett durchspielen
-- ◐ E6 **[C]** Fehlerfälle dokumentieren (eBay lehnt ab, Titel von Hand geändert, Angebot inaktiv) *(erwartete Fälle sind in der App abgedeckt und getestet; echte eBay-Antworten noch unbekannt)*
-- ☑ E7 **[C]** Obergrenze pro Freigabe (z. B. höchstens 50 Titel auf einmal) *(Obergrenze 50, getestet)*
-- ◐ E8 **[C]** Benachrichtigung an Niko, wenn ein Vorschlag wartet (Telegram oder E-Mail) *(Telegram, per Test mit Ersatz-Netz geprüft; echter Bot-Token fehlt noch)*
-- ☑ E9 **[C]** Prüfen: Builder bekommen auf PROD bei Freigabe und Rollen 403 *(im Server-Test geprüft: Builder bekommt 403; auf PROD noch einmal bestätigen)*
+- ☐ E1 **[N]** eBay keys only on PROD, nowhere else. Confirm PREVIEW has no keys
+- ☐ E2 **[C]** Dry run on PROD (write switch off): listings are found, titles recognised
+- ☐ E3 **[N]** Decide which 4 listings the first real test may change
+- ☐ E4 **[C]** Real mini test: propose → approve → check on eBay → check the log
+- ☐ E5 **[C]** Play through a revert completely once
+- ◐ E6 **[C]** Document the error cases (eBay refuses, title changed by hand, listing inactive) *(the expected cases are covered in the app and tested; real eBay answers still unknown)*
+- ☑ E7 **[C]** Limit per approval (e.g. at most 50 titles at once) *(limit 50, tested)*
+- ◐ E8 **[C]** Notification to Niko when a proposal is waiting (Telegram or e-mail) *(Telegram, checked by a test with a fake network; a real bot token is still missing)*
+- ☑ E9 **[C]** Check: builders get 403 on PROD for approval and roles *(checked in the server test: a builder gets 403; confirm once more on PROD)*
 
-## F. Sicherheit
+## F. Security
 
-- ☐ F1 **[N]** Adminpasswort ändern, Datei `erstes-passwort.txt` löschen
-- ☑ F2 **[C]** Passwort in der App selbst ändern (jede Person für sich) *(Tab Account, Server-Test)*
-- ☑ F3 **[C]** Sperre pro Adresse bei Fehlversuchen *(je Name 5, je Adresse 20 Fehlversuche; getestet)*
-- ☐ F4 **[C]** Konten auf PROD und VORSCHAU anlegen, Zugangsdaten sicher an die drei verteilen
-- ◐ F5 **[C]** Schutz-Header, Cookie-Flags und Rechte von außen prüfen (Abschlusstest) *(Header, Cookie, 403-Tests laufen automatisch; Prüfung von außen über Cloudflare steht aus)*
-- ☐ F6 **[N]** Prüfen, wer auf dem Server Zugriff hat (nur Niko)
+- ☐ F1 **[N]** Change the admin password, delete the file `erstes-passwort.txt`
+- ☑ F2 **[C]** Change the password in the app itself (each person for themself) *(Account tab, server test)*
+- ☑ F3 **[C]** Lock per address on failed attempts *(5 failed attempts per name, 20 per address; tested)*
+- ☐ F4 **[C]** Create accounts on PROD and PREVIEW, hand the credentials safely to the three others
+- ◐ F5 **[C]** Check protective headers, cookie flags and rights from outside (final test) *(headers, cookie and 403 tests run automatically; the check from outside through Cloudflare is still to come)*
+- ☐ F6 **[N]** Check who has access to the server (only Niko)
 
-## G. Zugang und Coden für die Gruppe
+## G. Access and coding for the group
 
-- ☐ G1 **[N]** GitHub-Zugriff der drei bestätigen (haben sie, Schreibrecht)
-- ☐ G2 **[G]** Jede Person klont das Repo, `npm install`, lokalen Benutzer anlegen, `npm start`: Änderungen sofort sichtbar
-- ☐ G3 **[G]** Arbeitsweise: eigener Branch → Push auf `vorschau` zum Zeigen → PR gegen `main` → Review → Merge
-- ☐ G4 **[C]** Probe: Test-Push auf `vorschau`, nach 1 bis 2 Minuten sichtbar
-- ☐ G5 **[C]** Probe: Test-PR gegen `main`, CI läuft, nach Merge ist die Änderung auf PROD
-- ☐ G6 **[G]** Alle drei melden sich bei VORSCHAU und PROD an und sehen Tests und Freigaben
+- ☐ G1 **[N]** Confirm the three others' GitHub access (they have it, write permission)
+- ☐ G2 **[G]** Everyone clones the repo, `npm install`, creates a local user, `npm start`: changes visible at once
+- ☐ G3 **[G]** Way of working: own branch → push to `vorschau` to show → PR against `main` → review → merge
+- ☐ G4 **[C]** Rehearsal: test push to `vorschau`, visible after 1 to 2 minutes
+- ☐ G5 **[C]** Rehearsal: test PR against `main`, the CI runs, after the merge the change is on PROD
+- ☐ G6 **[G]** All three log in to PREVIEW and PROD and see tests and approvals
 
-## H. Präsentation und Abnahme
+## H. Presentation and acceptance
 
-- ☑ H1 **[C]** Demo-Modus mit Beispiel-Urteil (ein echtes Urteil gibt es in 6 Tagen nicht) *(aufklappbar im Tab Tests, drei Beispiele mit erfundenen Zahlen, im Browser geprüft)*
-- ☑ H2 **[C]** Titelvorschläge pro Angebot (Builder prüft und übernimmt) *(als Titelhilfe: erfindet keine Titel, zeigt nur belegte Wörter aus den eigenen Daten; auf den echten Daten findet sie zurzeit kein klares Muster und zeigt dann nur einen Hinweis)*
-- ☑ H3 **[C]** Ablaufplan der Vorführung (Diagnose → Test ziehen → Titel → Freigabe → eBay → Protokoll → Ergebnis) *(`docs/vorfuehrung.md`)*
-- ☑ H4 **[C]** Architekturübersicht (eine Seite) und aufgeräumte README *(`docs/vorfuehrung.md`, README)*
-- ☐ H5 **[G]** Generalprobe der Vorführung, Ausfallplan (Screenshots/Video, falls das Netz fehlt)
-- ☐ H6 **[N]** Funktionsstopp einen Tag vor der Abgabe, danach nur Fehlerbehebung
+- ☑ H1 **[C]** Demo mode with an example verdict (there will be no real verdict within 6 days) *(expandable in the Tests tab, three examples with invented figures, checked in the browser)*
+- ☑ H2 **[C]** Title suggestions per listing (the builder checks and adopts them) *(as the title help: invents no titles, shows only evidence-based words from the own data; on the real data it currently finds no clear pattern and then shows only a note)*
+- ☑ H3 **[C]** Run plan for the demo (diagnosis → draw a test → title → approval → eBay → log → result) *(`docs/vorfuehrung.md`)*
+- ☑ H4 **[C]** Architecture overview (one page) and a tidied README *(`docs/vorfuehrung.md`, README)*
+- ☐ H5 **[G]** Dress rehearsal of the demo, fallback plan (screenshots/video in case the network is missing)
+- ☐ H6 **[N]** Feature freeze one day before the hand-in, afterwards only bug fixes
 
 ---
 
-## Zeitplan
+## Schedule
 
-| Tag | Blöcke |
+| Day | Blocks |
 |---|---|
-| 1 | A (alles außer A4), B1 bis B3, C1 und C2 starten |
-| 2 | B4 bis B11, C3 bis C6, F1 |
-| 3 | D, E1 bis E5, F2 bis F4 |
-| 4 | E6 bis E9, G, H1 und H2 |
-| 5 | F5, H3 bis H5 (Generalprobe), Funktionsstopp |
-| 6 | Puffer, Abgabe |
+| 1 | A (everything except A4), B1 to B3, start C1 and C2 |
+| 2 | B4 to B11, C3 to C6, F1 |
+| 3 | D, E1 to E5, F2 to F4 |
+| 4 | E6 to E9, G, H1 and H2 |
+| 5 | F5, H3 to H5 (dress rehearsal), feature freeze |
+| 6 | Buffer, hand-in |
 
-## Abhängigkeiten, die den Plan bestimmen
+## Dependencies that shape the plan
 
-- Alles unter B bis G hängt an B1 (Server) und C2 (Domain). Ohne beides bleiben nur A, F2, F3, E8 und H.
-- E4 (echter Test) braucht E3 (deine Auswahl) und einen laufenden PROD (B, C).
-- D4 hängt am eBay-Limit und läuft über mehrere Tage von selbst.
+- Everything under B to G depends on B1 (server) and C2 (domain). Without both, only A, F2, F3, E8 and H remain.
+- E4 (real test) needs E3 (your selection) and a running PROD (B, C).
+- D4 depends on the eBay limit and runs by itself over several days.
