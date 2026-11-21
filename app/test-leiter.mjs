@@ -60,6 +60,7 @@ test("Whole path without recovery: title -> ads -> price -> manual review -> dec
   // afterwards: still 3 a day = 270 in 90 days < 900 -> step 2 with a suggestion from the settings
   const a = leiter.werteAus(d, daten({}, "2026-12-04"), tag(15));
   assert.equal(a.length, 1); assert.equal(a[0].erholt, false); assert.equal(a[0].nachher90, 270);
+  assert.equal(a[0].datenBis, "2026-12-04", "the automatic evaluation stores the end of its window as the data day (F1)");
   assert.equal(zeile(d, "A").stufe, "werbung");
   assert.deepEqual(JSON.parse(zeile(d, "A").vorschlag), { satz: 0.1 });
   await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, tag(15));
@@ -254,6 +255,7 @@ test("Move on by hand: admin only, only during a running waiting time, measures 
   assert.equal(r.ok, true); assert.equal(r.wert.stufe, "werbung");
   assert.equal(r.wert.messung.gemessenTage, 7, "20 Nov to 27 Nov are in the data");
   assert.equal(r.wert.messung.netto, 1, "listing 3 → 6, control stays 3: +100 %");
+  assert.equal(r.wert.messung.datenBis, "2026-11-27", "the evaluation stores the last data day it used (F1)");
   assert.equal(zeile(d, nr).stufe, "werbung"); assert.equal(zeile(d, nr).phase, "vorschlag");
   assert.equal(leiter.wirkung(d).titel.mitKontrolle, 1, "the measurement by hand counts in the effect per phase");
 });

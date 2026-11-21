@@ -46,7 +46,8 @@
 4. **To eBay** there is one way only: an admin approves → `leiter.gibFrei` → `ebay-schreiben.mjs`. The listing is read
    first; if title or price differ from what the app expects, nothing happens. Without keys or without the switch it is a dry run.
 5. **Evaluation:** when a phase starts, the app stores the listing's impressions per day of the 30 days before. When the
-   waiting time is over (with a data lag of 3 days), it compares the listing and the control group over the same days.
+   waiting time is over and the data reaches its last day (hub export: up to yesterday; the app's own import: 3 days back), it
+   compares the listing and the control group over the same days and stores the last data day it used (`datenBis`).
 
 ## Decisions
 

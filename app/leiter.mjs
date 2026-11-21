@@ -300,7 +300,8 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
     // The same days on the control group: net effect = (listing after/before) / (control after/before) − 1
     const kontrolle = kontrollVergleich(db, impTag, z.stufe_start, ende, einst);
     const nettoEffekt = kontrolle ? netto({ vorher: vorher90, nachher: hoch90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
-    const details = { tage, vorher90, nachher90: hoch90, grenze90: Math.round(grenze90), erholt, kontrolle, netto: nettoEffekt };
+    // datenBis: the last data day this evaluation used, so it can be reproduced even if corrected numbers arrive later
+    const details = { tage, vorher90, nachher90: hoch90, grenze90: Math.round(grenze90), erholt, kontrolle, netto: nettoEffekt, datenBis: ende };
     db.transaction(() => {
       verlauf(db, z.number, z.stufe, "ausgewertet", details, "system", jetzt);
       if (erholt) setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "erholt" }, jetzt);
@@ -391,7 +392,7 @@ export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, g
   const nachher90 = gemessen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null;
   const kontrolle = gemessen > 0 ? kontrollVergleich(db, impTag, z.stufe_start, bis, einst) : null;
   const nettoEffekt = kontrolle && nachher90 != null ? netto({ vorher: vorher90, nachher: nachher90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
-  const details = { tage, gemessenTage: gemessen, vorher90, nachher90, grenze90: Math.round(grenze90 ?? 0), erholt: ziel === "erholt", kontrolle, netto: nettoEffekt, vonHand: true };
+  const details = { tage, gemessenTage: gemessen, vorher90, nachher90, grenze90: Math.round(grenze90 ?? 0), erholt: ziel === "erholt", kontrolle, netto: nettoEffekt, vonHand: true, datenBis: gemessen > 0 ? bis : null };
   db.transaction(() => {
     verlauf(db, z.number, z.stufe, "ausgewertet", details, nutzer.name, jetzt);
     if (ziel === "erholt") setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "erholt" }, jetzt);

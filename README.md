@@ -142,7 +142,11 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
   block list of a running shop experiment. **Never** costs, fees, margins, revenue, customers or addresses: the export checks
   column names and texts before it swaps the file.
 - **`app.db`** belongs to the app and lives on the machine that runs it, never in the repository.
-- **Data lag of 3 days:** eBay corrects the last days afterwards, so only finished days count.
+- **Data delay:** on PROD the traffic comes from the company hub, which fetches every eBay day **once, on the day after**, and
+  not again later; so the newest day is yesterday (header: "traffic up to …", the tooltip says where it comes from). Whether eBay
+  still adjusts a day afterwards is not measured (checking it would use the eBay request limit, which the hub already
+  exhausts every day). Every evaluation stores the last data day it used (`datenBis`), so it can be reproduced. The app's own
+  import (`npm run export`, not used on PROD) waits 3 days and fetches the last 3 days again.
 
 ## Limits
 
