@@ -423,7 +423,7 @@ export function trichter(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date()
   return { zahl, gruende, kpi, liste };
 }
 const PHASE_GRUND = { vorschlag: "A suggestion is ready and waits for an admin's approval.", laeuft: "The change is live on eBay; the waiting time is running.", offen: "Title, ads and price did not help; an admin decides what happens." };
-const ERGEBNIS_GRUND = { ueberarbeiten: "Decided after the manual check: rework the listing", offline: "Decided after the manual check: take it offline", behalten: "Decided after the manual check: keep it as it is", abgebrochen: "Taken off the ladder by an admin", kontrolle: "Was in the control group" };
+const ERGEBNIS_GRUND = { rueckgaengig: "Undone on eBay by an admin: title, ads and price are back as before", ueberarbeiten: "Decided after the manual check: rework the listing", offline: "Decided after the manual check: take it offline", behalten: "Decided after the manual check: keep it as it is", abgebrochen: "Taken off the ladder by an admin", kontrolle: "Was in the control group" };
 
 // An admin decides after the manual check. The app changes nothing on eBay here: "offline" is a task for the admin.
 // Movement by hand (Niko, 20 Nov: products move only by button): an admin pushes a listing out of the running waiting time
@@ -485,6 +485,71 @@ export function brichAb(db, nutzer, number, grund, jetzt = new Date()) {
   })();
   protokoll.schreibe(db, { ...wer(nutzer), aktion: ohnePause ? "ladder_reset" : "ladder_removed", objekt: "product " + z.number, details: { stufe: z.stufe, grund: g } }, jetzt);
   return ok({ number: z.number, pause: !ohnePause });
+}
+
+// ---------- F7: undo on eBay ----------
+// Everything the app changed on this listing goes back, the last change first: price → old price, ad → removed from the app's own
+// campaign, title → old title. Read before write as for every change: a part is undone only if eBay still shows what the app wrote,
+// otherwise that part is left alone and the message says what eBay shows. Without credentials or switches it is a dry run.
+// After a real undo the listing leaves the ladder as "rueckgaengig" (its running measurement is dropped) and pauses like any
+// listing that was changed. History and protocol keep both the changes and the undo.
+const TEIL = { titel: "Title", werbung: "Ad", preis: "Price" };
+export function aenderungenDerApp(db, z) {
+  return db.prepare("SELECT stufe, details, at FROM leiter_verlauf WHERE number = ? AND at >= ? AND ereignis = 'freigegeben' ORDER BY id").all(z.number, z.eingestiegen_at)
+    .map((e) => ({ stufe: e.stufe, v: json(e.details)?.vorschlag, at: e.at })).filter((x) => x.v && TEIL[x.stufe]);
+}
+const beschreibe = (t) => (t.stufe === "titel" ? `set the title back to “${t.v.alt}”` : t.stufe === "preis" ? `set the price back to ${Number(t.v.alt).toFixed(2)} €` : "remove the ad");
+export async function macheRueckgaengig(db, nutzer, number, { items, schreiber }, jetzt = new Date()) {
+  if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can undo changes on eBay.");
+  const z = lade(db, String(number ?? ""));
+  if (!z || z.stufe === "raus") return fehler(404, "This listing is not on the ladder.");
+  const teile = aenderungenDerApp(db, z).reverse();
+  if (!teile.length) return fehler(409, "The app has not changed this listing on eBay, so there is nothing to undo. Use “Take off the ladder” instead.");
+  if (!items?.length) return fehler(409, "No active eBay listing found for this product.");
+  const an = (stufe) => (stufe === "titel" ? schreiber.schreibenAn() : stufe === "werbung" ? schreiber.schreibenAn() && schreiber.werbungAn() : schreiber.schreibenAn() && schreiber.preisAn());
+  if (!schreiber.konfiguriert() || teile.some((t) => !an(t.stufe))) {
+    const text = `Dry run: the undo would ${teile.map(beschreibe).join(", then ")}. ${schreiber.konfiguriert() ? "Writing is switched off for at least one part." : "This computer has no eBay credentials."} Nothing was changed on eBay.`;
+    verlauf(db, z.number, z.stufe, "probelauf", { text, rueckgaengig: true }, nutzer.name, jetzt);
+    protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_undo_dry_run", objekt: "product " + z.number, details: { teile: teile.map((t) => t.stufe), text }, ergebnis: "dry_run" }, jetzt);
+    return ok({ number: z.number, ausgang: "probelauf", text });
+  }
+  const texte = [], erledigt = [];
+  for (const it of items) {
+    const id = String(it.external_id);
+    let g;
+    try { g = await schreiber.lies(id); } catch (e) { g = { ok: false, meldung: e.message }; }
+    if (!g.ok) { texte.push(`Listing ${id}: could not read it on eBay (${g.meldung}), nothing undone.`); continue; }
+    for (const t of teile) {
+      let r;
+      try {
+        if (t.stufe === "preis") {
+          const preise = g.variationen?.length ? [...new Set(g.variationen.map((x) => x.preis))] : [g.preis];
+          if (preise.length !== 1 || Math.abs(preise[0] - t.v.neu) > 0.005) { texte.push(`Price not undone: eBay shows ${preise.map((p) => Number(p).toFixed(2)).join(" / ")} €, not the ${Number(t.v.neu).toFixed(2)} € the app set.`); continue; }
+          r = await schreiber.setzePreis(id, g.variationen?.map((x) => x.sku) || [], t.v.alt);
+        } else if (t.stufe === "werbung") r = await schreiber.entferneWerbung(id);
+        else {
+          if (norm(g.titel) !== norm(t.v.titel)) { texte.push(`Title not undone: eBay shows “${g.titel}”, not the title the app set.`); continue; }
+          r = await schreiber.setzeTitel(id, t.v.alt);
+        }
+      } catch (e) { r = { ok: false, meldung: e.message }; }
+      if (!r.ok) { texte.push(`${TEIL[t.stufe]} not undone: eBay refused (${r.meldung}).`); continue; }
+      erledigt.push(t.stufe); texte.push(`${TEIL[t.stufe]} undone: ${beschreibe(t).replace(/^set /, "").replace(/^remove /, "removed ")}.`);
+    }
+    // Read back: what does eBay show now?
+    try { const n = await schreiber.lies(id); if (n?.ok) texte.push(`Now on eBay: “${n.titel}”, ${(n.variationen?.length ? n.variationen.map((x) => x.preis) : [n.preis]).map((p) => Number(p).toFixed(2)).join(" / ")} €.`); } catch { /* only for the record */ }
+  }
+  const text = texte.join(" ");
+  if (!erledigt.length) {
+    verlauf(db, z.number, z.stufe, "fehlgeschlagen", { text, rueckgaengig: true }, nutzer.name, jetzt);
+    protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_undo_failed", objekt: "product " + z.number, details: { text }, ergebnis: "error" }, jetzt);
+    return ok({ number: z.number, ausgang: "fehlgeschlagen", text });
+  }
+  db.transaction(() => {
+    setze(db, z.number, { stufe: "raus", phase: "fertig", ergebnis: "rueckgaengig" }, jetzt);
+    verlauf(db, z.number, z.stufe, "rueckgaengig", { teile: erledigt, offen: teile.length * items.length - erledigt.length, text }, nutzer.name, jetzt);
+  })();
+  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_undone", objekt: "product " + z.number, details: { teile: erledigt, text } }, jetzt);
+  return ok({ number: z.number, ausgang: "rueckgaengig", text });
 }
 
 // "Start over": everything that has not been changed on eBay yet goes back to "Eligible" (the control group too). Listings with
@@ -555,7 +620,7 @@ export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst =
       fremdSeit: z.stufe === "raus" ? null : fremdSeit(db, z.number) };
   });
   const zahl = Object.fromEntries([...STUFEN, KONTROLLE, "raus"].map((s) => [s, zeilen.filter((z) => z.stufe === s).length]));
-  const raus = Object.fromEntries(["erholt", ...ENTSCHEIDUNGEN, "abgebrochen", KONTROLLE].map((e) => [e, zeilen.filter((z) => z.ergebnis === e).length]));
+  const raus = Object.fromEntries(["erholt", ...ENTSCHEIDUNGEN, "abgebrochen", "rueckgaengig", KONTROLLE].map((e) => [e, zeilen.filter((z) => z.ergebnis === e).length]));
   return { zahl, raus, grenze90: Math.round(grenze90), trafficBis, max: einst.leiterMax, tage: { titel: einst.leiterTageTitel, werbung: einst.leiterTageWerbung, preis: einst.leiterTagePreis, kontrolle: kontrollTage(einst) },
     kontrolleAn: !!einst.leiterKontrolle, bewegung: einst.leiterBewegung === "automatisch" ? "automatisch" : "hand", werbesatz: einst.werbesatz, preisSchritt: einst.preisSchritt, wirkung: wirkung(db), angebote: zeilen };
 }

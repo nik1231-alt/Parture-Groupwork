@@ -113,6 +113,24 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: false, meldung: restFehler(r) };
   }
 
+  // Undo of step 2 (F7): removes the listing from the app's own campaign "Parture Ladder" only, never from the shop's campaigns.
+  // Not in that campaign (or no campaign at all) = nothing to remove, that counts as done.
+  async function entferneWerbung(itemId) {
+    if (!schreibenAn() || !werbungAn()) return { ok: false, meldung: "Ads on eBay are switched off (EBAY_SCHREIBEN and EBAY_WERBUNG must be 'an')." };
+    if (!kampagneId) {
+      const such = await rest("GET", "/sell/marketing/v1/ad_campaign?campaign_name=" + encodeURIComponent(KAMPAGNE));
+      if (such.status !== 200 && such.status !== 404) return { ok: false, meldung: "Could not read the ad campaigns: " + restFehler(such) };
+      kampagneId = such.daten?.campaigns?.[0]?.campaignId || null;
+    }
+    if (!kampagneId) return { ok: true, meldung: "The app's campaign does not exist, so there is no ad to remove." };
+    const r = await rest("POST", `/sell/marketing/v1/ad_campaign/${encodeURIComponent(kampagneId)}/bulk_delete_ads_by_listing_id`, { requests: [{ listingId: String(itemId) }] });
+    if (r.status !== 200 && r.status !== 207) return { ok: false, meldung: restFehler(r) };
+    const a = r.daten?.responses?.[0];
+    if (!a || a.statusCode === 200 || a.statusCode === 204) return { ok: true, meldung: `Ad removed from the campaign ${KAMPAGNE}.` };
+    if (a.statusCode === 404) return { ok: true, meldung: `The listing was not in the campaign ${KAMPAGNE}, nothing to remove.` };
+    return { ok: false, meldung: (a.errors || []).map((e) => e.longMessage || e.message).join(" ") || "eBay answered with status " + a.statusCode };
+  }
+
   // Is the listing already advertised? Asks eBay for all campaigns it is in (also foreign ones, e.g. the shop's own).
   // Running or planned counts as advertised; then it is not eligible for phase 2 (Niko, 20 Nov). Read only.
   // Returns { ok, beworben, kampagnen: [name] } or { ok: false, meldung } (then phase 2 must not be approved).
@@ -152,5 +170,5 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: false, ack: r.ack, meldung: meldung || "eBay answered with HTTP " + r.http };
   }
 
-  return { schreibenAn, werbungAn, preisAn, konfiguriert, lies, setzeTitel, setzePreis, setzeWerbung, istBeworben, beworbeneAngebote };
+  return { schreibenAn, werbungAn, preisAn, konfiguriert, lies, setzeTitel, setzePreis, setzeWerbung, entferneWerbung, istBeworben, beworbeneAngebote };
 }
