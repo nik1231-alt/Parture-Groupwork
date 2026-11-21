@@ -40,3 +40,25 @@ test("Evaluation: the fields seen × sold count only active eBay listings, sums 
   assert.equal(a.verkaeufe.summe, 11, "scope eBay only: the product without an eBay listing (50 sales) does not count");
   assert.equal(a.verkaeufe.anzahl, 5);
 });
+
+test("Three groups without overlap: sold / shown, not bought / hardly shown; together all active eBay listings", () => {
+  const p = (imp, units, ebay = 1) => ({ impressionen_90d: imp, units_90d: units, ebay_aktiv: ebay });
+  const a = auswerten([p(5000, 9), p(800, 0), p(100, 2), p(0, 0), p(10, 0), p(0, 1), p(9999, 50, 0)], 441);
+  assert.deepEqual(a.gruppen, { verkauft: 3, gezeigtNichtGekauft: 1, kaumGezeigt: 2, kaumGezeigtNie: 1 });
+  assert.equal(a.gruppen.verkauft + a.gruppen.gezeigtNichtGekauft + a.gruppen.kaumGezeigt, a.ebayAktiv);
+  assert.equal(a.gruppen.kaumGezeigtNie, 1, "only listings without a sale and with 0 impressions; the sold one with 0 impressions does not count");
+});
+
+test("Verkaufschance und typische Impressionen: kaum gezeigt gegen oft gezeigt, Median je Gruppe", () => {
+  const p = (imp, units) => ({ impressionen_90d: imp, units_90d: units, ebay_aktiv: 1 });
+  // kaum gezeigt (unter 441): 4 Angebote, 1 verkauft → 25 %; oft gezeigt (ab 1000): 4 Angebote, 3 verkauft → 75 %
+  const a = auswerten([p(0, 0), p(100, 0), p(200, 1), p(300, 0), p(600, 0), p(1000, 1), p(2000, 1), p(3000, 0), p(4000, 2)], 441);
+  assert.equal(a.chance.kaum, 0.25); assert.equal(a.chance.oft, 0.75); assert.equal(a.chance.oftAb, 1000);
+  assert.equal(a.typisch.kaum, 150, "Median von 0, 100, 200, 300");
+  assert.equal(a.typisch.verkauft, 1500, "Median der verkauften: 200, 1000, 2000, 4000 → (1000 + 2000) / 2");
+});
+
+test("Verkaufschance ohne Angebote in einer Gruppe: null statt Division durch null", () => {
+  const a = auswerten([{ impressionen_90d: 5000, units_90d: 1, ebay_aktiv: 1 }], 441);
+  assert.equal(a.chance.kaum, null); assert.equal(a.chance.oft, 1); assert.equal(a.typisch.kaum, null);
+});

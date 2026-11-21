@@ -6,7 +6,11 @@
 // The question of the page: how much more strongly do sales than impressions depend on a few listings, and how long is the tail
 // that hardly anyone sees? That is exactly where the funnel starts (diagnosis "Low impressions", limit from regeln.leiteSchwellenAb).
 
+import { median } from "./auswertung.mjs";
+
 const zahl = (v) => Number(v) || 0;
+// Ab so vielen Impressionen in 90 Tagen gilt ein Angebot auf der Seite Problem als "oft gezeigt" (Vergleich der Verkaufschancen)
+export const OFT_GEZEIGT_AB = 1000;
 
 // Concentration: sort the values in descending order and accumulate. kurve = 101 points (0 … 100 % of the products → share of the sum),
 // anteilFuer(z) = smallest share of the products that brings z of the sum; top10 = share of the sum held by the best 10 %.
@@ -34,6 +38,8 @@ export function stufen(impressionen, grenze) {
 }
 
 // products: list from bewertung.ladeProdukte (impressionen_90d, units_90d, ebay_aktiv). grenze90: the diagnosis limit.
+const anteil = (liste, f) => (liste.length ? liste.filter(f).length / liste.length : null);
+
 export function auswerten(produkte, grenze90) {
   const ebay = produkte.filter((p) => p.ebay_aktiv === 1 || p.ebay_aktiv === true);
   const gesehen = (p) => zahl(p.impressionen_90d) >= grenze90, verkauft = (p) => zahl(p.units_90d) > 0;
@@ -50,5 +56,16 @@ export function auswerten(produkte, grenze90) {
     // Four fields of the eBay listings: seen yes/no × sold yes/no (seen = above the diagnosis limit)
     felder: { gesehenVerkauft: feld(true, true), gesehenNichtVerkauft: feld(true, false), kaumGesehenVerkauft: feld(false, true), kaumGesehenNichtVerkauft: feld(false, false) },
     stufen: stufen(ebay.map((p) => p.impressionen_90d), grenze90),
+    // Three groups without overlap (together = ebayAktiv): sold / shown, not bought / hardly shown, nothing sold
+    gruppen: {
+      verkauft: ebay.filter(verkauft).length,
+      gezeigtNichtGekauft: feld(true, false),
+      kaumGezeigt: feld(false, false),
+      kaumGezeigtNie: ebay.filter((p) => !verkauft(p) && zahl(p.impressionen_90d) === 0).length,
+    },
+    // Anteil der Angebote mit mindestens einem Verkauf: kaum gezeigt (unter der Grenze) gegen oft gezeigt (ab OFT_GEZEIGT_AB)
+    chance: { kaum: anteil(ebay.filter((p) => !gesehen(p)), verkauft), oft: anteil(ebay.filter((p) => zahl(p.impressionen_90d) >= OFT_GEZEIGT_AB), verkauft), oftAb: OFT_GEZEIGT_AB },
+    // Impressionen eines typischen Angebots (Median): eines, das verkauft hat, gegen eines unter der Grenze
+    typisch: { verkauft: median(ebay.filter(verkauft).map((p) => zahl(p.impressionen_90d))), kaum: median(ebay.filter((p) => !gesehen(p)).map((p) => zahl(p.impressionen_90d))) },
   };
 }
