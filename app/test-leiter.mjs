@@ -442,3 +442,56 @@ test("Outside changes (F6): a step done by hand on eBay notes the new state from
   assert.equal(JSON.parse(d.prepare("SELECT details FROM leiter_verlauf WHERE number = 'A' AND ereignis = 'stand' ORDER BY id DESC LIMIT 1").get().details).titel, "Von Hand neu");
   assert.deepEqual(leiter.pruefeFremdaenderungen(d, new Map([["A", { titel: "Noch mal anders", preis: 9.99 }]]), tag(4)), ["A"], "a change after that is marked");
 });
+
+// ---------- F7: undo on eBay ----------
+test("Undo on eBay (F7): price, ad and title go back in reverse order; the listing leaves the ladder and pauses", async () => {
+  const d = neueDb(), s = schreiber();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
+  await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);                      // title
+  leiter.werteAus(d, daten({}, "2026-12-04", { fuer: () => ({ kanaele: ITEMS, varianten: [] }) }), tag(15));    // → ads
+  await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, tag(15));                 // ad
+  assert.deepEqual(leiter.aenderungenDerApp(d, zeile(d, "A")).map((x) => x.stufe), ["titel", "werbung"]);
+  assert.equal((await leiter.macheRueckgaengig(d, BUILDER, "A", { items: ITEMS, schreiber: s })).status, 403);
+  // eBay shows what the app wrote
+  s.lies = async () => ({ ok: true, titel: "Wandhalter passend für A", status: "Active", verkauft: 3, preis: 9.99, variationen: [] });
+  s.entferneWerbung = async (id) => { s.auf.push(["werbung_weg", id]); return { ok: true, meldung: "" }; };
+  const vorher = s.auf.length;
+  const r = await leiter.macheRueckgaengig(d, ADMIN, "A", { items: ITEMS, schreiber: s }, tag(16));
+  assert.equal(r.ok, true); assert.equal(r.wert.ausgang, "rueckgaengig");
+  assert.deepEqual(s.auf.slice(vorher), [["werbung_weg", "123456789012"], ["titel", "123456789012", "Halter A"]], "last change first, title back to the old one");
+  assert.equal(zeile(d, "A").stufe, "raus"); assert.equal(zeile(d, "A").ergebnis, "rueckgaengig");
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ladder_undone'").get().n, 1);
+  const t = leiter.trichter(d, shop(), E, tag(16)).liste.find((x) => x.number === "A");
+  assert.equal(t.status, "raus"); assert.match(t.grund, /Undone on eBay/);
+  assert.equal((await leiter.macheRueckgaengig(d, ADMIN, "A", { items: ITEMS, schreiber: s })).status, 404, "off the ladder: nothing more to undo");
+});
+
+test("Undo on eBay (F7): read before write — a title changed on eBay in between is left alone; nothing changed = refused; dry run without switches", async () => {
+  const d = neueDb(), s = schreiber();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  assert.equal((await leiter.macheRueckgaengig(d, ADMIN, "A", { items: ITEMS, schreiber: s })).status, 409, "the app changed nothing yet");
+  leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
+  await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
+  // Writing switched off: dry run, nothing written, the listing stays
+  const aus = schreiber({ schreiben: false }); aus.lies = s.lies;
+  const p = await leiter.macheRueckgaengig(d, ADMIN, "A", { items: ITEMS, schreiber: aus });
+  assert.equal(p.wert.ausgang, "probelauf"); assert.match(p.wert.text, /set the title back to “Halter A”/); assert.equal(aus.auf.length, 0); assert.equal(zeile(d, "A").stufe, "titel");
+  // Someone changed the title on eBay by hand: the app does not overwrite it
+  s.lies = async () => ({ ok: true, titel: "Von Hand geändert", status: "Active", verkauft: 3, preis: 9.99, variationen: [] });
+  const vorher = s.auf.length;
+  const f = await leiter.macheRueckgaengig(d, ADMIN, "A", { items: ITEMS, schreiber: s });
+  assert.equal(f.wert.ausgang, "fehlgeschlagen"); assert.match(f.wert.text, /Title not undone: eBay shows “Von Hand geändert”/);
+  assert.equal(s.auf.length, vorher, "nothing written"); assert.equal(zeile(d, "A").stufe, "titel", "the listing stays on the ladder");
+});
+
+test("Undo on eBay (F7): a lowered price goes back to the old price, only if eBay still shows the app's price", async () => {
+  const d = neueDb(), s = schreiber();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.ueberspringe(d, ADMIN, "A", "", E, {}, T0); leiter.ueberspringe(d, ADMIN, "A", "", E, { fuer: () => ({ kanaele: ITEMS, varianten: [] }) }, T0);
+  const g = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
+  assert.equal(g.wert.ausgang, "angewendet"); assert.deepEqual(s.auf.at(-1), ["preis", "123456789012", 8.99]);
+  s.lies = async () => ({ ok: true, titel: "Halter A", status: "Active", verkauft: 3, preis: 8.99, variationen: [] });
+  const r = await leiter.macheRueckgaengig(d, ADMIN, "A", { items: ITEMS, schreiber: s }, tag(2));
+  assert.equal(r.wert.ausgang, "rueckgaengig"); assert.deepEqual(s.auf.at(-1), ["preis", "123456789012", 9.99]);
+});

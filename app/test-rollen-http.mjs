@@ -48,6 +48,8 @@ test("Builder: roles, approval, rejecting and starting directly are blocked (403
   assert.equal((await post("/api/freigabe/erteilen", { id: 1, art: "titel" }, c)).status, 403);
   assert.equal((await post("/api/freigabe/ablehnen", { id: 1, art: "titel" }, c)).status, 403);
   assert.equal((await post("/api/experiment/start", { id: 1 }, c)).status, 403);
+  assert.equal((await post("/api/leiter/rueckgaengig", { number: "A" }, c)).status, 403, "F7: only an admin can undo changes on eBay");
+  assert.equal((await post("/api/leiter/schieben", { number: "A", ziel: "weiter" }, c)).status, 403);
   const ich = await (await get("/api/ich", c)).json();
   assert.equal(ich.daten.rolle, "builder", "even after the attempts anna is still a builder");
 });

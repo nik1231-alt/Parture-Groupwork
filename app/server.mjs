@@ -569,6 +569,12 @@ const POST_ROUTEN = {
     return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null };
   },
   "/api/leiter/entscheidung": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.entscheide(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.entscheidung, b?.notiz)); },
+  // F7: undo everything the app changed on eBay for this listing (admin, two clicks in the interface, read before write)
+  "/api/leiter/rueckgaengig": async (req, ctx) => {
+    adminNoetig(ctx);
+    const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
+    return antwort(await leiter.macheRueckgaengig(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber }));
+  },
   "/api/leiter/abbrechen": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.brichAb(appDb(), ctx, String(b?.number ?? "").slice(0, 40), b?.grund)); },
   // Builder and admin: enter a title by hand (it must pass the rule checker) or ask the AI again
   "/api/leiter/titel": async (req, ctx) => {

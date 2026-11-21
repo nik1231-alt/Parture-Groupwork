@@ -108,7 +108,11 @@ All products
    `EBAY_WERBUNG=an` for ads and `EBAY_PREIS=an` for prices (they cost money). Otherwise the approval is a **dry run**:
    checked and logged, nothing changed.
 5. If eBay refuses, eBay's message is shown at the listing and in the log, and the step stays open.
-6. **Changes made outside the app are noticed.** The app notes which title and price every listing on the ladder (and in the
+6. **Undo on eBay** (admin, two clicks, in the open row): puts back everything the app changed on this listing, the last change
+   first: price → old price, ad → removed from the app's own campaign *Parture Ladder* (never from the shop's campaigns), title →
+   old title. Read before write: a part is undone only if eBay still shows what the app set. Without keys or switches it is a dry
+   run. Afterwards the listing leaves the ladder as *Undone on eBay* and pauses; history and log keep the changes and the undo.
+7. **Changes made outside the app are noticed.** The app notes which title and price every listing on the ladder (and in the
    control group) should show, and compares that every 15 minutes with the hub's catalogue (updated at least daily, no eBay
    calls). A difference the app did not make is marked on the card, in the funnel tree, the history and the log; the evaluation
    of that listing carries the mark, and a control listing changed from outside drops out of the control group. Right after an

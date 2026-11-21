@@ -690,13 +690,13 @@ async function ladeProblem() {
 
 // ======================================================= Ladder (title -> ads -> price -> manual check)
 const STUFE_TEXT = { titel: "1 · New title", werbung: "2 · Ads", preis: "3 · Lower price", pruefung: "4 · Manual check", kontrolle: "Control group", raus: "Done" };
-const ERGEBNIS_LEITER = { erholt: "Seen again", ueberarbeiten: "Rework", offline: "Take offline", behalten: "Keep as is", abgebrochen: "Taken off", kontrolle: "Control time over" };
+const ERGEBNIS_LEITER = { rueckgaengig: "Undone on eBay", erholt: "Seen again", ueberarbeiten: "Rework", offline: "Take offline", behalten: "Keep as is", abgebrochen: "Taken off", kontrolle: "Control time over" };
 const QUELLE_TEXT = { ki: "AI suggestion", regel: "From the title help (no AI)", hand: "Entered by hand" };
 const EREIGNIS_TEXT = { aufgenommen: "Entered the ladder (low impressions)", vorschlag: "Suggestion ready", kein_vorschlag: "No suggestion possible", freigegeben: "Approved and changed on eBay",
   probelauf: "Dry run, nothing changed", fehlgeschlagen: "Change failed", gestartet: "Waiting time started", ausgewertet: "Checked after the waiting time", uebersprungen: "Step skipped",
   pruefung: "Moved to the manual check", entschieden: "Decided", abgebrochen: "Taken off the ladder",
   kontrolle: "Drawn into the control group (stays unchanged)", kontrolle_ende: "Control time over",
-  stand: "Expected state on eBay noted", fremd: "Changed outside the app" };
+  stand: "Expected state on eBay noted", fremd: "Changed outside the app", rueckgaengig: "Undone on eBay" };
 
 async function ladeLeiter() {
   const root = $("#ansicht-ladder");
@@ -959,6 +959,9 @@ function zeileMehr(a, l) {
     teile.push(el("div", { class: "aktionen" },
       a.phase === "vorschlag" ? el("button", { class: "knopf knopf-klein", type: "button", text: "Done by hand", title: "The change was made on eBay by hand: start the waiting time", onclick: () => leiterAktion("/api/leiter/vonhand", { number: a.number }, "Waiting time started.") }) : null,
       a.phase === "vorschlag" ? zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Skip this step" }), "Really skip?", () => leiterAktion("/api/leiter/ueberspringen", { number: a.number, grund: grund.value }, (r) => r.werbungUebersprungen ? "Skipped; already advertised, so it moved straight to the price step." : "Skipped. The next step is waiting.")) : null,
+      a.verlauf.some((e) => e.ereignis === "freigegeben" && e.at >= a.eingestiegen_at) ? zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Undo on eBay",
+        title: "Puts back everything the app changed on this listing (price, ad, title) and takes it off the ladder. Only parts that eBay still shows as the app set them." }),
+        "Really undo all app changes on eBay?", () => leiterAktion("/api/leiter/rueckgaengig", { number: a.number }, (r) => r.text)) : null,
       zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Take off the ladder" }), "Really take it off?", () => leiterAktion("/api/leiter/abbrechen", { number: a.number, grund: grund.value }, (r) => r.pause ? "Taken off. It was changed on eBay, so it pauses 90 days." : "Taken off. Nothing was changed on eBay, so it is eligible again right away.")),
       el("span", { class: "grund-feld" }, grund)));
   }

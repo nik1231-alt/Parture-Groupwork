@@ -127,24 +127,26 @@ Today the app reads eBay only right before writing. During the waiting time nobo
 
 **Done when:** a change made outside the app shows up within a day (the catalogue's rhythm) and cannot silently enter a result.
 
-### F7 · Undo a step on eBay
+### F7 · Undo a step on eBay ✅ (PR #65)
 **Question:** "A new title performs badly or was a mistake. How do you go back?"
 
 Today the old title and price are in the history, but there is no undo; "take offline" is only a task for the admin.
 The eBay writer can set a title, a price and switch an ad on, not off.
 
-- [ ] Writer: `entferneWerbung(itemId)` (Marketing API, remove the listing from the app's campaign), dry run without
+- [x] Writer: `entferneWerbung(itemId)` (Marketing API, remove the listing from the app's campaign), dry run without
       credentials or switches, like the other writes.
-- [ ] Action "Undo on eBay" on a listing whose step was applied: builds the reverse change (title → old title, price →
+- [x] Action "Undo on eBay" on a listing whose step was applied: builds the reverse change (title → old title, price →
       old price, ad → removed) as a suggestion that needs the same two-click approval.
-- [ ] Read before write: undo only if eBay still shows what the app wrote; otherwise nothing is overwritten and the
+      *Done as one action that undoes everything the app changed, last change first, behind the two-click confirmation
+      (admin only, checked in the server).*
+- [x] Read before write: undo only if eBay still shows what the app wrote; otherwise nothing is overwritten and the
       message says what is on eBay now.
-- [ ] After undo: the listing leaves the ladder as "undone", pauses like other leavers, the phase measurement is marked
+- [x] After undo: the listing leaves the ladder as "undone", pauses like other leavers, the phase measurement is marked
       cancelled and does not enter Results. History and protocol (`ladder_undone`) keep both changes.
-- [ ] VORSCHAU shows it as a dry run.
-- [ ] Tests: undo title / price / ad, mismatch refuses, builder gets 403, dry run without switches, the listing leaves
-      the measurement.
-- [ ] Docs: README (Changes on eBay), security doc (new write path), walkthrough.
+- [x] VORSCHAU shows it as a dry run. *(VORSCHAU has no write switches, so every undo there is a dry run.)*
+- [x] Tests: undo title / price / ad, mismatch refuses, builder gets 403, dry run without switches, the listing leaves
+      the measurement. *(test-leiter +3, test-rollen-http +1)*
+- [x] Docs: README (Changes on eBay), security doc (new write path), walkthrough. *(walkthrough in F9)*
 
 **Done when:** every change the app can make on eBay can be undone through the app, with approval and a record.
 
