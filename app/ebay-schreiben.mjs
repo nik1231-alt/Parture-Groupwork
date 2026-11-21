@@ -1,10 +1,10 @@
-// Schreibzugriff auf eBay (Trading-API), nur für Titel und nur nach Freigabe durch einen Admin (siehe freigabe.mjs).
-// Die Zugangsdaten stehen nur in der .env des Admin-Rechners: EBAY_APP_ID, EBAY_CERT_ID, EBAY_REFRESH_TOKEN. Nie im Repo.
+// Write access to eBay (Trading API), only for titles and only after approval by an admin (see freigabe.mjs).
+// The credentials are only in the .env of the admin computer: EBAY_APP_ID, EBAY_CERT_ID, EBAY_REFRESH_TOKEN. Never in the repo.
 //
-// Sicherheitsschalter: Ohne EBAY_SCHREIBEN=an in der .env wird NICHTS bei eBay geändert. Dann läuft nur ein Probelauf
-// (lesen und prüfen, aber nicht schreiben).
-// Vor jeder Änderung wird der aktuelle Titel bei eBay gelesen. Weicht er vom erwarteten Titel ab (z. B. weil ihn jemand
-// von Hand geändert hat), wird nichts überschrieben.
+// Safety switch: without EBAY_SCHREIBEN=an in the .env NOTHING is changed on eBay. Then only a dry run happens
+// (read and check, but do not write).
+// Before every change the current title is read on eBay. If it differs from the expected title (e.g. because somebody
+// changed it by hand), nothing is overwritten.
 const ENDPUNKT = "https://api.ebay.com/ws/api.dll";
 const TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token";
 
@@ -15,7 +15,7 @@ const alle = (x, t) => [...x.matchAll(new RegExp(`<${t}(?:\\s[^>]*)?>([\\s\\S]*?
 
 export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date.now() } = {}) {
   const schreibenAn = () => String(env.EBAY_SCHREIBEN || "").trim().toLowerCase() === "an";
-  // Werbung und Preis kosten Geld bzw. Marge: je ein eigener Schalter zusätzlich zu EBAY_SCHREIBEN (Leiter, Stufe 2 und 3)
+  // Ads and price cost money or margin: each has its own switch in addition to EBAY_SCHREIBEN (ladder, steps 2 and 3)
   const werbungAn = () => String(env.EBAY_WERBUNG || "").trim().toLowerCase() === "an";
   const preisAn = () => String(env.EBAY_PREIS || "").trim().toLowerCase() === "an";
   const konfiguriert = () => !!(env.EBAY_APP_ID && env.EBAY_CERT_ID && env.EBAY_REFRESH_TOKEN);
@@ -48,7 +48,7 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { http: r.status, ack, fehler: fehlerListe, xml: x };
   }
 
-  // Liest Titel, Status, Verkäufe und Preis eines Angebots (nur lesen). Bei Varianten-Angeboten: Preis je Variante (SKU).
+  // Reads title, status, sales and price of a listing (read only). For variant listings: price per variant (SKU).
   async function lies(itemId) {
     const felder = ["Item.Title", "Item.SellingStatus.QuantitySold", "Item.SellingStatus.ListingStatus", "Item.StartPrice", "Item.Variations.Variation.SKU", "Item.Variations.Variation.StartPrice"];
     const r = await trading("GetItem", `<ItemID>${xmlText(itemId)}</ItemID>${felder.map((f) => `<OutputSelector>${f}</OutputSelector>`).join("")}`);
@@ -58,8 +58,8 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: true, titel: entities(tag(r.xml, "Title")), status: tag(r.xml, "ListingStatus"), verkauft: Number(tag(r.xml, "QuantitySold") || 0), preis: Number(tag(ohneVariationen, "StartPrice")) || null, variationen };
   }
 
-  // Setzt den Preis (Leiter, Stufe 3). skus leer = Angebot ohne Varianten; sonst bekommen alle Varianten denselben Preis.
-  // ReviseInventoryStatus nimmt höchstens 4 Einträge je Aufruf.
+  // Sets the price (ladder, step 3). skus empty = listing without variants; otherwise all variants get the same price.
+  // ReviseInventoryStatus accepts at most 4 entries per call.
   async function setzePreis(itemId, skus, preis) {
     if (!schreibenAn() || !preisAn()) return { ok: false, meldung: "Changing prices on eBay is switched off (EBAY_SCHREIBEN and EBAY_PREIS must be 'an')." };
     if (!(preis > 0)) return { ok: false, meldung: "Invalid price." };
@@ -74,7 +74,7 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: true, meldung: meldungen.join(" ") };
   }
 
-  // REST-Aufruf (Marketing-API) mit demselben Zugangstoken. Gibt { status, daten, ort } zurück.
+  // REST call (Marketing API) with the same access token. Returns { status, daten, ort }.
   async function rest(methode, pfad, body) {
     const iaf = await accessToken();
     const r = await fetchFn("https://api.ebay.com" + pfad, {
@@ -88,9 +88,9 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
   }
   const restFehler = (r) => (r.daten?.errors || []).map((e) => `[${e.errorId}] ${e.longMessage || e.message}`).join(" ") || "eBay answered with HTTP " + r.status;
 
-  // Schaltet Werbung für ein Angebot ein (Leiter, Stufe 2): eBay Promoted Listings Standard, Kosten nur bei Verkauf.
-  // Alle Angebote der Leiter liegen in einer eigenen Kampagne "Parture Ladder" (wird beim ersten Mal angelegt).
-  // Braucht beim eBay-Zugang zusätzlich die Berechtigung sell.marketing; fehlt sie, meldet eBay das und es wird nichts geändert.
+  // Switches on ads for a listing (ladder, step 2): eBay Promoted Listings Standard, cost only on a sale.
+  // All listings of the ladder are in a campaign of their own, "Parture Ladder" (created the first time).
+  // Needs the permission sell.marketing on the eBay access in addition; if it is missing, eBay says so and nothing is changed.
   const KAMPAGNE = "Parture Ladder";
   let kampagneId = env.EBAY_KAMPAGNE_ID || null;
   async function setzeWerbung(itemId, satz) {
@@ -113,9 +113,9 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: false, meldung: restFehler(r) };
   }
 
-  // Wird das Angebot schon beworben? Fragt eBay nach allen Kampagnen, in denen es steckt (auch fremde, z. B. die des Shops).
-  // Laufend oder geplant zählt als beworben; dann ist es für Phase 2 nicht berechtigt (Niko 20.11.). Nur lesen.
-  // Rückgabe { ok, beworben, kampagnen: [Name] } oder { ok: false, meldung } (dann darf Phase 2 nicht freigegeben werden).
+  // Is the listing already advertised? Asks eBay for all campaigns it is in (also foreign ones, e.g. the shop's own).
+  // Running or planned counts as advertised; then it is not eligible for phase 2 (Niko, 20 Nov). Read only.
+  // Returns { ok, beworben, kampagnen: [name] } or { ok: false, meldung } (then phase 2 must not be approved).
   async function istBeworben(itemId) {
     if (!konfiguriert()) return { ok: false, meldung: "This computer has no eBay credentials, so the ad status cannot be checked." };
     const r = await rest("GET", "/sell/marketing/v1/ad_campaign/find_campaign_by_ad_reference?listing_id=" + encodeURIComponent(String(itemId)));
@@ -125,8 +125,8 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: true, beworben: laufend.length > 0, kampagnen: laufend.map((c) => c.campaignName || c.campaignId) };
   }
 
-  // Alle Angebote, die gerade in einer laufenden oder geplanten Kampagne stecken: { ok, angebote: { listingId: Kampagne } }.
-  // Für die Anzeige im Funnel ("springt über Phase 2"); vor jedem Schritt prüft istBeworben das einzelne Angebot noch einmal.
+  // All listings that are in a running or planned campaign right now: { ok, angebote: { listingId: campaign } }.
+  // For the display in the funnel ("jumps over phase 2"); before every step istBeworben checks the single listing once more.
   async function beworbeneAngebote() {
     if (!konfiguriert()) return { ok: false, meldung: "This computer has no eBay credentials, so the ad status cannot be checked." };
     const k = await rest("GET", "/sell/marketing/v1/ad_campaign?campaign_status=RUNNING,SCHEDULED&limit=100");
@@ -143,7 +143,7 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: true, angebote };
   }
 
-  // Ändert den Titel. Gibt nie etwas anderes als { ok, ack, meldung } zurück.
+  // Changes the title. Never returns anything other than { ok, ack, meldung }.
   async function setzeTitel(itemId, titel) {
     if (!schreibenAn()) return { ok: false, ack: null, meldung: "Writing to eBay is switched off (EBAY_SCHREIBEN is not set to 'an')." };
     const r = await trading("ReviseFixedPriceItem", `<Item><ItemID>${xmlText(itemId)}</ItemID><Title>${xmlText(titel)}</Title></Item>`);

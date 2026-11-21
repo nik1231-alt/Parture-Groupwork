@@ -1,12 +1,12 @@
-// Bringt die Produkte aus pm.db und die Regeln zusammen: jedes Angebot bekommt Bereich, Empfehlung und Begründung.
+// Brings the products from pm.db and the rules together: every listing gets an area, a recommendation and a reason.
 import { bewerte, conversion, klickrate, leiteSchwellenAb, GRUPPEN, EINSTELLUNGEN } from "./regeln.mjs";
 
-// Alle Produkte mit Traffic-Summen. Die traffic-Tabelle ist optional (ältere pm.db hat sie nicht).
-// 90-Tage-Werte: Diagnose. 30-Tage-Werte: Ausgangs- und Endzahlen der Tests.
+// All products with traffic sums. The traffic table is optional (an older pm.db does not have it).
+// 90-day values: diagnosis. 30-day values: starting and final figures of the tests.
 export function ladeProdukte(db) {
   const hatTraffic = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='traffic'").get();
   const hatKanal = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='kanal'").get();
-  // Ohne nachweisbare eBay-Zuordnung keine Analyse; niemals auf kanalübergreifende Zahlen zurückfallen.
+  // Without a provable eBay assignment no analysis; never fall back to cross-channel figures.
   if (!hatKanal) return [];
   const spalten = new Set(db.prepare("PRAGMA table_info(kanal)").all().map((s) => s.name));
   const kanal = (spalte, funktion) => spalten.has(spalte)
@@ -18,13 +18,13 @@ export function ladeProdukte(db) {
     + (hatTraffic
       ? `${summe("aufrufe", 90)} AS aufrufe_90d, ${summe("impressionen", 90)} AS impressionen_90d, ${summe("aufrufe", 30)} AS aufrufe_30d, ${summe("impressionen", 30)} AS impressionen_30d, ${summe("transaktionen", 30)} AS transaktionen_30d `
       : "NULL AS aufrufe_90d, NULL AS impressionen_90d, NULL AS aufrufe_30d, NULL AS impressionen_30d, NULL AS transaktionen_30d ")
-    // ebay_aktiv: hat das Produkt ein laufendes eBay-Angebot mit Nummer? Nur solche können einen neuen Titel bekommen (siehe kandidaten)
+    // ebay_aktiv: does the product have a running eBay listing with a number? Only those can get a new title (see kandidaten)
     + (hatKanal ? ", EXISTS (SELECT 1 FROM kanal k WHERE k.number = p.number AND k.channel = 'ebay' AND k.listed = 1 AND k.external_id IS NOT NULL) AS ebay_aktiv " : ", NULL AS ebay_aktiv ")
     + "FROM produkt p WHERE EXISTS (SELECT 1 FROM kanal k WHERE k.number = p.number AND k.channel = 'ebay')";
   return db.prepare(sql).all();
 }
 
-// EXISTS vermeidet doppelte Traffic-Summen bei mehrfachen Kanalzeilen. Fremde/unbekannte IDs zählen nie.
+// EXISTS avoids doubled traffic sums for multiple channel rows. Foreign/unknown ids never count.
 export function ebayTrafficFilter(db) {
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='kanal'").get()) return "0";
   return "EXISTS (SELECT 1 FROM kanal k WHERE k.channel = 'ebay' AND k.number = t.number AND k.external_id = t.item_id AND k.external_id IS NOT NULL AND k.external_id != '')";
@@ -36,10 +36,10 @@ export function ladeImpressionenProTag(db, nummer, von, bis) {
   return (db.prepare(`SELECT SUM(t.impressionen) s FROM traffic_tag t WHERE t.number = ? AND t.datum > ? AND t.datum <= ? AND ${ebayTrafficFilter(db)}`).get(nummer, von, bis).s || 0) / tage;
 }
 
-// Sperrliste aus pm.db (Tabelle "sperre", vom Hub: Angebote eines laufenden Preisversuchs). Die Tabelle ist optional: fehlt sie
-// (ältere pm.db, Team-Kopie), ist nichts gesperrt. Eine Zeile sperrt über die Produktnummer (sperre.number) oder über die
-// eBay-Artikelnummer (sperre.external_id, über die Tabelle kanal auf die Produktnummer abgebildet). Liefert [{ number, bis }];
-// ob "bis" schon vorbei ist, entscheidet experimente.gesperrteNummern.
+// Block list from pm.db (table "sperre", from the hub: listings of a running price experiment). The table is optional: if it is missing
+// (older pm.db, team copy), nothing is blocked. A row blocks through the product number (sperre.number) or through the
+// eBay item number (sperre.external_id, mapped to the product number through the table kanal). Returns [{ number, bis }];
+// whether "bis" is already over is decided by experimente.gesperrteNummern.
 export function ladeSperre(db) {
   const hat = (t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
   if (!hat("sperre")) return [];
@@ -48,9 +48,9 @@ export function ladeSperre(db) {
   return [...direkt, ...ueberEbay];
 }
 
-// einst: die gespeicherten Einstellungen. imTest: Map(number -> { id, gruppe, status }) aus experimente.imTest.
+// einst: the saved settings. imTest: Map(number -> { id, gruppe, status }) from experimente.imTest.
 export function baueBewertung(produkte, einst = EINSTELLUNGEN, jetzt = new Date(), imTest = new Map()) {
-  const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt); // die Grenze "wenig Impressionen" kommt aus den Daten bzw. der Einstellung
+  const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt); // the limit "low impressions" comes from the data or the setting
   const uebersicht = Object.fromEntries(Object.keys(GRUPPEN).map((k) => [k, 0]));
   const liste = produkte.map((p) => {
     const b = bewerte(p, abgeleitet, jetzt);

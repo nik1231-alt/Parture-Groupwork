@@ -1,21 +1,21 @@
-// Die Leiter: Angebote mit wenig Impressionen gehen Stufe für Stufe durch drei Hebel, bis sie wieder gesehen werden.
+// The ladder: listings with low impressions go step by step through three levers until they are seen again.
 //
-//   Diagnose "Low impressions"  ->  1 Titel (KI-Vorschlag, Regelprüfer, Freigabe)
-//                                    nach der Prüfzeit wieder genug Impressionen?  ja -> raus (erholt)
-//                               ->  2 Werbung (eBay Promoted Listings, Standard-Satz 10 %)     ja -> raus
-//                               ->  3 Preis (ein Schritt nach unten, Standard 10 %)            ja -> raus
-//                               ->  4 Manuelle Prüfung: Admin entscheidet überarbeiten / offline nehmen / behalten
+//   Diagnosis "Low impressions"  ->  1 Title (AI suggestion, rule checker, approval)
+//                                    enough impressions again after the waiting time?  yes -> out (recovered)
+//                               ->  2 Ads (eBay Promoted Listings, default rate 10 %)     yes -> out
+//                               ->  3 Price (one step down, default 10 %)                 yes -> out
+//                               ->  4 Manual check: the admin decides rework / take offline / keep
 //
-// "Wieder genug Impressionen" heißt: die Impressionen je Tag während der Prüfzeit, hochgerechnet auf 90 Tage, liegen nicht mehr
-// unter der Grenze der Diagnose (unteres Viertel des Shops). Die Grenze wandert mit dem Shop mit; wird es im ganzen Shop ruhiger
-// (Saison), sinkt sie, und ein Angebot gilt nicht fälschlich als gescheitert.
-// Jede Stufe ändert bei eBay erst nach Freigabe durch einen Admin. Was die Stufen bei eBay tun, steht in fuehreAus (unten).
-// Jede Funktion liefert { ok, wert } oder { ok: false, status, fehler }, wie die anderen Module.
+// "Enough impressions again" means: the impressions per day during the waiting time, scaled up to 90 days, are no longer
+// below the diagnosis limit (lowest quarter of the shop). The limit moves with the shop; if the whole shop gets quieter
+// (season) it falls, and a listing is not wrongly counted as failed.
+// Every step changes eBay only after approval by an admin. What the steps do on eBay is in fuehreAus (below).
+// Every function returns { ok, wert } or { ok: false, status, fehler }, like the other modules.
 //
-// Kontrollgruppe (läuft immer mit, keine eigene Seite): Der tägliche Lauf zieht doppelt so viele Kandidaten, wie Plätze frei sind,
-// und lost sie je zur Hälfte auf die Leiter und in die Kontrollgruppe. Kontrollangebote bleiben bei eBay unverändert, so lange wie
-// die drei Prüfzeiten zusammen dauern. Bei jeder Auswertung einer Stufe misst die App dieselben Tage an der Kontrollgruppe: Steigt
-// der ganze Shop (Saison), steigt die Kontrolle mit, und der Nettoeffekt zeigt, was die Stufe selbst gebracht hat.
+// Control group (always runs along, no page of its own): the daily run draws twice as many candidates as there are free places,
+// and splits them half and half onto the ladder and into the control group. Control listings stay unchanged on eBay for as long as
+// the three waiting times take together. At every evaluation of a step the app measures the same days on the control group: if
+// the whole shop rises (season), the control rises with it, and the net effect shows what the step itself brought.
 import crypto from "node:crypto";
 import { bewerte, leiteSchwellenAb, EINSTELLUNGEN } from "./regeln.mjs";
 import { ziehe } from "./experimente.mjs";
@@ -27,9 +27,9 @@ export const STUFEN = ["titel", "werbung", "preis", "pruefung"];
 export const KONTROLLE = "kontrolle";
 export const kontrollTage = (einst = EINSTELLUNGEN) => einst.leiterTageTitel + einst.leiterTageWerbung + einst.leiterTagePreis;
 export const ENTSCHEIDUNGEN = ["ueberarbeiten", "offline", "behalten"];
-// Nach so vielen Tagen darf ein Angebot, das die Leiter verlassen hat, wieder hinein (wenn es wieder wenig Impressionen hat)
+// After so many days a listing that has left the ladder may come back in (if it has low impressions again)
 export const WIEDER_NACH_TAGEN = 90;
-const BASIS_TAGE = 30; // Vergleichswert: Impressionen je Tag in den 30 Tagen vor dem Start einer Stufe
+const BASIS_TAGE = 30; // Comparison value: impressions per day in the 30 days before the start of a step
 
 const fehler = (status, text) => ({ ok: false, status, fehler: text });
 const ok = (wert) => ({ ok: true, wert });
@@ -44,12 +44,12 @@ export function bereiteVor(db) {
     CREATE TABLE IF NOT EXISTS leiter (
       number TEXT PRIMARY KEY,
       stufe TEXT NOT NULL,                  -- titel | werbung | preis | pruefung | kontrolle | raus
-      phase TEXT NOT NULL,                  -- vorschlag (wartet auf Freigabe) | laeuft (Prüfzeit) | offen (manuelle Prüfung) | kontrolle | fertig
-      ergebnis TEXT,                        -- bei raus: erholt | ueberarbeiten | offline | behalten | abgebrochen | kontrolle (Kontrollzeit vorbei)
+      phase TEXT NOT NULL,                  -- vorschlag (waiting for approval) | laeuft (waiting time) | offen (manual check) | kontrolle | fertig
+      ergebnis TEXT,                        -- on raus: erholt | ueberarbeiten | offline | behalten | abgebrochen | kontrolle (control time over)
       eingestiegen_at TEXT NOT NULL,
-      stufe_start TEXT,                     -- Tag (JJJJ-MM-TT), an dem die Maßnahme der laufenden Stufe bei eBay live ging
-      basis_imp_tag REAL,                   -- Impressionen je Tag in den 30 Tagen vor diesem Tag
-      vorschlag TEXT,                       -- JSON: was die Stufe bei eBay ändern soll
+      stufe_start TEXT,                     -- day (YYYY-MM-DD) on which the measure of the running step went live on eBay
+      basis_imp_tag REAL,                   -- impressions per day in the 30 days before this day
+      vorschlag TEXT,                       -- JSON: what the step should change on eBay
       aktualisiert_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS leiter_verlauf (
@@ -73,11 +73,11 @@ function setze(db, number, felder, jetzt) {
     .run(...k.map((x) => (x === "vorschlag" && felder[x] != null ? JSON.stringify(felder[x]) : felder[x])), jetzt.toISOString(), number);
 }
 
-// Nummern, die gerade auf der Leiter stehen: die dürfen in keinen Titeltest (und umgekehrt), sonst misst man zwei Dinge auf einmal.
+// Numbers that are on the ladder right now: they must not go into any title test (and vice versa), otherwise two things are measured at once.
 export const aktiveNummern = (db) => new Set(db.prepare("SELECT number FROM leiter WHERE stufe != 'raus'").all().map((r) => r.number));
 
-// Wer kommt neu auf die Leiter? Diagnose "Low impressions", laufendes eBay-Angebot, nicht gesperrt, in keinem Test, nicht schon drauf
-// (oder vor weniger als 90 Tagen ausgestiegen). Bewährte Angebote zuerst (mehr Verkäufe insgesamt), dann nach Nummer.
+// Who newly comes onto the ladder? Diagnosis "Low impressions", a running eBay listing, not blocked, in no test, not already on it
+// (or left less than 90 days ago). Proven listings first (more sales in total), then by number.
 export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), { imTest = new Map(), gesperrt = new Set() } = {}) {
   const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt);
   const grenze = tag(new Date(jetzt.getTime() - WIEDER_NACH_TAGEN * 864e5));
@@ -86,15 +86,15 @@ export function kandidaten(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date
     .filter((p) => p.ebay_aktiv !== 0 && !belegt.has(p.number) && !imTest.has(p.number) && !gesperrt.has(p.number) && bewerte(p, abgeleitet, jetzt).gruppe === "sichtbarkeit" && !schonVerkauft(p, einst))
     .sort((a, b) => (Number(b.units_total) || 0) - (Number(a.units_total) || 0) || (Number(b.impressionen_90d) || 0) - (Number(a.impressionen_90d) || 0) || (a.number < b.number ? -1 : a.number > b.number ? 1 : 0));
 }
-// Niko 20.11.: Angebote, die bei eBay schon verkauft haben, werden nicht angefasst; es gibt genug, die nie verkauft haben.
-// Einstellung leiterNurOhneVerkauf ("ja" Standard / "nein"). units_total ist seit #44/#45 nur eBay.
+// Niko, 20 Nov: listings that have already sold on eBay are not touched; there are enough that never sold.
+// Setting leiterNurOhneVerkauf ("ja" default / "nein"). units_total has been eBay only since #44/#45.
 export const schonVerkauft = (p, einst = EINSTELLUNGEN) => einst.leiterNurOhneVerkauf !== "nein" && (Number(p.units_total) || 0) > 0;
 
-// Nimmt neue Angebote auf, bis höchstens einst.leiterMax gleichzeitig auf der Leiter stehen. Gibt die neuen Nummern zurück.
-// Mit Kontrollgruppe (einst.leiterKontrolle): die nächsten 2 × frei Kandidaten werden per Los geteilt (ziehe aus experimente.mjs,
-// gleicher seed = gleiche Ziehung, der seed steht im Lebenslauf). Gibt die Nummern zurück, die auf die Leiter kamen.
-// Von Hand (Knopf "Draw listings by lot", Niko 20.11.): optionen.anzahl = so viele auf die Leiter, ohne Obergrenze;
-// optionen.kontrolle = true/false entscheidet je Ziehung, ob genauso viele in die Kontrollgruppe gelost werden.
+// Takes in new listings until at most einst.leiterMax are on the ladder at the same time. Returns the new numbers.
+// With a control group (einst.leiterKontrolle): the next 2 × free candidates are split by lot (ziehe from experimente.mjs,
+// same seed = same draw, the seed is in the history). Returns the numbers that came onto the ladder.
+// By hand (button "Draw listings by lot", Niko, 20 Nov): optionen.anzahl = so many onto the ladder, without an upper limit;
+// optionen.kontrolle = true/false decides per draw whether the same number is also drawn into the control group.
 export function nimmAuf(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), optionen = {}) {
   const frei = optionen.anzahl != null ? Math.max(0, Math.floor(optionen.anzahl)) : Math.max(0, einst.leiterMax - aufLeiter(db));
   const mitKontrolle = optionen.kontrolle ?? einst.leiterKontrolle;
@@ -123,12 +123,12 @@ function trageEin(db, number, details, benutzer, jetzt, stufe = "titel") {
   verlauf(db, number, stufe, stufe === KONTROLLE ? "kontrolle" : "aufgenommen", details, benutzer, jetzt);
 }
 
-// Kontrollangebote, deren Kontrollzeit die Tage von..bis ganz abdeckt: die Vergleichsgruppe für eine Stufe mit diesem Zeitfenster
+// Control listings whose control time fully covers the days von..bis: the comparison group for a step with this time window
 function kontrollGruppe(db, von, bis, einst) {
   return db.prepare("SELECT number, stufe_start FROM leiter WHERE (stufe = 'kontrolle' OR ergebnis = 'kontrolle') AND stufe_start IS NOT NULL").all()
     .filter((z) => z.stufe_start <= von && plusTage(z.stufe_start, kontrollTage(einst)) >= bis).map((z) => z.number);
 }
-// Impressionen je Tag der Kontrollgruppe vor (30 Tage) und während eines Zeitfensters, als Summe der Gruppe
+// Impressions per day of the control group before (30 days) and during a time window, as the sum of the group
 function kontrollVergleich(db, impTag, von, bis, einst) {
   const nr = kontrollGruppe(db, von, bis, einst);
   if (!nr.length) return null;
@@ -137,8 +137,8 @@ function kontrollVergleich(db, impTag, von, bis, einst) {
   return { anzahl: nr.length, vorher90: Math.round(vorher * 90), nachher90: Math.round(nachher * 90) };
 }
 
-// Admin wählt ein bestimmtes Angebot aus den Kandidaten (Auswahlliste auf der Seite Ladder) und setzt es sofort auf die Leiter,
-// auch über die Höchstzahl hinaus: für einen gezielten Test oder die Vorführung. Es gelten dieselben Bedingungen wie beim Lauf.
+// An admin picks a specific listing from the candidates (selection list on the page Ladder) and puts it onto the ladder at once,
+// even beyond the maximum: for a targeted test or the demo. The same conditions apply as for the run.
 export function nimmVonHandAuf(db, nutzer, number, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), optionen = {}) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can put a listing on the ladder.");
   const nr = String(number ?? "");
@@ -149,11 +149,11 @@ export function nimmVonHandAuf(db, nutzer, number, produkte, einst = EINSTELLUNG
   return ok({ number: nr });
 }
 
-// Angebote in Stufe 1 ohne Vorschlag (die KI wird danach gefragt, siehe server.mjs)
+// Listings in step 1 without a suggestion (the AI is asked for one afterwards, see server.mjs)
 export const ohneTitelVorschlag = (db) => db.prepare("SELECT number FROM leiter WHERE stufe = 'titel' AND phase = 'vorschlag' AND vorschlag IS NULL").all().map((r) => r.number);
 
-// Vorschlag für Werbung und Preis: ergibt sich aus den Einstellungen und dem Angebot. kanaele: aktive eBay-Angebote der Nummer.
-// Den Preis senkt die App nur, wenn alle Varianten denselben Preis haben (sonst würde ein Schritt die Preisstaffel zerstören).
+// Suggestion for ads and price: follows from the settings and the listing. kanaele: active eBay listings of the number.
+// The app lowers the price only if all variants have the same price (otherwise one step would destroy the price scale).
 export function baueVorschlag(stufe, einst, { kanaele = [], varianten = [] } = {}) {
   if (stufe === "werbung") return { satz: einst.werbesatz };
   if (stufe === "preis") {
@@ -173,7 +173,7 @@ function inPhase(db, number, stufen, phase) {
   return { z };
 }
 
-// Setzt den Titelvorschlag (aus der KI, der Titelhilfe oder von Hand). Der Regelprüfer muss vorher bestanden sein (siehe server.mjs).
+// Sets the title suggestion (from the AI, the title help or by hand). The rule checker must have passed before (see server.mjs).
 export function setzeTitelVorschlag(db, nutzer, number, vorschlag, jetzt = new Date()) {
   const { z, f } = inPhase(db, number, ["titel"], "vorschlag"); if (f) return f;
   if (!vorschlag?.pruefung?.ok) return fehler(400, "This title did not pass the rule check: " + (vorschlag?.pruefung?.verstoesse || []).map((v) => v.text).join(" "));
@@ -182,16 +182,16 @@ export function setzeTitelVorschlag(db, nutzer, number, vorschlag, jetzt = new D
   return ok({ number: z.number });
 }
 
-// Kein Vorschlag möglich (KI nicht erreichbar, alle Vorschläge am Regelprüfer gescheitert): steht im Lebenslauf, der Vorschlag bleibt leer
-// und wird beim nächsten Lauf erneut versucht. Gleiche Meldung zweimal hintereinander wird nur einmal festgehalten.
+// No suggestion possible (AI not reachable, all suggestions failed at the rule checker): it is noted in the history, the suggestion stays empty
+// and is tried again at the next run. The same message twice in a row is recorded only once.
 export function merkeFehlschlag(db, number, text, verworfen = [], jetzt = new Date()) {
   const letzte = db.prepare("SELECT ereignis, details FROM leiter_verlauf WHERE number = ? ORDER BY id DESC LIMIT 1").get(String(number));
   if (letzte?.ereignis === "kein_vorschlag" && json(letzte.details)?.text === text) return;
   verlauf(db, String(number), "titel", "kein_vorschlag", { text, verworfen: (verworfen || []).slice(0, 5) }, "system", jetzt);
 }
 
-// Was die Stufe bei eBay tut. items: aktive eBay-Angebote der Nummer [{ external_id, title, skus }]. schreiber: ebay-schreiben.mjs.
-// Rückgabe: { ausgang: "angewendet" | "probelauf" | "fehlgeschlagen", text }. Vor jeder Änderung wird gelesen; weicht etwas ab, passiert nichts.
+// What the step does on eBay. items: active eBay listings of the number [{ external_id, title, skus }]. schreiber: ebay-schreiben.mjs.
+// Return: { ausgang: "angewendet" | "probelauf" | "fehlgeschlagen", text }. Before every change it reads; if anything differs, nothing happens.
 export async function fuehreAus(stufe, v, items, schreiber) {
   if (!items.length) return { ausgang: "fehlgeschlagen", text: "No active eBay listing found for this product." };
   const schalter = stufe === "titel" ? schreiber.schreibenAn() : stufe === "werbung" ? schreiber.schreibenAn() && schreiber.werbungAn() : schreiber.schreibenAn() && schreiber.preisAn();
@@ -212,7 +212,7 @@ export async function fuehreAus(stufe, v, items, schreiber) {
       : stufe === "werbung" ? await schreiber.setzeWerbung(String(it.external_id), v.satz)
       : await schreiber.setzePreis(String(it.external_id), g.variationen?.map((x) => x.sku) || [], v.neu);
     if (!r.ok) return { ausgang: "fehlgeschlagen", text: "eBay refused the change: " + r.meldung };
-    // Nachlesen: steht bei eBay jetzt wirklich der neue Titel / Preis? (Beleg für die Vorführung und den Lebenslauf)
+    // Read back: does eBay now really show the new title / price? (Proof for the demo and the history)
     let nachher = "";
     if (stufe !== "werbung" && typeof schreiber.lies === "function") {
       const n = await schreiber.lies(String(it.external_id));
@@ -224,14 +224,14 @@ export async function fuehreAus(stufe, v, items, schreiber) {
 }
 const norm = (s) => String(s ?? "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
-// Admin gibt die laufende Stufe frei: die App ändert bei eBay, danach läuft die Prüfzeit. impTag(number, von, bis): Impressionen je Tag.
+// An admin approves the running step: the app changes eBay, after that the waiting time runs. impTag(number, von, bis): impressions per day.
 export async function gibFrei(db, nutzer, number, { items, schreiber, impTag }, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can approve a ladder step.");
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "vorschlag"); if (f) return f;
   const v = json(z.vorschlag);
   if (!v || v.nichtMoeglich) return fehler(409, v?.nichtMoeglich || "There is no suggestion to approve yet.");
-  // Den Titel unmittelbar vor dem Schreiben noch einmal prüfen: Regeln werden schärfer (20.11.: Marke vor "passend für"),
-  // ein früher gespeicherter Vorschlag darf dann nicht mehr durchrutschen.
+  // Check the title once more right before writing: rules get stricter (20 Nov: brand before "passend für"),
+  // an earlier saved suggestion must then no longer slip through.
   if (z.stufe === "titel") {
     const p = pruefeTitel(v.titel, v.alt);
     if (!p.ok) return fehler(409, "This title breaks a rule that was tightened after it was suggested: " + p.verstoesse.map((x) => x.text).join(" ") + " Ask the AI again or enter a title by hand.");
@@ -245,7 +245,7 @@ export async function gibFrei(db, nutzer, number, { items, schreiber, impTag }, 
   return ok({ number: z.number, ausgang: r.ausgang, text: r.text });
 }
 
-// Admin: die Maßnahme wurde von Hand bei eBay gemacht (oder soll ohne eBay-Änderung als gestartet gelten, z. B. im Probelauf).
+// Admin: the measure was done by hand on eBay (or should count as started without an eBay change, e.g. in a dry run).
 export function starteVonHand(db, nutzer, number, { impTag }, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can start a ladder step.");
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "vorschlag"); if (f) return f;
@@ -262,7 +262,7 @@ function starte(db, z, impTag, nutzer, jetzt, vonHand = false) {
   verlauf(db, z.number, z.stufe, "gestartet", { basis_imp_tag: basis, vonHand }, nutzer.name, jetzt);
 }
 
-// Admin überspringt die laufende Stufe (z. B. keine Werbung für dieses Angebot): weiter zur nächsten, ohne eBay-Änderung.
+// An admin skips the running step (e.g. no ads for this listing): on to the next one, without an eBay change.
 export function ueberspringe(db, nutzer, number, grund, einst = EINSTELLUNGEN, kontext = {}, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can skip a ladder step.");
   const { z, f } = inPhase(db, number, ["titel", "werbung", "preis"], "vorschlag"); if (f) return f;
@@ -280,9 +280,9 @@ function weiter(db, z, einst, kontext, jetzt) {
   verlauf(db, z.number, n, n === "pruefung" ? "pruefung" : "vorschlag", null, "system", jetzt);
 }
 
-// Täglicher Schritt: jede Stufe, deren Prüfzeit vollständig in den Daten liegt, wird ausgewertet.
-// trafficBis: letzter Tag mit fertigen Traffic-Daten. grenze90: die Grenze der Diagnose (Impressionen in 90 Tagen).
-// nurKontrolle: Stufen nicht bewerten (Bewegung von Hand), nur Kontrollangebote freigeben, deren Zeit um ist.
+// Daily step: every step whose waiting time lies completely inside the data is evaluated.
+// trafficBis: last day with finished traffic data. grenze90: the diagnosis limit (impressions in 90 days).
+// nurKontrolle: do not evaluate steps (movement by hand), only release control listings whose time is over.
 export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN, fuer = null, nurKontrolle = false }, jetzt = new Date()) {
   const ergebnisse = [];
   if (!trafficBis) return ergebnisse;
@@ -294,7 +294,7 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
     const hoch90 = Math.round(jeTag * 90);
     const erholt = hoch90 >= grenze90;
     const vorher90 = Math.round((z.basis_imp_tag ?? 0) * 90);
-    // Dieselben Tage an der Kontrollgruppe: Nettoeffekt = (Angebot nachher/vorher) / (Kontrolle nachher/vorher) − 1
+    // The same days on the control group: net effect = (listing after/before) / (control after/before) − 1
     const kontrolle = kontrollVergleich(db, impTag, z.stufe_start, ende, einst);
     const nettoEffekt = kontrolle ? netto({ vorher: vorher90, nachher: hoch90 }, { vorher: kontrolle.vorher90, nachher: kontrolle.nachher90 }) : null;
     const details = { tage, vorher90, nachher90: hoch90, grenze90: Math.round(grenze90), erholt, kontrolle, netto: nettoEffekt };
@@ -305,7 +305,7 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
     })();
     ergebnisse.push({ number: z.number, stufe: z.stufe, ...details });
   }
-  // Kontrollzeit vorbei (alle drei Prüfzeiten): das Angebot ist frei und darf nach 90 Tagen wieder aufgenommen werden
+  // Control time over (all three waiting times): the listing is free and may be taken in again after 90 days
   for (const z of db.prepare("SELECT * FROM leiter WHERE stufe = 'kontrolle' AND stufe_start IS NOT NULL").all()) {
     if (trafficBis < plusTage(z.stufe_start, kontrollTage(einst))) continue;
     db.transaction(() => {
@@ -316,8 +316,8 @@ export function werteAus(db, { impTag, trafficBis, grenze90, einst = EINSTELLUNG
   return ergebnisse;
 }
 
-// Wirkung je Stufe gegen die Kontrollgruppe: alle Auswertungen dieser Stufe zusammen (Summe vorher/nachher der Angebote und der
-// jeweils gleichzeitigen Kontrollgruppe). Ohne Kontrollgruppe zählt die Auswertung nur bei "wieder gesehen", nicht im Nettoeffekt.
+// Effect per step against the control group: all evaluations of this step together (sum before/after of the listings and of the
+// control group at the same time). Without a control group the evaluation counts only for "seen again", not in the net effect.
 export function wirkung(db) {
   const aus = {};
   for (const s of ["titel", "werbung", "preis"]) aus[s] = { ausgewertet: 0, erholt: 0, mitKontrolle: 0, vorher90: 0, nachher90: 0, kontrolleVorher90: 0, kontrolleNachher90: 0, netto: null };
@@ -332,10 +332,10 @@ export function wirkung(db) {
   return aus;
 }
 
-// Der Funnel: wo steht jedes Produkt und warum. Die Prüfung läuft in derselben Reihenfolge wie die Aufnahme (kandidaten oben),
-// so dass "eligible" hier genau die Angebote sind, die der nächste Lauf nehmen würde.
+// The funnel: where is every product and why. The check runs in the same order as the intake (kandidaten above),
+// so that "eligible" here is exactly the listings that the next run would take.
 //   status: nicht_geeignet | geeignet | kontrolle | titel | werbung | preis | pruefung | erholt | raus
-//   art (nur bei nicht_geeignet): kein_ebay | gesperrt | im_test | pause | genug | neu | verkauft
+//   art (only for nicht_geeignet): kein_ebay | gesperrt | im_test | pause | genug | neu | verkauft
 export const STATUS = ["nicht_geeignet", "geeignet", KONTROLLE, ...STUFEN, "erholt", "raus"];
 export function trichter(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date(), { imTest = new Map(), gesperrt = new Set() } = {}) {
   const abgeleitet = leiteSchwellenAb(produkte, einst, jetzt);
@@ -372,11 +372,11 @@ export function trichter(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date()
 const PHASE_GRUND = { vorschlag: "A suggestion is ready and waits for an admin's approval.", laeuft: "The change is live on eBay; the waiting time is running.", offen: "Title, ads and price did not help; an admin decides what happens." };
 const ERGEBNIS_GRUND = { ueberarbeiten: "Decided after the manual check: rework the listing", offline: "Decided after the manual check: take it offline", behalten: "Decided after the manual check: keep it as it is", abgebrochen: "Taken off the ladder by an admin", kontrolle: "Was in the control group" };
 
-// Admin entscheidet nach der manuellen Prüfung. Die App ändert dabei nichts bei eBay: "offline" ist ein Auftrag an den Admin.
-// Bewegung von Hand (Niko 20.11.: Produkte wandern nur per Knopf): ein Admin schiebt ein Angebot aus der laufenden Prüfzeit
-// in die nächste Phase (ziel "weiter") oder nimmt es als wieder gesehen von der Leiter (ziel "erholt"). Gemessen wird wie im
-// automatischen Lauf, nur über die Tage, die bis jetzt in den Daten liegen; die Messung steht als "ausgewertet" im Lebenslauf
-// (mit vonHand), damit die Wirkung je Phase weiter gegen die Kontrollgruppe gerechnet wird.
+// An admin decides after the manual check. The app changes nothing on eBay here: "offline" is a task for the admin.
+// Movement by hand (Niko, 20 Nov: products move only by button): an admin pushes a listing out of the running waiting time
+// into the next phase (ziel "weiter") or takes it off the ladder as seen again (ziel "erholt"). It is measured as in the
+// automatic run, only over the days that are in the data so far; the measurement is in the history as "ausgewertet"
+// (with vonHand), so that the effect per phase continues to be calculated against the control group.
 export function schiebeVonHand(db, nutzer, number, ziel, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN, fuer = null }, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can move a listing in the funnel.");
   if (!["weiter", "erholt"].includes(ziel)) return fehler(400, "Unknown move.");
@@ -410,11 +410,11 @@ export function entscheide(db, nutzer, number, entscheidung, notiz, jetzt = new 
   return ok({ number: z.number, entscheidung });
 }
 
-// Wurde für dieses Angebot seit dem Einstieg bei eBay etwas geändert (freigegeben oder "Done by hand")?
+// Was something changed on eBay for this listing since it came onto the ladder (approved or "Done by hand")?
 const geaendert = (db, z) => !!db.prepare("SELECT 1 FROM leiter_verlauf WHERE number = ? AND at >= ? AND ereignis IN ('freigegeben', 'gestartet') LIMIT 1").get(z.number, z.eingestiegen_at);
 
-// Admin nimmt ein Angebot von der Leiter. Wurde bei eBay noch nichts geändert, ist es sofort wieder "Eligible" (keine 90 Tage
-// Pause: es gibt nichts abzuwarten; Niko 20.11.). Sonst bleiben die Änderungen bei eBay, und die Pause gilt wie bisher.
+// An admin takes a listing off the ladder. If nothing has been changed on eBay yet, it is immediately "Eligible" again (no 90 days
+// pause: there is nothing to wait for; Niko, 20 Nov). Otherwise the changes stay on eBay, and the pause applies as before.
 export function brichAb(db, nutzer, number, grund, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can take a listing off the ladder.");
   const z = lade(db, String(number ?? ""));
@@ -430,8 +430,8 @@ export function brichAb(db, nutzer, number, grund, jetzt = new Date()) {
   return ok({ number: z.number, pause: !ohnePause });
 }
 
-// "Start over": alles, was bei eBay noch nicht geändert wurde, zurück zu "Eligible" (auch die Kontrollgruppe). Angebote mit
-// einer Änderung bei eBay bleiben, weil ihre Messung läuft.
+// "Start over": everything that has not been changed on eBay yet goes back to "Eligible" (the control group too). Listings with
+// a change on eBay stay, because their measurement is running.
 export function setzeZurueck(db, nutzer, grund, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can start the ladder over.");
   const g = String(grund ?? "").replace(/\s+/g, " ").trim().slice(0, 200) || "Start over";
@@ -444,9 +444,9 @@ export function setzeZurueck(db, nutzer, grund, jetzt = new Date()) {
   return ok({ zurueckgesetzt: weg.length, behalten: zeilen.length - weg.length });
 }
 
-// Schon bei eBay verkaufte Angebote, die vor der Regel leiterNurOhneVerkauf auf die Leiter kamen (Niko 20.11.: "wieso ist das
-// Produkt im Funnel, wenn wir es schon verkauft haben"), gehen wieder runter — aber nur, solange bei eBay nichts geändert wurde.
-// Gilt für Phase und Kontrolle gleich, sonst stünden in der Kontrollgruppe verkaufte gegen nie verkaufte Angebote.
+// Listings already sold on eBay that came onto the ladder before the rule leiterNurOhneVerkauf (Niko, 20 Nov: "why is this
+// product in the funnel if we have already sold it"), come off again — but only as long as nothing has been changed on eBay.
+// Applies to phase and control alike, otherwise the control group would hold sold against never-sold listings.
 export function raeumeVerkaufteAb(db, produkte, einst = EINSTELLUNGEN, jetzt = new Date()) {
   if (einst.leiterNurOhneVerkauf === "nein") return [];
   const nach = new Map(produkte.map((p) => [p.number, p]));
@@ -462,8 +462,8 @@ export function raeumeVerkaufteAb(db, produkte, einst = EINSTELLUNGEN, jetzt = n
   return weg.map((z) => z.number);
 }
 
-// Angebote, die bei eBay schon beworben werden, sind für Phase 2 nicht berechtigt (Niko 20.11.) und springen direkt in die
-// Preisstufe. info: { kampagnen: [Name] } aus ebay-schreiben.istBeworben. Ändert nichts bei eBay.
+// Listings that are already advertised on eBay are not eligible for phase 2 (Niko, 20 Nov) and jump straight to the
+// price step. info: { kampagnen: [name] } from ebay-schreiben.istBeworben. Changes nothing on eBay.
 export function springeUeberWerbung(db, number, info, einst = EINSTELLUNGEN, kontext = {}, jetzt = new Date()) {
   const { z, f } = inPhase(db, number, ["werbung"], "vorschlag"); if (f) return f;
   const kampagnen = (info?.kampagnen || []).slice(0, 5);
@@ -472,7 +472,7 @@ export function springeUeberWerbung(db, number, info, einst = EINSTELLUNGEN, kon
   return ok({ number: z.number, stufe: "preis" });
 }
 
-// Alles für die Oberfläche: Zahl je Stufe, jedes Angebot mit Stand, Zwischenstand der Prüfzeit und Lebenslauf.
+// Everything for the interface: count per step, every listing with its state, interim state of the waiting time and history.
 export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst = EINSTELLUNGEN }, jetzt = new Date()) {
   const p = new Map(produkte.map((x) => [x.number, x]));
   const verlaeufe = new Map();
@@ -487,7 +487,7 @@ export function uebersicht(db, produkte, { impTag, trafficBis, grenze90, einst =
       const bis = trafficBis && trafficBis < ende ? trafficBis : ende;
       const gelaufen = trafficBis ? Math.max(0, Math.round((Date.parse(bis) - Date.parse(z.stufe_start)) / 864e5)) : 0;
       stand = { tage, gelaufen, ende, jetzt90: gelaufen > 0 ? Math.round(impTag(z.number, z.stufe_start, bis) * 90) : null, vorher90: Math.round((z.basis_imp_tag ?? 0) * 90) };
-      // Zwischenstand gegen die Kontrollgruppe über dieselben Tage: Grundlage für "Next phase" / "Seen again" von Hand
+      // Interim state against the control group over the same days: basis for "Next phase" / "Seen again" by hand
       const k = gelaufen > 0 ? kontrollVergleich(db, impTag, z.stufe_start, bis, einst) : null;
       stand.kontrolle = k;
       stand.netto = k && stand.jetzt90 != null ? netto({ vorher: stand.vorher90, nachher: stand.jetzt90 }, { vorher: k.vorher90, nachher: k.nachher90 }) : null;

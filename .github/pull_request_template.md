@@ -1,20 +1,20 @@
-## Was
+## What
 
-<!-- Ein bis drei Sätze: was ändert sich, für wen sichtbar? -->
+<!-- One to three sentences: what changes, and who can see it? -->
 
-## Warum
+## Why
 
-<!-- Welches Problem, welcher Checklisten-Punkt (z. B. A3.2), welches Issue (closes #12)? -->
+<!-- Which problem, which checklist item (e.g. A3.2), which issue (closes #12)? -->
 
-## Wie getestet
+## How it was tested
 
-- [ ] `npm test` grün (lokal), Laufzeit: … s
-- [ ] neuer oder geänderter Test: `app/test-….mjs` → „Testname“
-- [ ] auf der VORSCHAU ausprobiert (bei Oberfläche: Screenshot unten)
-- [ ] `npm run scan` sauber
+- [ ] `npm test` is green (locally), run time: … s
+- [ ] new or changed test: `app/test-….mjs` → "test name"
+- [ ] tried on the PREVIEW (for interface changes: screenshot below)
+- [ ] `npm run scan` is clean
 
-## Screenshot (bei Oberfläche)
+## Screenshot (for interface changes)
 
 ## Review
 
-Eine andere Person prüft und merged, nie der Autor selbst. Mindestens ein inhaltlicher Kommentar.
+Another person reviews and merges, never the author. At least one comment on the content.

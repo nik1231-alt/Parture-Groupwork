@@ -1,15 +1,15 @@
-// KI-Titel für Stufe 1 der Leiter: Google Gemini schlägt drei neue eBay-Titel vor, der Regelprüfer (titel-regeln.mjs) lässt nur sichere durch.
-// Die KI entscheidet nichts allein: Der beste regelkonforme Vorschlag geht zur Freigabe, ein Admin gibt ihn frei oder nicht.
+// AI titles for step 1 of the ladder: Google Gemini suggests three new eBay titles, the rule checker (titel-regeln.mjs) lets only safe ones through.
+// The AI decides nothing alone: the best rule-conforming suggestion goes to approval, and an admin approves it or not.
 //
-// Schlüssel: GOOGLE_API_KEY in der .env des Servers (nur Admin, nie im Repo, genau wie die eBay-Keys).
-// Ohne Schlüssel gibt es einen Regelvorschlag aus der Titelhilfe (häufige Wörter der meistgesehenen eigenen Angebote),
-// klar als "ohne KI" gekennzeichnet. Modell: KI_MODELL in der .env, sonst gemini-3.5-flash.
-// Aufruf über die REST-Schnittstelle der Gemini-API mit fetch, ohne zusätzliche Abhängigkeit.
+// Key: GOOGLE_API_KEY in the server's .env (admin only, never in the repo, just like the eBay keys).
+// Without a key there is a rule-based suggestion from the title help (frequent words of the best-seen own listings),
+// clearly marked as "without AI". Model: KI_MODELL in the .env, otherwise gemini-3.5-flash.
+// Called through the REST interface of the Gemini API with fetch, without an additional dependency.
 import { pruefeTitel, REGELN_FUER_KI, FUELL } from "./titel-regeln.mjs";
 import { TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 
 const ENDPUNKT = "https://generativelanguage.googleapis.com/v1beta/models/";
-// Antwortformat, das Gemini einhalten muss (festes JSON statt freiem Text)
+// Answer format that Gemini has to keep (fixed JSON instead of free text)
 const SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -31,8 +31,8 @@ const auftrag = ({ alt, hinweisWoerter }) => [
   "For each title give a one-sentence reason in English (which search words it adds or moves forward).",
 ].filter((z) => z !== "").join("\n");
 
-// Ohne KI: die fehlenden häufigen Wörter hinten anhängen, solange sie passen. Geht auch durch den Regelprüfer.
-// Füllwörter ("passend", "für") stehen oft in den meistgesehenen Titeln, ergeben angehängt aber keinen Sinn: die bleiben weg.
+// Without AI: append the missing frequent words at the end as long as they fit. This also goes through the rule checker.
+// Filler words ("passend", "für") are often in the most-seen titles but make no sense when appended: they are left out.
 export function regelVorschlag(alt, hinweisWoerter) {
   let t = String(alt ?? "").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
   const genutzt = [];
@@ -44,7 +44,7 @@ export function regelVorschlag(alt, hinweisWoerter) {
   return genutzt.length ? { titel: t, begruendung: `Adds words that often appear in the most-seen listings: ${genutzt.join(", ")}.` } : null;
 }
 
-// fetchFn: zum Testen austauschbar (die Tests bauen die Gemini-Antwort nach, ohne Netz).
+// fetchFn: replaceable for tests (the tests rebuild the Gemini answer, without network).
 export function erzeuge({ env = process.env, fetchFn = fetch } = {}) {
   const schluessel = env.GOOGLE_API_KEY || "";
   const modell = env.KI_MODELL || "gemini-3.5-flash";
@@ -71,8 +71,8 @@ export function erzeuge({ env = process.env, fetchFn = fetch } = {}) {
     return (daten.vorschlaege || []).slice(0, 5).map((v) => ({ titel: String(v.titel || "").replace(/\s+/g, " ").trim(), begruendung: String(v.begruendung || "").slice(0, 300) }));
   }
 
-  // Liefert { ok, wert: { titel, begruendung, quelle: "ki"|"regel", pruefung, verworfen } } oder { ok: false, status, fehler }.
-  // verworfen: die Vorschläge, die am Regelprüfer gescheitert sind, mit Grund (für die Anzeige und das Protokoll).
+  // Returns { ok, wert: { titel, begruendung, quelle: "ki"|"regel", pruefung, verworfen } } or { ok: false, status, fehler }.
+  // verworfen (discarded): the suggestions that failed at the rule checker, with the reason (for the display and the log).
   async function vorschlag({ alt, hinweisWoerter = [] }) {
     const verworfen = [];
     let kiFehler = null;

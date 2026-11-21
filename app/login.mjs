@@ -1,12 +1,12 @@
-// Login: Benutzer und Sitzungen in der eigenen Datenbank (daten/app.db). Keine Passwörter im Repo.
-// Passwörter werden nie gespeichert, nur ein scrypt-Hash mit eigenem Salz. Sitzungs-Tokens liegen nur als SHA-256-Hash in der Datenbank.
-// Jede Funktion liefert { ok, wert } oder { ok: false, status, fehler }, genau wie die anderen Module.
+// Login: users and sessions in the own database (daten/app.db). No passwords in the repo.
+// Passwords are never stored, only a scrypt hash with its own salt. Session tokens are in the database only as a SHA-256 hash.
+// Every function returns { ok, wert } or { ok: false, status, fehler }, exactly like the other modules.
 import crypto from "node:crypto";
 
 export const SITZUNG_STUNDEN = 12;
 export const MAX_FEHLVERSUCHE = 5;
 export const SPERRE_MINUTEN = 15;
-export const MAX_FEHLVERSUCHE_IP = 20;   // je Adresse über alle Namen, damit niemand der Reihe nach alle Konten sperren oder durchprobieren kann
+export const MAX_FEHLVERSUCHE_IP = 20;   // per address across all names, so that nobody can lock or try out all accounts one after another
 const NAME_MUSTER = /^[a-z0-9][a-z0-9._-]{2,39}$/;
 export const PASSWORT_MIN = 10;
 export const PASSWORT_MAX = 200;
@@ -30,8 +30,8 @@ const scrypt = (passwort, salz) => crypto.scryptSync(passwort, salz, 64, { N: 16
 const sha = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const normName = (n) => (typeof n === "string" ? n.trim().toLowerCase() : "");
 
-// Fehlversuche werden im Speicher gezählt (pro Benutzername): nach 5 Fehlversuchen ist der Name 15 Minuten gesperrt.
-// Ein Neustart des Servers setzt die Zähler zurück. Für ein kleines Team reicht das.
+// Failed attempts are counted in memory (per user name): after 5 failed attempts the name is locked for 15 minutes.
+// A restart of the server resets the counters. For a small team that is enough.
 const versuche = new Map();
 const versucheIp = new Map();
 export function leereVersuche() { versuche.clear(); versucheIp.clear(); }
@@ -56,7 +56,7 @@ function merkeFehlversuch(name, jetzt) {
   if (versuche.size > 5000) versuche.clear(); // Speicher begrenzen
 }
 
-// Ein Hash für unbekannte Namen: so dauert eine Anmeldung mit falschem Namen genauso lange wie mit falschem Passwort.
+// A hash for unknown names: this way a login with a wrong name takes just as long as with a wrong password.
 const ATTRAPPE = { salz: crypto.randomBytes(16).toString("hex"), hash: null };
 ATTRAPPE.hash = scrypt("attrappe", ATTRAPPE.salz).toString("hex");
 
@@ -82,14 +82,14 @@ export function setzePasswort(db, nameRoh, passwort) {
   return ok({ name });
 }
 
-// Passwort ändern (jede Person für sich): das alte Passwort muss stimmen, alle anderen Sitzungen dieser Person enden.
-// Liefert bei Erfolg eine neue Sitzung, damit die Person nicht rausfliegt.
+// Change password (each person for themself): the old password must be right, all other sessions of this person end.
+// On success returns a new session, so that the person is not thrown out.
 export function aendernPasswort(db, nameRoh, altes, neues, jetzt = new Date(), ip = "") {
   const name = normName(nameRoh);
   if (typeof altes !== "string" || typeof neues !== "string") return fehler(400, "Invalid request.");
   if (neues.length < PASSWORT_MIN || neues.length > PASSWORT_MAX) return fehler(400, `New password: ${PASSWORT_MIN} to ${PASSWORT_MAX} characters.`);
   if (neues === altes) return fehler(400, "The new password must be different from the current one.");
-  const pruefung = anmelden(db, name, altes, jetzt, ip);   // zählt Fehlversuche mit, wie jede Anmeldung
+  const pruefung = anmelden(db, name, altes, jetzt, ip);   // counts failed attempts as well, like every login
   if (!pruefung.ok) return pruefung.status === 429 ? pruefung : fehler(403, "The current password is wrong.");
   db.prepare("DELETE FROM sitzung WHERE token_hash = ?").run(sha(pruefung.wert.token));   // die Prüf-Sitzung wird nicht gebraucht
   const r = setzePasswort(db, name, neues);
@@ -99,7 +99,7 @@ export function aendernPasswort(db, nameRoh, altes, neues, jetzt = new Date(), i
 
 export const anzahlBenutzer = (db) => db.prepare("SELECT COUNT(*) n FROM benutzer").get().n;
 
-// Meldet an und liefert ein neues Sitzungs-Token (nur dieses eine Mal im Klartext).
+// Logs in and returns a new session token (in plain text only this one time).
 export function anmelden(db, nameRoh, passwort, jetzt = new Date(), ip = "") {
   const allgemein = fehler(401, "Wrong username or password.");
   const name = normName(nameRoh);
@@ -138,7 +138,7 @@ export function tokenAusCookie(kopfzeile) {
   return null;
 }
 
-// Cookie: HttpOnly (kein Zugriff durch Skripte), SameSite=Strict (nicht von fremden Seiten mitgeschickt), Secure sobald HTTPS genutzt wird.
+// Cookie: HttpOnly (no access by scripts), SameSite=Strict (not sent along from foreign pages), Secure as soon as HTTPS is used.
 export function cookie(token, sicher, maxAlterSekunden = SITZUNG_STUNDEN * 3600) {
   return `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAlterSekunden}${sicher ? "; Secure" : ""}`;
 }

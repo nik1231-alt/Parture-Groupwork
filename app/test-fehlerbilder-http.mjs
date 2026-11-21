@@ -1,5 +1,5 @@
-// Fehlerbilder gegen den echten Server (Checkliste A1.10): pm.db fehlt -> 503 mit verständlichem englischem Text;
-// Sitzung abgelaufen -> 401, die Anmeldeseite ist erreichbar. (eBay lehnt ab: siehe test-freigabe.mjs, "lehnt eBay die Änderung ab".)
+// Error cases against the real server (checklist A1.10): pm.db missing -> 503 with an understandable English text;
+// session expired -> 401, the login page is reachable. (eBay refuses: see test-freigabe.mjs, "if eBay rejects the change".)
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -17,7 +17,7 @@ const fehltPm = path.join(verz, "gibt-es-nicht", "pm.db");
 const abgelaufen = crypto.randomBytes(32).toString("base64url");
 {
   const d = new Database(appdb); bereiteVor(d); legeBenutzerAn(d, "anna", "ein-langes-passwort");
-  // eine Sitzung, die vor einer Stunde abgelaufen ist (so sieht eine Sitzung nach 12 Stunden aus)
+  // a session that expired an hour ago (this is what a session looks like after 12 hours)
   d.prepare("INSERT INTO sitzung (token_hash, name, erstellt_at, ablauf_at) VALUES (?, 'anna', ?, ?)").run(crypto.createHash("sha256").update(abgelaufen).digest("hex"), new Date(Date.now() - 13 * 3600e3).toISOString(), new Date(Date.now() - 3600e3).toISOString());
   d.close();
 }
@@ -38,7 +38,7 @@ async function anmelden() {
   assert.equal(r.status, 200); return r.headers.get("set-cookie").split(";")[0];
 }
 
-test("pm.db fehlt: 503 mit verständlichem englischem Text, ohne Serverpfad; die App selbst läuft weiter", async () => {
+test("pm.db missing: 503 with an understandable English text, without a server path; the app itself keeps running", async () => {
   const c = await anmelden();
   for (const p of ["/api/bewertung", "/api/stand", "/api/experimente", "/api/produkte"]) {
     const r = await fetch(basis + p, { headers: { Cookie: c } });
@@ -47,20 +47,20 @@ test("pm.db fehlt: 503 mit verständlichem englischem Text, ohne Serverpfad; die
     assert.equal(j.ok, false);
     assert.match(j.error, /product data \(pm\.db\) is not available/);
     assert.ok(!/[äöüÄÖÜß]/.test(j.error), "englisch");
-    assert.ok(!j.error.includes(verz) && !j.error.includes("gibt-es-nicht"), "kein Serverpfad in der Meldung");
+    assert.ok(!j.error.includes(verz) && !j.error.includes("gibt-es-nicht"), "no server path in the message");
   }
-  // Was nicht von pm.db abhängt, geht weiter (Anmeldung, Protokoll, Betriebsstatus mit leerem Datenstand)
+  // What does not depend on pm.db keeps working (login, log, operating status with an empty data state)
   assert.equal((await fetch(basis + "/api/protokoll", { headers: { Cookie: c } })).status, 200);
   const b = await (await fetch(basis + "/api/betrieb", { headers: { Cookie: c } })).json();
   assert.equal(b.ok, true); assert.equal(b.daten.daten.trafficBis, null);
 });
 
-test("Sitzung abgelaufen: Daten antworten 401 (die Oberfläche lädt dann die Anmeldeseite), das Cookie öffnet nichts mehr", async () => {
+test("Session expired: data answers 401 (the interface then loads the login page), the cookie opens nothing any more", async () => {
   const cookie = `${COOKIE}=${abgelaufen}`;
   const r = await fetch(basis + "/api/experimente", { headers: { Cookie: cookie } });
   assert.equal(r.status, 401);
   assert.equal((await r.json()).error, "Please sign in.");
   const seite = await fetch(basis + "/", { headers: { Cookie: cookie } });
-  assert.equal(seite.status, 200); assert.match(await seite.text(), /Sign in/, "statt der App kommt die Anmeldeseite");
+  assert.equal(seite.status, 200); assert.match(await seite.text(), /Sign in/, "the login page comes instead of the app");
   assert.equal((await (await fetch(basis + "/api/ich", { headers: { Cookie: cookie } })).json()).daten.angemeldet, false);
 });

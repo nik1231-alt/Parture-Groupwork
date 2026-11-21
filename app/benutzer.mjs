@@ -1,9 +1,9 @@
-// Benutzer anlegen oder Passwort ändern (auf dem Rechner, auf dem der Server läuft):
-//   npm run benutzer -- anlegen <name> [admin|builder]   (der erste Benutzer wird automatisch Admin, sonst Builder)
+// Create a user or change a password (on the computer where the server runs):
+//   npm run benutzer -- anlegen <name> [admin|builder]   (the first user automatically becomes admin, otherwise builder)
 //   npm run benutzer -- passwort <name>
 //   npm run benutzer -- rolle <name> <admin|builder>
 //   npm run benutzer -- liste
-// Das Passwort wird verdeckt abgefragt und steht nie in der Befehlszeile, in einer Datei oder im Verlauf.
+// The password is asked for hidden and is never in the command line, in a file or in the history.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,7 @@ db.pragma("journal_mode = WAL");
 login.bereiteVor(db);
 rollen.bereiteVor(db);
 
-// Ohne Terminal (Eingabe per Pipe): alle Zeilen einmal einlesen und der Reihe nach verteilen
+// Without a terminal (input by pipe): read all lines once and hand them out one after another
 let zeilen = null;
 const leseZeilen = (ein) => new Promise((resolve) => { let s = ""; ein.setEncoding("utf8"); ein.on("data", (c) => { s += c; }); ein.on("end", () => resolve(s.split(/\r?\n/))); });
 
@@ -43,25 +43,25 @@ function frageVerdeckt(frage) {
 
 const [befehl, name, drittes] = process.argv.slice(2);
 if (befehl === "liste") {
-  for (const b of rollen.liste(db)) console.log(b.name, `[${b.rolle}]`, "(angelegt", b.erstellt_at + ")");
-  console.log(login.anzahlBenutzer(db) + " Benutzer");
+  for (const b of rollen.liste(db)) console.log(b.name, `[${b.rolle}]`, "(created", b.erstellt_at + ")");
+  console.log(login.anzahlBenutzer(db) + " users");
 } else if ((befehl === "anlegen" || befehl === "passwort") && name) {
-  const pw = await frageVerdeckt("Passwort (mindestens " + login.PASSWORT_MIN + " Zeichen): ");
-  const pw2 = await frageVerdeckt("Passwort wiederholen: ");
-  if (pw !== pw2) { console.error("Die Passwörter sind nicht gleich."); process.exit(1); }
+  const pw = await frageVerdeckt("Password (at least " + login.PASSWORT_MIN + " characters): ");
+  const pw2 = await frageVerdeckt("Repeat the password: ");
+  if (pw !== pw2) { console.error("The passwords do not match."); process.exit(1); }
   const r = befehl === "anlegen" ? login.legeBenutzerAn(db, name, pw) : login.setzePasswort(db, name, pw);
   if (!r.ok) { console.error(r.fehler); process.exit(1); }
   if (befehl === "anlegen") {
     const rolle = drittes ?? (login.anzahlBenutzer(db) === 1 ? "admin" : "builder");
     const rr = rollen.legeFest(db, r.wert.name, rolle);
     if (!rr.ok) { console.error(rr.fehler); process.exit(1); }
-    console.log("Benutzer angelegt: " + r.wert.name + " (Rolle: " + rolle + ")");
-  } else console.log("Passwort geändert für: " + r.wert.name);
+    console.log("User created: " + r.wert.name + " (role: " + rolle + ")");
+  } else console.log("Password changed for: " + r.wert.name);
 } else if (befehl === "rolle" && name && drittes) {
   const r = rollen.legeFest(db, name, drittes);
   if (!r.ok) { console.error(r.fehler); process.exit(1); }
-  console.log("Rolle von " + name + ": " + drittes);
+  console.log("Role of " + name + ": " + drittes);
 } else {
-  console.error("Aufruf: npm run benutzer -- anlegen <name> [admin|builder] | passwort <name> | rolle <name> <admin|builder> | liste");
+  console.error("Usage: npm run benutzer -- anlegen <name> [admin|builder] | passwort <name> | rolle <name> <admin|builder> | liste");
   process.exit(1);
 }

@@ -1,7 +1,7 @@
-// Einstellungen: alle Regelwerte, die das Team in der App ändern kann (Seite "Settings").
-// Gespeichert werden nur Abweichungen von den Startwerten (EINSTELLUNGEN in regeln.mjs) in der Tabelle "einstellung".
-// Das Schema unten beschreibt jedes Feld (Beschriftung, Erklärung, Grenzen). Die Oberfläche baut das Formular daraus,
-// neue Regeln lassen sich also später durch einen Eintrag im Schema ergänzen. Geprüft wird immer hier auf dem Server.
+// Settings: all rule values that the team can change in the app (page "Settings").
+// Only deviations from the default values (EINSTELLUNGEN in regeln.mjs) are saved, in the table "einstellung".
+// The schema below describes every field (label, explanation, limits). The interface builds the form from it,
+// so new rules can later be added by one entry in the schema. Checking always happens here on the server.
 import { EINSTELLUNGEN } from "./regeln.mjs";
 
 export const ABSCHNITTE = [
@@ -10,7 +10,7 @@ export const ABSCHNITTE = [
   { id: "leiter", titel: "Ladder", text: "Listings with low impressions go through three steps: a new title, then ads, then a lower price. After each step the app waits and checks whether the listing is seen again. If not, the next step follows; after the third, a person checks the listing." },
 ];
 
-// typ: zahl (faktor = Anzeige-Umrechnung, z. B. 100 für Prozent), auswahl, text. ganz: nur ganze Zahlen. gerade: nur gerade Zahlen.
+// typ: zahl (number; faktor = display conversion, e.g. 100 for percent), auswahl (choice), text. ganz: whole numbers only. gerade: even numbers only.
 export const SCHEMA = [
   { key: "modus", abschnitt: "diagnose", typ: "auswahl", label: "How to decide that impressions are low",
     hilfe: "“Lowest share” adapts to your shop. “Fixed number” uses the same limit for every listing.",
@@ -54,14 +54,14 @@ export const SCHEMA = [
 export const STANDARD = Object.fromEntries(SCHEMA.map((f) => [f.key, EINSTELLUNGEN[f.key]]));
 const feld = (key) => SCHEMA.find((f) => f.key === key);
 
-// Gibt einen Fehlertext zurück, oder null wenn der Wert gültig ist.
+// Returns an error text, or null if the value is valid.
 export function pruefeWert(f, wert) {
   if (f.typ === "auswahl") return f.optionen.some((o) => o.wert === wert) ? null : `${f.label}: please choose one of the options.`;
   if (f.typ === "zahl") {
     if (typeof wert !== "number" || !Number.isFinite(wert)) return `${f.label}: please enter a number.`;
     if (f.ganz && !Number.isInteger(wert)) return `${f.label}: please enter a whole number.`;
     if (f.gerade && wert % 2 !== 0) return `${f.label}: please enter an even number.`;
-    // kleine Rundungsfehler bei Prozentwerten (z. B. 0.07 * 100) dürfen die Grenzen nicht verletzen
+    // small rounding errors with percentage values (e.g. 0.07 * 100) must not violate the limits
     if (wert < f.min - 1e-9 || wert > f.max + 1e-9) {
       const k = f.faktor || 1;
       return `${f.label}: please enter a value between ${Math.round(f.min * k * 100) / 100} and ${Math.round(f.max * k * 100) / 100}${f.einheit ? " " + f.einheit.split(" ")[0] : ""}.`;
@@ -71,7 +71,7 @@ export function pruefeWert(f, wert) {
   return "Unknown field type.";
 }
 
-// Prüft eine Eingabe { key: wert, ... } (einzelne Felder genügen). Gibt { ok: true, wert } oder { ok: false, status: 400, fehler } zurück.
+// Checks an input { key: value, ... } (single fields are enough). Returns { ok: true, wert } or { ok: false, status: 400, fehler }.
 const ungueltig = (fehler) => ({ ok: false, status: 400, fehler });
 export function pruefe(eingabe) {
   if (!eingabe || typeof eingabe !== "object" || Array.isArray(eingabe)) return ungueltig("Invalid request.");
@@ -91,7 +91,7 @@ export function bereiteVor(db) {
   db.exec("CREATE TABLE IF NOT EXISTS einstellung (key TEXT PRIMARY KEY, wert TEXT NOT NULL)");
 }
 
-// Gespeicherte, gültige Abweichungen (kaputte oder veraltete Einträge werden still ignoriert)
+// Saved, valid deviations (broken or outdated entries are silently ignored)
 export function lese(db) {
   const aus = {};
   for (const r of db.prepare("SELECT key, wert FROM einstellung").all()) {
@@ -102,7 +102,7 @@ export function lese(db) {
   return aus;
 }
 
-// Alle Regelwerte: Startwerte, überschrieben durch das, was das Team gespeichert hat
+// All rule values: default values, overridden by what the team has saved
 export const effektiv = (db) => ({ ...EINSTELLUNGEN, ...lese(db) });
 
 export function speichere(db, eingabe) {

@@ -1,22 +1,22 @@
-// Das Dashboard (Abschnitt "Day by day" auf der Seite Results): was jede Phase der Leiter gebracht hat, gemessen an der Kontrollgruppe über dieselben Tage.
-// Reine Rechnung ohne Datenbank. Der Server liefert die Starts und Auswertungen aus leiter_verlauf, die Kontrollgruppe aus
-// leiter und die Tageswerte aus traffic_tag (pm.db); hier wird daraus für jede Phase gerechnet:
-//   - Status: geplant (noch kein Start) / läuft (Prüfzeit noch nicht ganz in den Daten) / fertig
-//   - Nettoeffekt auf Impressionen und Aufrufe, mit derselben Formel und denselben Fenstern wie leiter.werteAus:
-//     vorher = Durchschnitt je Tag in den 30 Tagen vor dem Start, nachher = Durchschnitt je Tag seit dem Start (ohne den
-//     Starttag selbst), Kontrolle = Kontrollangebote, deren Kontrollzeit die ganze Prüfzeit abdeckt (wie leiter.kontrollGruppe)
-//   - Klickrate (Aufrufe ÷ Impressionen) und Verkäufe als Schutzkennzahl, je Gruppe
-//   - wie viele Angebote einzeln besser / schlechter wurden (damit kein Ausreißer allein das Ergebnis trägt)
-//   - eine Tageskurve je Gruppe, auf 100 = Durchschnitt der 7 Tage vor dem Start indexiert, je Angebot an seinem eigenen
-//     Starttag ausgerichtet (Angebote starten an verschiedenen Tagen)
-// Nur eBay-Daten (Niko 20.11.2026), keine Kosten, Gebühren oder Umsätze.
+// The dashboard (section "Day by day" on the page Results): what each phase of the ladder brought, measured against the control group over the same days.
+// Pure calculation without a database. The server delivers the starts and evaluations from leiter_verlauf, the control group from
+// leiter and the daily values from traffic_tag (pm.db); from these this file calculates for every phase:
+//   - status: geplant (planned, no start yet) / laeuft (running, waiting time not completely in the data yet) / fertig (done)
+//   - net effect on impressions and views, with the same formula and the same windows as leiter.werteAus:
+//     before = average per day in the 30 days before the start, after = average per day since the start (without the
+//     start day itself), control = control listings whose control time covers the whole waiting time (as in leiter.kontrollGruppe)
+//   - click rate (views ÷ impressions) and sales as a safety figure, per group
+//   - how many listings became better / worse individually (so that no outlier alone carries the result)
+//   - a daily curve per group, indexed to 100 = average of the 7 days before the start, aligned per listing at its own
+//     start day (listings start on different days)
+// eBay data only (Niko, 20 Nov 2026), no costs, fees or revenue.
 import { netto } from "./auswertung.mjs";
 import { EINSTELLUNGEN } from "./regeln.mjs";
 
 export const PHASEN = ["titel", "werbung", "preis"];
-export const BASIS_TAGE = 30;   // wie leiter.mjs: Vergleichswert sind die 30 Tage vor dem Start
-export const KURVE_VORHER = 7;  // so viele Tage vor dem Start zeigt die Kurve (und daraus die 100)
-export const SCHWELLE_EINZELN = 0.1; // ein einzelnes Angebot gilt ab ±10 % als besser / schlechter, dazwischen "etwa gleich"
+export const BASIS_TAGE = 30;   // as in leiter.mjs: the comparison value is the 30 days before the start
+export const KURVE_VORHER = 7;  // so many days before the start the curve shows (and the 100 comes from them)
+export const SCHWELLE_EINZELN = 0.1; // a single listing counts as better / worse from ±10 %, in between "about equal"
 
 const plusTage = (t, n) => new Date(Date.parse(t + "T12:00:00Z") + n * 864e5).toISOString().slice(0, 10);
 const tageZwischen = (von, bis) => Math.round((Date.parse(bis + "T12:00:00Z") - Date.parse(von + "T12:00:00Z")) / 864e5);
@@ -26,7 +26,7 @@ const leer = () => ({ imp: 0, auf: 0, trans: 0 });
 const plus = (a, b) => ({ imp: a.imp + b.imp, auf: a.auf + b.auf, trans: a.trans + b.trans });
 const mal = (a, f) => ({ imp: a.imp * f, auf: a.auf * f, trans: a.trans * f });
 
-// Summe der Tageswerte eines Angebots für die Tage nach "von" bis einschließlich "bis" (wie impTag im Server)
+// Sum of the daily values of a listing for the days after "von" up to and including "bis" (like impTag in the server)
 function summe(tage, nummer, von, bis) {
   const je = tage.get(nummer), aus = leer();
   if (!je || bis <= von) return aus;
@@ -35,7 +35,7 @@ function summe(tage, nummer, von, bis) {
 }
 const tagWert = (tage, nummer, d) => tage.get(nummer)?.get(d) ?? null;
 
-// Eine Phase: alle Angebote mit einem Start dieser Stufe (der jüngste je Angebot zählt)
+// One phase: all listings with a start of this step (the latest per listing counts)
 function phase(stufe, { starts, auswertungen, kontrolle, tage, trafficBis, einst }) {
   const n = pruefTage(stufe, einst);
   const jeAngebot = new Map();
@@ -47,7 +47,7 @@ function phase(stufe, { starts, auswertungen, kontrolle, tage, trafficBis, einst
   let test = { vorher: leer(), nachher: leer() }, ctrl = { vorher: leer(), nachher: leer() };
   let mitDaten = 0, mitKontrolle = 0, besser = 0, schlechter = 0, gelaufenMax = 0, alleFertig = true;
   const kontrollNummern = new Set();
-  const kurve = new Map(); // relativer Tag → { t, k, nt, nk }
+  const kurve = new Map(); // relative day → { t, k, nt, nk }
   for (const a of liste) {
     const ende = plusTage(a.tag, n);
     if (!trafficBis || trafficBis < ende) alleFertig = false;
@@ -56,9 +56,9 @@ function phase(stufe, { starts, auswertungen, kontrolle, tage, trafficBis, einst
     gelaufenMax = Math.max(gelaufenMax, gelaufen);
     const gruppe = kontrolle.filter((k) => k.start <= a.tag && plusTage(k.start, kontrollTage(einst)) >= ende).map((k) => k.number);
     gruppe.forEach((k) => kontrollNummern.add(k));
-    // Kurve: 7 Tage vor dem Start und jeder Tag seit dem Start, soweit Daten da sind
+    // Curve: 7 days before the start and every day since the start, as far as data exists
     for (let r = -KURVE_VORHER; r <= gelaufen; r++) {
-      if (r === 0) continue; // der Starttag zählt nirgends mit (wie in den Fenstern)
+      if (r === 0) continue; // the start day counts nowhere (as in the windows)
       const d = plusTage(a.tag, r);
       if (trafficBis && d > trafficBis) continue;
       const p = kurve.get(r) || { t: 0, k: 0, nt: 0, nk: 0 };
@@ -74,21 +74,21 @@ function phase(stufe, { starts, auswertungen, kontrolle, tage, trafficBis, einst
     if (v.imp > 0) { const x = w.imp / v.imp - 1; if (x >= SCHWELLE_EINZELN) besser++; else if (x <= -SCHWELLE_EINZELN) schlechter++; }
     else if (w.imp > 0) besser++;
     if (!gruppe.length) continue;
-    // Kontrolle: Durchschnitt je Kontrollangebot über genau dieselben Tage, so groß gewichtet wie ein Angebot der Phase
+    // Control: average per control listing over exactly the same days, weighted as large as one listing of the phase
     mitKontrolle++;
     const kv = gruppe.reduce((s, k) => plus(s, summe(tage, k, plusTage(a.tag, -BASIS_TAGE - 1), plusTage(a.tag, -1))), leer());
     const kw = gruppe.reduce((s, k) => plus(s, summe(tage, k, a.tag, bis)), leer());
     ctrl = { vorher: plus(ctrl.vorher, mal(kv, 1 / (BASIS_TAGE * gruppe.length))), nachher: plus(ctrl.nachher, mal(kw, 1 / (gelaufen * gruppe.length))) };
   }
   const nettoVon = (feld) => (mitKontrolle === mitDaten && mitDaten && ctrl.vorher[feld] > 0 ? netto({ vorher: test.vorher[feld], nachher: test.nachher[feld] }, { vorher: ctrl.vorher[feld], nachher: ctrl.nachher[feld] }) : null);
-  // Je Angebot und Tag (so liest sich die Kachel "Impressions per listing / day")
+  // Per listing and day (this is how the tile "Impressions per listing / day" reads)
   const jeTag = (g) => (mitDaten ? mal(g, 1 / mitDaten) : leer());
   const tageReihe = [...kurve.keys()].sort((a, b) => a - b);
   const mittel = (r, f) => { const p = kurve.get(r); return p && p[f === "t" ? "nt" : "nk"] ? p[f] / p[f === "t" ? "nt" : "nk"] : null; };
   const basisVon = (f) => { const w = tageReihe.filter((r) => r < 0).map((r) => mittel(r, f)).filter((x) => x != null); return w.length ? w.reduce((a, b) => a + b, 0) / w.length : 0; };
   const bt = basisVon("t"), bk = basisVon("k");
   const verkaeufe = { test: 0, kontrolle: 0 };
-  // Verkäufe während der Phase als Summe (Schutzkennzahl): Testgruppe gezählt, Kontrolle auf gleich viele Angebote hochgerechnet
+  // Sales during the phase as a sum (safety figure): test group counted, control scaled up to the same number of listings
   for (const a of liste) {
     const ende = plusTage(a.tag, n), bis = trafficBis && trafficBis < ende ? trafficBis : ende;
     if (!trafficBis || bis <= a.tag) continue;
@@ -115,10 +115,10 @@ function phase(stufe, { starts, auswertungen, kontrolle, tage, trafficBis, einst
 // starts: [{ number, stufe, tag: "JJJJ-MM-TT", at, vonHand }] (leiter_verlauf, ereignis "gestartet")
 // abbrueche: [{ number, at }]                                (leiter_verlauf, "abgebrochen" / "zurueckgesetzt": Take off, Start over)
 // auswertungen: [{ number, stufe, erholt }]                  (leiter_verlauf, ereignis "ausgewertet")
-// kontrolle: [{ number, start: "JJJJ-MM-TT" }]               (leiter: Kontrollgruppe, auch wenn ihre Zeit schon vorbei ist)
-// tage: Map(nummer → Map(datum → { imp, auf, trans }))       (traffic_tag aus pm.db)
+// kontrolle: [{ number, start: "YYYY-MM-DD" }]               (ladder: control group, even if its time is already over)
+// tage: Map(number → Map(date → { imp, auf, trans }))       (traffic_tag from pm.db)
 export function baueDashboard({ starts: alleStarts = [], abbrueche = [], auswertungen = [], kontrolle = [], tage = new Map(), trafficBis = null, einst = EINSTELLUNGEN } = {}) {
-  // Ein Start zählt nicht mehr, wenn das Angebot danach von der Leiter genommen oder zurückgesetzt wurde
+  // A start no longer counts if the listing was taken off the ladder or reset afterwards
   const starts = alleStarts.filter((s) => !abbrueche.some((a) => a.number === s.number && (a.at ?? "") >= (s.at ?? s.tag)));
   const daten = { starts, auswertungen, kontrolle, tage, trafficBis, einst };
   const phasen = PHASEN.map((s) => phase(s, daten));
@@ -135,7 +135,7 @@ export function baueDashboard({ starts: alleStarts = [], abbrueche = [], auswert
   };
 }
 
-// Welche Tage und Angebote der Server aus traffic_tag laden muss: vom frühesten Vergleichsfenster bis heute
+// Which days and listings the server has to load from traffic_tag: from the earliest comparison window until today
 export function benoetigt({ starts = [], kontrolle = [] }) {
   const nummern = new Set([...starts.map((s) => s.number), ...kontrolle.map((k) => k.number)]);
   const erster = starts.map((s) => s.tag).sort()[0];

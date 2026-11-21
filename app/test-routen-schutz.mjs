@@ -1,6 +1,6 @@
-// Routenschutz für ALLE Adressen (Checkliste A3.2, A3.4, A3.5, A3.9): die Liste wird aus server.mjs gelesen, nicht von Hand gepflegt.
-// Kommt eine neue Route dazu, wird sie hier automatisch mitgeprüft: ohne Anmeldung 401, mit Builder-Sitzung auf einer Admin-Route 403.
-// Ist sie ungeschützt und steht nicht in OEFFENTLICH, schlägt der Test fehl. Es wird nie bei eBay geschrieben (keine Zugangsdaten, Schalter aus).
+// Route protection for ALL addresses (checklist A3.2, A3.4, A3.5, A3.9): the list is read from server.mjs, not maintained by hand.
+// If a new route is added, it is checked here automatically: 401 without a login, 403 with a builder session on an admin route.
+// If it is unprotected and not in OEFFENTLICH (public), the test fails. Nothing is ever written to eBay (no credentials, switch off).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -15,8 +15,8 @@ import { SCHEMA } from "./einstellungen.mjs";
 const QUELLE = fs.readFileSync(path.join(import.meta.dirname, "server.mjs"), "utf8");
 const PUBLIC = path.join(import.meta.dirname, "..", "public");
 
-// ---------- Routenliste aus dem Quelltext ----------
-// Ein Objekt-Block "const NAME = { ... };" → je Schlüssel der Text bis zum nächsten Schlüssel (daran erkennt man adminNoetig).
+// ---------- Route list from the source text ----------
+// An object block "const NAME = { ... };" → per key the text up to the next key (that is how adminNoetig is recognised).
 function block(name) {
   const start = QUELLE.indexOf(`const ${name} = {`);
   assert.ok(start >= 0, `${name} nicht in server.mjs gefunden`);
@@ -25,7 +25,7 @@ function block(name) {
   const treffer = [...text.matchAll(/^ {2}"(\/[^"]+)":/gm)];
   return treffer.map((m, i) => ({ pfad: m[1], code: text.slice(m.index, treffer[i + 1]?.index ?? text.length) }));
 }
-// Direkt im Request-Handler behandelte Adressen (Login, Passwort, Logout, ich, healthz): Methode steht in derselben Zeile.
+// Addresses handled directly in the request handler (login, password, logout, me, healthz): the method is in the same line.
 const inline = [...QUELLE.matchAll(/^.*url\.pathname === "(\/(?:api\/[^"]+|healthz))".*$/gm)]
   .map((m) => ({ methode: /req\.method === "POST"/.test(m[0]) ? "POST" : "GET", pfad: m[1], code: m[0] }));
 const ROUTEN = [
@@ -35,20 +35,20 @@ const ROUTEN = [
 ];
 const schluessel = (r) => `${r.methode} ${r.pfad}`;
 
-// Bewusst ohne Anmeldung erreichbar. Wer hier etwas ergänzt, muss es im Review begründen.
+// Deliberately reachable without a login. Whoever adds something here must justify it in the review.
 const OEFFENTLICH = new Set([
   "GET /healthz",      // Lebenszeichen für den Wächter: nur { ok, version }
   "POST /api/login",   // Anmeldung selbst
   "GET /api/ich",      // sagt der Oberfläche nur, ob jemand angemeldet ist
   "POST /api/logout",  // löscht nur die Sitzung des mitgeschickten Cookies, ohne Cookie passiert nichts
 ]);
-// Diese Routen MÜSSEN Admin-only sein (Checkliste A3.9). Weitere Admin-Routen werden aus adminNoetig erkannt und mitgeprüft.
+// These routes MUST be admin only (checklist A3.9). Further admin routes are recognised from adminNoetig and checked as well.
 const PFLICHT_ADMIN = ["GET /api/rollen", "POST /api/rolle", "POST /api/freigabe/erteilen", "POST /api/freigabe/ablehnen", "POST /api/experiment/start", "POST /api/traffic/import", "POST /api/sicherung"];
 const ADMIN = new Set(ROUTEN.filter((r) => r.code.includes("adminNoetig(")).map(schluessel));
-// Statische Dateien, die ohne Anmeldung ausgeliefert werden (die Anmeldeseite und was sie braucht)
+// Static files that are delivered without a login (the login page and what it needs)
 const OFFENE_DATEIEN = ["/login.html", "/login.js", "/app.css"];
 
-// ---------- Server mit Wegwerf-Datenbank ----------
+// ---------- Server with a throw-away database ----------
 const PORT = 4100 + Math.floor(Math.random() * 90);
 const verz = fs.mkdtempSync(path.join(os.tmpdir(), "parture-schutz-"));
 const appdb = path.join(verz, "app.db");
@@ -56,7 +56,7 @@ const appdb = path.join(verz, "app.db");
   const d = new Database(appdb); bereiteVor(d);
   legeBenutzerAn(d, "niko", "ein-langes-passwort", new Date("2026-11-01T10:00:00Z"));
   legeBenutzerAn(d, "anna", "ein-langes-passwort", new Date("2026-11-02T10:00:00Z"));
-  rollen.bereiteVor(d); // der älteste Benutzer (niko) wird Admin, anna ist Builder
+  rollen.bereiteVor(d); // the oldest user (niko) becomes admin, anna is a builder
   d.close();
 }
 const basis = `http://127.0.0.1:${PORT}`;
@@ -66,7 +66,7 @@ test.before(async () => {
   for (let i = 0; i < 900; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
-// Erst auf das Ende des Servers warten, dann löschen: unter Windows hält der laufende Prozess app.db offen (EBUSY).
+// First wait for the end of the server, then delete: on Windows the running process keeps app.db open (EBUSY).
 test.after(async () => {
   if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
   fs.rmSync(verz, { recursive: true, force: true });
@@ -82,19 +82,19 @@ async function anmelden(name, kopf = {}) {
 }
 
 // ---------- Tests ----------
-test("Routenliste: aus server.mjs gelesen, vollständig klassifiziert, öffentliche Liste ohne Leichen", (t) => {
+test("Route list: read from server.mjs, completely classified, public list without dead entries", (t) => {
   const alle = ROUTEN.map(schluessel);
   t.diagnostic(`${alle.length} Routen (Methode + Pfad), davon ${alle.filter((s) => s.includes(" /api/")).length} unter /api, ${ADMIN.size} nur für Admins, ${OEFFENTLICH.size} öffentlich`);
-  assert.ok(alle.length >= 30, "der Parser findet die Routen nicht mehr (server.mjs umgebaut?) — dann diesen Test anpassen, nicht abschalten");
-  assert.equal(new Set(alle).size, alle.length, "keine Route doppelt");
+  assert.ok(alle.length >= 30, "the parser no longer finds the routes (server.mjs rebuilt?) — then adapt this test, do not switch it off");
+  assert.equal(new Set(alle).size, alle.length, "no route twice");
   for (const s of OEFFENTLICH) assert.ok(alle.includes(s), `${s} steht in OEFFENTLICH, gibt es aber nicht mehr`);
   for (const s of PFLICHT_ADMIN) assert.ok(ADMIN.has(s), `${s} muss adminNoetig(ctx) aufrufen`);
   for (const s of ADMIN) assert.ok(!OEFFENTLICH.has(s), `${s} ist Admin-Route und zugleich öffentlich`);
-  // Die Anmeldeprüfung muss vor den Routentabellen stehen, sonst wären alle Routen ungeschützt.
-  assert.ok(QUELLE.indexOf("if (!benutzer) {") < QUELLE.indexOf("POST_ROUTEN[url.pathname]"), "Anmeldeprüfung steht hinter der Routenauswahl");
+  // The login check must come before the route tables, otherwise all routes would be unprotected.
+  assert.ok(QUELLE.indexOf("if (!benutzer) {") < QUELLE.indexOf("POST_ROUTEN[url.pathname]"), "the login check comes after the route selection");
 });
 
-test("jede nicht öffentliche Route: ohne Anmeldung 401", async () => {
+test("every non-public route: 401 without login", async () => {
   const geprueft = [];
   for (const r of ROUTEN.filter((x) => !OEFFENTLICH.has(schluessel(x)))) {
     const a = await anfrage(r);
@@ -105,22 +105,22 @@ test("jede nicht öffentliche Route: ohne Anmeldung 401", async () => {
   assert.ok(geprueft.length >= 26, `nur ${geprueft.length} Routen geprüft`);
 });
 
-test("jede nicht öffentliche Route: ein erfundenes oder abgelaufenes Cookie öffnet nichts", async () => {
+test("every non-public route: an invented or expired cookie opens nothing", async () => {
   for (const r of ROUTEN.filter((x) => !OEFFENTLICH.has(schluessel(x)))) {
     assert.equal((await anfrage(r, { cookie: "sitzung=" + "a".repeat(43) })).status, 401, schluessel(r));
   }
 });
 
-test("öffentliche Routen: ohne Anmeldung erreichbar, aber ohne Daten oder Wirkung", async () => {
+test("public routes: reachable without login, but without data or effect", async () => {
   const h = await (await fetch(basis + "/healthz")).json();
   assert.deepEqual(Object.keys(h).sort(), ["ok", "version"]);
   const ich = (await (await fetch(basis + "/api/ich")).json()).daten;
   assert.deepEqual([ich.angemeldet, ich.name, ich.rolle], [false, null, null]);
-  assert.equal((await anfrage({ methode: "POST", pfad: "/api/logout" })).status, 200, "Abmelden ohne Sitzung schadet nicht");
+  assert.equal((await anfrage({ methode: "POST", pfad: "/api/logout" })).status, 200, "logging out without a session does no harm");
   assert.equal((await anfrage({ methode: "POST", pfad: "/api/login" }, { body: JSON.stringify({ name: "anna", passwort: "falsch-falsch" }) })).status, 401);
 });
 
-test("jede Admin-Route: Builder bekommt 403, und danach ist er immer noch Builder", async () => {
+test("every admin route: a builder gets 403, and is still a builder afterwards", async () => {
   const { cookie } = await anmelden("anna");
   for (const s of ADMIN) {
     const [methode, pfad] = s.split(" ");
@@ -128,20 +128,20 @@ test("jede Admin-Route: Builder bekommt 403, und danach ist er immer noch Builde
     assert.equal(a.status, 403, `${s}: Builder bekommt ${a.status}`);
   }
   assert.equal((await (await fetch(basis + "/api/ich", { headers: { Cookie: cookie } })).json()).daten.rolle, "builder");
-  assert.equal(fs.existsSync(path.join(verz, "sicherung")), false, "keine Sicherung durch einen Builder");
-  // Gegenprobe: der Admin kommt durch (nur eine lesende Route, damit nichts ausgelöst wird)
+  assert.equal(fs.existsSync(path.join(verz, "sicherung")), false, "no backup by a builder");
+  // Counter-check: the admin gets through (only a reading route, so that nothing is triggered)
   assert.equal((await fetch(basis + "/api/rollen", { headers: { Cookie: (await anmelden("niko")).cookie } })).status, 200);
 });
 
-test("eBay-Schreibschalter: keine Route und keine Einstellung kann EBAY_SCHREIBEN setzen, nur die .env des Servers", () => {
+test("eBay write switch: no route and no setting can set EBAY_SCHREIBEN, only the server's .env", () => {
   for (const f of fs.readdirSync(import.meta.dirname).filter((n) => n.endsWith(".mjs") && !n.startsWith("test"))) {
     const q = fs.readFileSync(path.join(import.meta.dirname, f), "utf8");
     assert.doesNotMatch(q, /(process\.)?env(\[["']EBAY_SCHREIBEN["']\]|\.EBAY_SCHREIBEN)\s*=[^=]/, `${f} setzt EBAY_SCHREIBEN`);
   }
-  assert.ok(!SCHEMA.some((f) => /ebay|schreib/i.test(f.key)), "kein Einstellungsfeld für den Schreibschalter");
+  assert.ok(!SCHEMA.some((f) => /ebay|schreib/i.test(f.key)), "no settings field for the write switch");
 });
 
-test("CSRF: jede POST-Route lehnt eine fremde Herkunft (403) und einen falschen Typ (415) ab, auch mit gültiger Admin-Sitzung", async () => {
+test("CSRF: every POST route rejects a foreign origin (403) and a wrong type (415), even with a valid admin session", async () => {
   const { cookie } = await anmelden("niko");
   const posts = ROUTEN.filter((r) => r.methode === "POST");
   for (const r of posts) {
@@ -152,12 +152,12 @@ test("CSRF: jede POST-Route lehnt eine fremde Herkunft (403) und einen falschen 
     const typ = await fetch(basis + r.pfad, { method: "POST", headers: { Cookie: cookie, "Content-Type": "text/plain" }, body: "{}" });
     assert.equal(typ.status, 415, `${schluessel(r)} mit text/plain: ${typ.status}`);
   }
-  // Keiner der Versuche hatte eine Wirkung: auch /api/logout nicht, die Sitzung gilt noch.
+  // None of the attempts had an effect: not even /api/logout, the session is still valid.
   assert.equal((await (await fetch(basis + "/api/ich", { headers: { Cookie: cookie } })).json()).daten.angemeldet, true);
   assert.equal(fs.existsSync(path.join(verz, "sicherung")), false);
 });
 
-test("Formulare schicken nirgendwohin außer an die eigene App", () => {
+test("Forms send nowhere except to the app itself", () => {
   for (const f of fs.readdirSync(PUBLIC).filter((n) => n.endsWith(".html"))) {
     const html = fs.readFileSync(path.join(PUBLIC, f), "utf8");
     for (const m of html.matchAll(/<form\b[^>]*>/gi)) assert.doesNotMatch(m[0], /\baction\s*=\s*["']?(https?:)?\/\//i, `${f}: ${m[0]}`);
@@ -165,9 +165,9 @@ test("Formulare schicken nirgendwohin außer an die eigene App", () => {
   assert.match(QUELLE, /form-action 'self'/, "CSP verbietet fremde Formularziele");
 });
 
-test("statische Dateien: ohne Anmeldung nur die Anmeldeseite, alles andere 401", async () => {
+test("static files: without login only the login page, everything else 401", async () => {
   const offen = JSON.parse((QUELLE.match(/const offen = (\[[^\]]*\]);/) || [])[1] || "null");
-  assert.deepEqual(offen, OFFENE_DATEIEN, "die Liste der offenen Dateien in server.mjs hat sich geändert");
+  assert.deepEqual(offen, OFFENE_DATEIEN, "the list of open files in server.mjs has changed");
   assert.equal((await fetch(basis + "/")).status, 200);
   assert.match(await (await fetch(basis + "/")).text(), /Sign in/);
   for (const f of fs.readdirSync(PUBLIC)) {
@@ -176,28 +176,28 @@ test("statische Dateien: ohne Anmeldung nur die Anmeldeseite, alles andere 401",
   }
 });
 
-test("Cookie: HttpOnly und SameSite=Strict immer, Secure nur über HTTPS (hinter Cloudflare), Laufzeit begrenzt", async () => {
+test("Cookie: HttpOnly and SameSite=Strict always, Secure only over HTTPS (behind Cloudflare), limited lifetime", async () => {
   const lokal = (await anmelden("anna")).kopfzeile;
   assert.match(lokal, /HttpOnly/); assert.match(lokal, /SameSite=Strict/); assert.match(lokal, /Path=\//);
-  assert.doesNotMatch(lokal, /Secure/, "lokal über http://127.0.0.1 würde der Browser ein Secure-Cookie nicht zurückschicken");
+  assert.doesNotMatch(lokal, /Secure/, "locally over http://127.0.0.1 the browser would not send a Secure cookie back");
   assert.match(lokal, new RegExp(`Max-Age=${SITZUNG_STUNDEN * 3600}(;|$)`));
-  assert.ok(SITZUNG_STUNDEN <= 12, "Sitzung höchstens 12 Stunden");
+  assert.ok(SITZUNG_STUNDEN <= 12, "session 12 hours at most");
   const https = (await anmelden("anna", { "X-Forwarded-Proto": "https" })).kopfzeile;
   assert.match(https, /; Secure/); assert.match(https, /HttpOnly/); assert.match(https, /SameSite=Strict/);
   const { cookie } = await anmelden("anna");
   const weg = await fetch(basis + "/api/logout", { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: "{}" });
-  assert.match(weg.headers.get("set-cookie"), /Max-Age=0/, "beim Abmelden wird das Cookie gelöscht");
-  assert.equal((await fetch(basis + "/api/stand", { headers: { Cookie: cookie } })).status, 401, "und die Sitzung ist serverseitig weg");
+  assert.match(weg.headers.get("set-cookie"), /Max-Age=0/, "on logout the cookie is deleted");
+  assert.equal((await fetch(basis + "/api/stand", { headers: { Cookie: cookie } })).status, 401, "and the session is gone on the server");
 });
 
-test("Cloudflare Access: mit gesetzter Aud nur mit gültigem JWT — fehlt, falsche Aud, abgelaufen, alg none, nicht prüfbare Signatur: 401", async () => {
+test("Cloudflare Access: with the aud set only with a valid JWT — missing, wrong aud, expired, alg none, unverifiable signature: 401", async () => {
   const port = PORT + 100, b = `http://127.0.0.1:${port}`;
-  // Team-Domain zeigt auf eine Adresse ohne Dienst: die Schlüssel sind nicht abrufbar, die Signatur also nie prüfbar → muss ablehnen
+  // The team domain points to an address without a service: the keys cannot be fetched, so the signature can never be verified → must refuse
   const s = spawn(process.execPath, [path.join(import.meta.dirname, "server.mjs")], { env: { ...process.env, PM_OHNE_ENV: "1", PM_PORT: String(port), PM_APPDB: path.join(verz, "access.db"), PM_DB: "", CF_ACCESS_TEAM_DOMAIN: "127.0.0.1:1", CF_ACCESS_AUD: "aud-test", SICHERUNG_AUTO: "aus", EBAY_SCHREIBEN: "", EBAY_APP_ID: "" }, stdio: "ignore" });
   try {
     let bereit = false;
     for (let i = 0; i < 50 && !bereit; i++) { try { bereit = (await fetch(b + "/healthz")).ok; } catch { await new Promise((r) => setTimeout(r, 100)); } }
-    assert.ok(bereit, "Server mit Access startet nicht");
+    assert.ok(bereit, "server with Access does not start");
     const teil = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
     const jwt = (kopf, last) => `${teil(kopf)}.${teil(last)}.${Buffer.from("keine-echte-signatur").toString("base64url")}`;
     const spaeter = Math.floor(Date.now() / 1000) + 3600, frueher = Math.floor(Date.now() / 1000) - 60;
@@ -217,7 +217,7 @@ test("Cloudflare Access: mit gesetzter Aud nur mit gültigem JWT — fehlt, fals
       const login = await fetch(b + "/api/login", { method: "POST", headers: { "Content-Type": "application/json", ...(tok ? { "Cf-Access-Jwt-Assertion": tok } : {}) }, body: JSON.stringify({ name: "x", passwort: "y" }) });
       assert.equal(login.status, 401, `${fall}: /api/login`);
     }
-    assert.equal((await fetch(b + "/healthz")).status, 200, "nur das Lebenszeichen für den Wächter bleibt offen");
+    assert.equal((await fetch(b + "/healthz")).status, 200, "only the sign of life for the watcher stays open");
   } finally {
     if (s.exitCode === null) { const weg = new Promise((r) => s.once("exit", r)); s.kill(); await weg; }
   }

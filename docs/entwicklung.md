@@ -1,127 +1,130 @@
-# Entwicklerleitfaden: so arbeitet die Gruppe am Tool
+# Developer guide: how the group works on the tool
 
-Für alle drei Builder und Niko. Ziel: jede Änderung ist nach 1 bis 2 Minuten für alle sichtbar, und nichts Ungeprüftes landet auf dem Live-System.
+For all three builders and Niko. Goal: every change is visible to everyone after 1 to 2 minutes, and nothing unchecked lands on the live system.
 
-## Die Umgebungen
+## The environments
 
-| Umgebung | Adresse | Was dort läuft | Wer ändert es |
+| Environment | Address | What runs there | Who changes it |
 |---|---|---|---|
-| **lokal** | `http://127.0.0.1:5070` | dein eigener Rechner, eigene Daten | du |
-| **VORSCHAU** | `https://vorschau.<domain>` | Branch `vorschau`, **ohne eBay-Keys** (kann nichts bei eBay ändern) | jeder per Push auf `vorschau` |
-| **PROD** (live) | `https://app.<domain>` | Branch `main`, mit eBay-Keys und Freigabe | nur über Pull Request, den jemand anders prüft |
+| **local** | `http://127.0.0.1:5070` | your own computer, your own data | you |
+| **PREVIEW** (`vorschau`) | `https://vorschau.<domain>` | branch `vorschau`, **without eBay keys** (cannot change anything on eBay) | anyone by pushing to `vorschau` |
+| **PROD** (live) | `https://app.<domain>` | branch `main`, with eBay keys and approval | only by a pull request that somebody else reviews |
 
-Oben in der App steht ein Hinweis: **PREVIEW** oder **LIVE**. Wer die Vorschau mit dem Live-System verwechselt, sieht es sofort.
+At the top of the app there is a badge: **PREVIEW** or **LIVE**. Anyone who mixes up the preview with the live system sees it at once.
 
-## Einmal einrichten (lokal)
+## One-time setup (local)
 
 ```bash
 git clone https://github.com/nik1231-alt/Parture-Groupwork.git
 cd Parture-Groupwork
 npm install
-cp .env.beispiel .env              # Windows: copy .env.beispiel .env  (nichts eintragen, keine eBay-Keys)
-npm run benutzer -- anlegen <dein-name> admin     # lokal darfst du Admin sein, das ist nur dein Rechner
+cp .env.beispiel .env              # Windows: copy .env.beispiel .env  (enter nothing, no eBay keys)
+npm run benutzer -- anlegen <your-name> admin     # locally you may be admin, it is only your computer
 npm start                          # http://127.0.0.1:5070
 ```
 
-Ohne `daten/pm.db` nutzt die App die Team-Kopie `daten-team/pm.db` (Katalog, Verkäufe, Traffic-Summen). Du brauchst **keine** Zugangsdaten. `npm run dev` startet mit Neuladen bei Änderungen.
+Without `daten/pm.db` the app uses the team copy `daten-team/pm.db` (catalogue, sales, traffic sums). You need **no** credentials. `npm run dev` starts with reload on changes.
 
-`npm test` muss grün sein, bevor du etwas teilst (läuft in rund 30 Sekunden). `npm run scan` prüft, dass kein Geheimnis im Repo steht.
+`npm test` must be green before you share anything (it takes about 30 seconds). `npm run scan` checks that no secret is in the repository.
 
-## Der Ablauf für eine Änderung
-
-```
-1. git switch -c thema/kurzname              eigener Branch (von main)
-2. ändern, lokal ausprobieren, npm test
-3. git push origin thema/kurzname:vorschau   zeigen: nach 1 bis 2 Minuten live auf der VORSCHAU
-   (oder gleich auf vorschau mergen, siehe unten)
-4. Pull Request gegen main öffnen            Beschreibung: was, warum, wie getestet
-5. eine andere Person prüft und merged       nie die eigene Änderung selbst mergen
-6. PROD übernimmt main nach spätestens 10 Minuten, aber nur, wenn die Tests dort bestehen
-```
-
-Regeln:
-- **Nie direkt auf `main` pushen.** (GitHub erzwingt das erst mit Branch-Schutz, bis dahin gilt es als Absprache.)
-- **`vorschau` ist ein Spielplatz.** Sie wird bei Bedarf hart überschrieben (Force-Push). Zwei Leute, die gleichzeitig dorthin pushen, überschreiben sich: kurz absprechen („ich habe die Vorschau gerade“). Was bleiben soll, gehört in einen Pull Request auf `main`.
-- Eine Änderung pro Pull Request, mit Test, wenn sie Logik ändert (Tests liegen in `app/test*.mjs`, `node:test`).
-- Keine `.env`, keine `.db` (außer `daten-team/pm.db`), kein `node_modules`, keine Passwörter, Tokens oder eBay-Daten in Commits, Issues, Pull Requests oder Chats.
-- Schema-Wünsche an `pm.db` als Issue beschreiben: der Export wird dann angepasst. In `pm.db` direkt zu schreiben bringt nichts, sie wird überschrieben.
-
-## Was bei jedem Pull Request automatisch passiert
-
-GitHub Actions (`.github/workflows/pruefung.yml`) führt aus: `npm ci`, den **Geheimnis-Scan** (Dateien und gesamte Historie) und **alle Tests**. Ein roter Haken heißt: nicht mergen.
-
-Auf PROD wird ein neuer `main`-Stand zusätzlich erst nach bestandenen Tests ausgerollt. Fallen sie dort durch, bleibt der alte Stand live, und das Log (`daten/waechter.log`) nennt den Grund.
-
-## Probe: ein Test-PR bis auf PROD
-
-Einmal nach der Einrichtung zusammen durchspielen:
-1. Branch `test/probe`, eine harmlose sichtbare Änderung (z. B. ein Wort im Text der Seite *Settings*).
-2. `git push origin test/probe:vorschau` → nach 1 bis 2 Minuten auf `https://vorschau.<domain>` sichtbar.
-3. Pull Request gegen `main`, die CI wird grün, eine andere Person merged.
-4. Nach höchstens 10 Minuten ist die Änderung auf `https://app.<domain>`. Im Tab **Log → System** steht die neue Version.
-5. Änderung wieder zurücknehmen (zweiter Pull Request).
-
-## Wie die App aufgebaut ist
+## The way a change goes
 
 ```
-app/server.mjs        HTTP-Server (kein Framework), Routen, Login, Rollen, Zeitplaner (Traffic-Import, Sicherung)
-app/login.mjs         Benutzer, Sitzungen, Sperre bei Fehlversuchen, Passwort ändern
-app/rollen.mjs        Admin / Builder
-app/freigabe.mjs      Vorschläge, Freigabe, Ablehnen, Rückänderung (Obergrenze 50 je Freigabe)
-app/ebay-schreiben.mjs  Titel bei eBay lesen und ändern (nur mit Keys und EBAY_SCHREIBEN=an)
-app/protokoll.mjs     Protokoll, nur anhängen (Datenbank-Trigger verbieten Ändern und Löschen)
-app/experimente.mjs   Tests: Los, Titel, Start, Urteil
-app/titelhilfe.mjs    Wort-Hinweise aus den eigenen Daten (erfindet keine Titel)
-app/demo.mjs          drei Beispiel-Urteile mit erfundenen Zahlen
-app/traffic.mjs, export-ebay.mjs   Traffic-Import und Datenaufbau aus der eBay-API
-app/sicherung.mjs     tägliche Sicherung, Rücksicherung
-app/benachrichtigung.mjs  Telegram-Meldung an den Admin
-app/waechter.mjs      Auto-Deploy mit Testschranke, App-Überwachung (nur auf dem Server)
-public/               Oberfläche (reines JavaScript, Texte nur per textContent)
-scripts/geheimnis-scan.mjs   Geheimnis-Scan
-server/               Vorlagen für den Server (.env, Cloudflare, Windows-Aufgabe)
-docs/                 diese Dokumente
+1. git switch -c topic/short-name            own branch (from main)
+2. change, try it locally, npm test
+3. git push origin topic/short-name:vorschau show it: live on the PREVIEW after 1 to 2 minutes
+   (or merge into vorschau directly, see below)
+4. open a pull request against main          description: what, why, how tested
+5. another person reviews and merges         never merge your own change yourself
+6. PROD takes main after 10 minutes at most, but only if the tests pass there
 ```
 
-### Feste Zahlen: jede genau einmal
+Rules:
+- **Never push directly to `main`.** (GitHub enforces this only with branch protection; until then it is an agreement.)
+- **`vorschau` is a playground.** It is overwritten hard when needed (force push). Two people pushing there at the same time overwrite each other: agree briefly ("I have the preview right now"). Whatever should stay belongs in a pull request to `main`.
+- One change per pull request, with a test if it changes logic (tests are in `app/test*.mjs`, `node:test`).
+- No `.env`, no `.db` (except `daten-team/pm.db`), no `node_modules`, no passwords, tokens or eBay data in commits, issues, pull requests or chats.
+- Describe schema wishes for `pm.db` as an issue: the export is then adapted. Writing into `pm.db` directly is pointless, it is overwritten.
 
-Server, Tests und Oberfläche lesen dieselbe Konstante; die Oberfläche bekommt sie über die API (`/api/betrieb` → `regeln`, dazu `/api/experimente`, `/api/freigaben`, `/api/traffic/status`), nie als eigene Kopie.
+## What happens automatically on every pull request
 
-| Zahl | Konstante | Datei |
+GitHub Actions (`.github/workflows/pruefung.yml`) runs: `npm ci`, the **secret scan** (files and the whole history) and **all tests**. A red mark means: do not merge.
+
+On PROD a new `main` version is also rolled out only after the tests pass. If they fail there, the old version stays live, and the log (`daten/waechter.log`) names the reason.
+
+## Rehearsal: a test PR all the way to PROD
+
+Play it through together once after the setup:
+1. Branch `test/probe`, a harmless visible change (e.g. a word in the text of the *Settings* page).
+2. `git push origin test/probe:vorschau` → visible after 1 to 2 minutes at `https://vorschau.<domain>`.
+3. Pull request against `main`, the CI turns green, another person merges.
+4. After 10 minutes at most the change is on `https://app.<domain>`. In the tab **Log → System** the new version appears.
+5. Revert the change again (second pull request).
+
+## How the app is built
+
+```
+app/server.mjs        HTTP server (no framework), routes, login, roles, schedulers (traffic import, backup)
+app/login.mjs         users, sessions, lock after failed attempts, change password
+app/rollen.mjs        admin / builder
+app/freigabe.mjs      proposals, approval, rejecting, reverting (limit 50 per approval)
+app/ebay-schreiben.mjs  read and change titles on eBay (only with keys and EBAY_SCHREIBEN=an)
+app/protokoll.mjs     log, append-only (database triggers forbid changing and deleting)
+app/experimente.mjs   tests: draw, title, start, verdict
+app/titelhilfe.mjs    word hints from the own data (invents no titles)
+app/demo.mjs          three example verdicts with invented figures
+app/traffic.mjs, export-ebay.mjs   traffic import and data build from the eBay API
+app/sicherung.mjs     daily backup, restore
+app/benachrichtigung.mjs  Telegram message to the admin
+app/waechter.mjs      auto-deploy with a test gate, app monitoring (server only)
+public/               interface (plain JavaScript, texts only via textContent)
+scripts/geheimnis-scan.mjs   secret scan
+server/               templates for the server (.env, Cloudflare, Windows task)
+docs/                 these documents
+```
+
+Many file and function names are German (`freigabe` = approval, `leiter` = ladder/funnel, `sicherung` = backup, `waechter` = watcher).
+The README has a short table with the meanings.
+
+### Fixed numbers: each exactly once
+
+Server, tests and interface read the same constant; the interface gets it through the API (`/api/betrieb` → `regeln`, plus `/api/experimente`, `/api/freigaben`, `/api/traffic/status`), never as its own copy.
+
+| Number | Constant | File |
 |---|---|---|
-| Titel höchstens 80 Zeichen | `TITEL_MAX_ZEICHEN` | `app/regeln.mjs` |
-| höchstens 50 Änderungen je Freigabe | `MAX_AENDERUNGEN` | `app/freigabe.mjs` |
-| Zielmarke +20 % (einstellbar) | `EINSTELLUNGEN.besserAb` | `app/regeln.mjs` |
-| Sperre nach 5 Fehlversuchen für 15 Minuten | `MAX_FEHLVERSUCHE`, `SPERRE_MINUTEN` | `app/login.mjs` |
-| Datenverzug 3 Tage / letzte 3 Tage nachgeprüft | `VERZOEGERUNG_STANDARD` (geltend: `verzoegerungTage()`), `NACHPRUEFEN_TAGE` | `app/traffic.mjs` |
+| title at most 80 characters | `TITEL_MAX_ZEICHEN` | `app/regeln.mjs` |
+| at most 50 changes per approval | `MAX_AENDERUNGEN` | `app/freigabe.mjs` |
+| target mark +20 % (adjustable) | `EINSTELLUNGEN.besserAb` | `app/regeln.mjs` |
+| lock after 5 failed attempts for 15 minutes | `MAX_FEHLVERSUCHE`, `SPERRE_MINUTEN` | `app/login.mjs` |
+| data delay 3 days / last 3 days re-checked | `VERZOEGERUNG_STANDARD` (effective: `verzoegerungTage()`), `NACHPRUEFEN_TAGE` | `app/traffic.mjs` |
 
-### Das Los und die Sperrliste
+### The draw and the block list
 
-Das Los (`experimente.ziehe`) ist reproduzierbar: der Zufallswert (`seed`) steht in `experiment.seed` und im Protokoll (`test_created`). Die Gruppen sind gleich groß (bei ungerader Zahl höchstens 1 Unterschied), kein Angebot kommt doppelt vor. Angebote aus der Tabelle `sperre` in `pm.db` (vom Hub: laufender Preisversuch; gesperrt über `number` oder über die eBay-Artikelnummer `external_id`, bis einschließlich `bis`) werden nie gezogen. Fehlt die Tabelle, ist nichts gesperrt. Tests: `app/test-los.mjs`.
+The draw (`experimente.ziehe`) is reproducible: the random value (`seed`) is stored in `experiment.seed` and in the log (`test_created`). The groups are equally large (with an odd number at most 1 difference), no listing appears twice. Listings from the table `sperre` in `pm.db` (from the hub: a running price experiment; blocked by `number` or by the eBay item number `external_id`, up to and including `bis`) are never drawn. If the table is missing, nothing is blocked. Tests: `app/test-los.mjs`.
 
-### Prüfskripte
+### Check scripts
 
-- `npm test`: alle Tests (rund 35 Sekunden). Darin `app/test-durchlauf.mjs`, der ganze Weg gegen den echten Server (Builder zieht und schlägt vor, Admin gibt im Probelauf frei, Protokoll, Testansicht), und `app/test-oberflaeche.mjs` (keine deutschen Reste in sichtbaren Texten).
-- `npm run tote`: exportierte Funktionen in `app/`, die keine andere Datei erwähnt. Ausgabe muss leer sein; Absichtliches steht begründet in der Ausnahmeliste im Skript.
-- Kindprozesse in Tests (Server) erst beenden und auf `exit` warten, dann Dateien löschen: unter Windows hält der laufende Prozess `app.db` offen (EBUSY).
+- `npm test`: all tests (about 35 seconds). Among them `app/test-durchlauf.mjs`, the whole path against the real server (builder draws and proposes, admin approves as a dry run, log, test view), and `app/test-oberflaeche.mjs` (no German left in visible texts).
+- `npm run tote`: exported functions in `app/` that no other file mentions. The output must be empty; intended exceptions are justified in the exception list in the script.
+- Child processes in tests (server): end them and wait for `exit` first, then delete files: on Windows the running process keeps `app.db` open (EBUSY).
 
-Konventionen: Module liefern `{ ok, wert }` oder `{ ok: false, status, fehler }`. Texte aus Daten (z. B. eBay-Titel) werden nie als HTML eingesetzt. Sichtbare Texte der Oberfläche sind Englisch, Code und Kommentare Deutsch. Eingaben werden im Modul geprüft (Typ, Länge, Zustand), nicht erst in der Oberfläche.
+Conventions: modules return `{ ok, wert }` or `{ ok: false, status, fehler }` (`wert` = value, `fehler` = error). Text from data (e.g. eBay titles) is never inserted as HTML. All visible texts of the interface, all messages and all comments are English. Input is checked in the module (type, length, state), not only in the interface.
 
-## Was Builder nicht können (und nicht sollen)
+## What builders cannot do (and should not)
 
-- Bei eBay schreiben: die Keys liegen nur bei Niko auf PROD.
-- Freigeben oder Rollen ändern: nur Admin (der Server prüft das, nicht nur die Oberfläche).
-- Ungeprüften Code auf PROD bringen: dafür muss er über `main`, Review und Tests.
+- Write to eBay: the keys exist only with Niko on PROD.
+- Approve or change roles: admin only (the server checks this, not only the interface).
+- Put unchecked code on PROD: for that it must go through `main`, review and tests.
 
-## Drei Regeln aus dem Serverbetrieb (17./18.11.2026)
+## Three rules from running the server (17/18 Nov 2026)
 
-- **Kindprozesse in Tests immer zu Ende warten, erst dann aufräumen.** `kill()` beendet einen Prozess nicht sofort; unter Windows hält er Dateien wie `app.db` noch offen und `rmSync` scheitert mit `EBUSY`. Muster:
+- **Always wait for child processes in tests to finish, and only then clean up.** `kill()` does not end a process at once; on Windows it still holds files such as `app.db` open and `rmSync` fails with `EBUSY`. Pattern:
   ```js
   if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
   fs.rmSync(verz, { recursive: true, force: true });
   ```
-  Startet ein Prozess selbst Kinder (der Wächter startet die App), beendet `kill()` auf den Elternprozess unter Windows das Kind **nicht** mit: die PID des Kindes merken und es selbst beenden (`app/test-waechter.mjs`).
-- **Vor `npm ci` stoppt der Wächter die App** (Haken `vorInstallation`, seit PR #9). Windows sperrt die geladene `better_sqlite3.node`; ein `npm ci` bei laufender App scheitert mit `EPERM` und hinterlässt ein fast leeres `node_modules`. Wer `package.json` ändert, löst diesen Weg aus.
-- **Der Wächter lädt seinen eigenen Code nur beim Start.** Eine Änderung an `app/waechter.mjs` wirkt erst, wenn die Aufgabe neu gestartet ist: Aufgabe stoppen, den alten `node …\app\server.mjs` per PID beenden (er überlebt `Stop-ScheduledTask` und hält den Port), Aufgabe starten. Das macht Niko oder die Server-KI, nicht der Wächter selbst.
+  If a process starts children itself (the watcher starts the app), `kill()` on the parent does **not** end the child on Windows: remember the child's PID and end it yourself (`app/test-waechter.mjs`).
+- **Before `npm ci` the watcher stops the app** (hook `vorInstallation`, since PR #9). Windows locks the loaded `better_sqlite3.node`; an `npm ci` while the app runs fails with `EPERM` and leaves an almost empty `node_modules`. Whoever changes `package.json` triggers this path.
+- **The watcher loads its own code only at start.** A change to `app/waechter.mjs` takes effect only when the task is restarted: stop the task, end the old `node …\app\server.mjs` by PID (it survives `Stop-ScheduledTask` and holds the port), start the task. Niko or the server AI does this, not the watcher itself.
 
-Die CI prüft seit dem 19.11. auf Ubuntu **und** Windows (`.github/workflows/pruefung.yml`, Matrix), weil die beiden Fehler oben nur unter Windows auftraten. `npm test` dauert lokal rund 35 Sekunden; über 60 Sekunden gilt als Fehler, der behoben wird.
+The CI currently runs on Ubuntu only. A Windows matrix is prepared, because the two errors above occurred only on Windows; pushing the workflow change needs a token with the `workflow` scope (issue #18). `npm test` takes about 35 seconds locally; over 60 seconds counts as an error that gets fixed.

@@ -1,4 +1,4 @@
-// Test des echten Servers: Warnung bei veralteten Traffic-Daten, Version im /healthz, Umgebungs-Kennzeichen.
+// Test of the real server: warning on outdated traffic data, version in /healthz, environment badge.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -15,8 +15,8 @@ const appdb = path.join(verz, "app.db"), pmdb = path.join(verz, "pm.db");
 { const d = new Database(appdb); bereiteVor(d); legeBenutzerAn(d, "anna", "ein-langes-passwort"); d.close(); }
 const setzeStand = (bis) => { fs.rmSync(pmdb, { force: true }); const d = new Database(pmdb); d.exec("CREATE TABLE stand (exportiert_at TEXT, traffic_bis TEXT)"); d.prepare("INSERT INTO stand VALUES (?, ?)").run(new Date().toISOString(), bis); d.close(); };
 fs.mkdirSync(path.join(verz, "daten"), { recursive: true });
-// Startzeit des Testservers: bis zu 90 s (900 × 100 ms). 5 s reichten am 19.11. nicht, 30 s am 20.11. auch nicht, als PROD und VORSCHAU
-// bei knappem Speicher gleichzeitig testeten (5cebbb9 abgelehnt). Ein gesunder Start dauert unter 1 s, die Grenze kostet dann nichts.
+// Start time of the test server: up to 90 s (900 × 100 ms). 5 s was not enough on 19 Nov, 30 s on 20 Nov was not either, when PROD and PREVIEW
+// tested at the same time with tight memory (5cebbb9 rejected). A healthy start takes under 1 s, so the limit costs nothing.
 const basis = `http://127.0.0.1:${PORT}`;
 let server;
 test.before(async () => {
@@ -24,7 +24,7 @@ test.before(async () => {
   for (let i = 0; i < 900; i++) { try { if ((await fetch(basis + "/healthz")).ok) return; } catch { /* noch nicht bereit */ } await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
-// Erst warten, bis der Server-Prozess wirklich beendet ist: auf Windows hält er app.db sonst noch offen und rmSync scheitert mit EBUSY (Serverprobe 17.11.2026).
+// First wait until the server process has really ended: on Windows it otherwise still keeps app.db open and rmSync fails with EBUSY (server probe 17 Nov 2026).
 test.after(async () => {
   if (server && server.exitCode === null) { const weg = new Promise((r) => server.once("exit", r)); server.kill(); await weg; }
   fs.rmSync(verz, { recursive: true, force: true });
@@ -33,7 +33,7 @@ test.after(async () => {
 async function cookie() { const r = await fetch(basis + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "anna", passwort: "ein-langes-passwort" }) }); return r.headers.get("set-cookie").split(";")[0]; }
 const betrieb = async (c) => (await (await fetch(basis + "/api/betrieb", { headers: { Cookie: c } })).json()).daten;
 
-test("Datenstand: Soll = heute minus Verzögerung. Pünktlich ist unauffällig, 1 Tag Rückstand auch, ab 2 Tagen veraltet", async () => {
+test("Data age: expected = today minus delay. On time is fine, 1 day behind too, from 2 days it is outdated", async () => {
   const c = await cookie();
   for (const [rueck, veraltet] of [[0, false], [1, false], [2, true], [6, true]]) {
     setzeStand(laDatum(new Date(), VERZOEGERUNG_STANDARD + rueck));
@@ -42,16 +42,16 @@ test("Datenstand: Soll = heute minus Verzögerung. Pünktlich ist unauffällig, 
   }
 });
 
-test("Datenstand: ohne Traffic-Datum oder mit unlesbarem Wert keine Warnung und kein Absturz", async () => {
+test("Data age: without a traffic date or with an unreadable value there is no warning and no crash", async () => {
   const c = await cookie();
   for (const bis of [null, "gestern", "2026-13-99x"]) { setzeStand(bis); const d = (await betrieb(c)).daten; assert.equal(d.veraltet, false); assert.equal(d.rueckstandTage, null); }
 });
 
-test("Umgebung steht im Status, und /healthz zeigt die Version aus dem Wächter-Status ohne Anmeldung", async () => {
+test("The environment is in the status, and /healthz shows the version from the watcher status without login", async () => {
   assert.equal((await betrieb(await cookie())).umgebung, "vorschau");
-  // Auf dem Server läuft dieser Test IM Wächter-Ordner, dort liegt daten/waechter-status.json mit dem ausgerollten Commit.
-  // Fest „null“ zu erwarten ließ den Wächter jeden zweiten Stand ablehnen (Serverprobe 17.11.2026: b86458b ABGELEHNT).
+  // On the server this test runs INSIDE the watcher folder, where daten/waechter-status.json with the rolled-out commit lies.
+  // Expecting a fixed "null" made the watcher reject every second version (server probe 17 Nov 2026: b86458b REJECTED).
   let erwartet = null;
   try { erwartet = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "..", "daten", "waechter-status.json"), "utf8")).commit?.slice(0, 7) || null; } catch { /* ohne Wächter keine Version */ }
-  assert.equal((await (await fetch(basis + "/healthz")).json()).version, erwartet, "Version aus daten/waechter-status.json, sonst null");
+  assert.equal((await (await fetch(basis + "/healthz")).json()).version, erwartet, "version from daten/waechter-status.json, otherwise null");
 });

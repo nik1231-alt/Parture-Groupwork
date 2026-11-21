@@ -1,6 +1,6 @@
-// Seite Problem: das Problem in einer Minute erklärt (Daten: /api/problem, problem.mjs).
+// Page Problem: the problem explained in one minute (data: /api/problem, problem.mjs).
 //   1. der Satz: so viele eBay-Angebote haben in 90 Tagen nichts verkauft
-//   2. alle Angebote in drei Gruppen ohne Überschneidung: verkauft / gezeigt, nicht gekauft / kaum gezeigt
+//   2. all listings in three groups without overlap: sold / shown, not bought / hardly shown
 //   3. warum Sichtbarkeit zuerst kommt: Verkaufschance kaum gezeigt gegen oft gezeigt, typische Impressionen je Gruppe
 //   4. der Plan: drei Hebel, der billigste zuerst, gemessen an einer Kontrollgruppe
 // Eigene Datei, damit app.js nur ladeProblem() braucht. Nutzt el, zahl, LOCALE aus app.js. Sichtbares englisch, Daten nur als Text.

@@ -1,6 +1,6 @@
-// Seite Results, Teil "Day by day": was jede Phase der Leiter gebracht hat, gemessen an der Kontrollgruppe (Daten: /api/dashboard, ergebnisse.mjs).
-// Eigene Datei, damit app.js (wird parallel umgebaut) nur den Menüpunkt und den Aufruf Dashboard.lade() braucht.
-// Nutzt die Hilfen aus app.js (el, fuelle, api, zeigeFehler, LOCALE). Texte aus Daten nur als Text, nie als HTML. Sichtbares englisch.
+// Page Results, part "Day by day": what each phase of the ladder brought, measured against the control group (data: /api/dashboard, ergebnisse.mjs).
+// A file of its own, so that app.js (being rebuilt in parallel) needs only the menu item and the call Dashboard.lade().
+// Uses the helpers from app.js (el, fuelle, api, zeigeFehler, LOCALE). Texts from data only as text, never as HTML. Visible text is English.
 const Dashboard = (() => {
   const NS = "http://www.w3.org/2000/svg";
   const sv = (tag, attrs = {}, ...kinder) => {
@@ -41,7 +41,7 @@ const Dashboard = (() => {
       methodik());
   }
 
-  // ---------- eine Phase ----------
+  // ---------- one phase ----------
   function phase(p) {
     return [antwort(p), kpis(p), p.kurve.some((k) => k.tag > 0 && k.test != null) ? kurve(p) : null, gruppen(p)];
   }
@@ -91,7 +91,7 @@ const Dashboard = (() => {
     if (erster > 1) teile.push(st((li + startX) / 2, H - un - 10, "before: baseline = 100", "d-klein"));
     teile.push(sv("path", { d: pfad("kontrolle"), class: "r-linie-ctrl" }), sv("path", { d: pfad("test"), class: "r-linie-test" }));
     const letzt = pk[n - 1];
-    // Beschriftungen am Ende mindestens 14 px auseinander, die höhere nach oben
+    // Labels at the end at least 14 px apart, the higher one moved up
     let yt = letzt.test != null ? y(letzt.test) : null, yk = letzt.kontrolle != null ? y(letzt.kontrolle) : null;
     if (yt != null && yk != null && Math.abs(yt - yk) < 14) { const m = (yt + yk) / 2, oben = letzt.test >= letzt.kontrolle; yt = m + (oben ? -7 : 7); yk = m + (oben ? 7 : -7); }
     if (letzt.kontrolle != null) teile.push(sv("circle", { cx: x(n - 1), cy: y(letzt.kontrolle), r: 4.5, class: "r-punkt-ctrl" }), st(x(n - 1) + 8, yk + 4, z(letzt.kontrolle), "d-wert kontrolle", "start"));
@@ -136,7 +136,7 @@ const Dashboard = (() => {
       el("p", { class: "leise", style: "margin:0;max-width:60ch", text: `The first numbers appear once eBay traffic for the days after the start is complete (traffic up to ${tagText(daten.trafficBis)}).` }));
   }
 
-  // ---------- alle Phasen ----------
+  // ---------- all phases ----------
   function alle() {
     const mitWert = daten.phasen.filter((p) => p.netto?.imp != null);
     const ziel = daten.einst.besserAb;

@@ -1,18 +1,18 @@
-// Regelprüfer für neue eBay-Titel: entscheidet ohne KI, ob ein Vorschlag abmahnsicher und eBay-konform ist.
-// Jeder Titelvorschlag (von der KI, aus der Titelhilfe oder von Hand) muss hier durch, bevor er zur Freigabe kann.
-// Reine Funktionen, keine Datenbank, kein Netz. Tests: app/test-titel-regeln.mjs (mit bösen Beispielen).
+// Rule checker for new eBay titles: decides without an AI whether a suggestion is safe from warning letters and conforms to eBay.
+// Every title suggestion (from the AI, from the title help or by hand) must pass here before it can go to approval.
+// Pure functions, no database, no network. Tests: app/test-titel-regeln.mjs (with bad examples).
 //
 // Die Regeln, kurz:
-//   1. Länge 1 bis 80 Zeichen (Vorgabe von eBay).
-//   2. Keine Werbe- und Gütebehauptungen: Superlative, Prüfsiegel, Umweltaussagen, Preis- und Versandversprechen, "Original".
-//   3. Fremde Marken nur als Bezug ("passend für Bosch"), nie als Hersteller; keine Marke, die im alten Titel nicht stand.
-//   4. Nichts erfinden: jede Zahl (Maß, Stückzahl) und jede Farbe muss schon im alten Titel stehen.
-//   5. Keine Schlagwortlisten: kein Schlagwort öfter als vorher, keine Emojis, keine neuen Sonderzeichen oder Großbuchstaben-Wörter.
-// Geprüft am 19.11.2026 gegen alle 745 aktiven eBay-Titel des Shops (jeder Titel gegen sich selbst): Was dabei auffiel, steht
-// in den Ausnahmen unten (Füllwörter, Sonderzeichen aus dem alten Titel, Behauptungen aus dem alten Titel nur als Hinweis).
+//   1. Length 1 to 80 characters (eBay's rule).
+//   2. No advertising or quality claims: superlatives, test marks, environmental statements, price and shipping promises, "original".
+//   3. Foreign brands only as a reference ("passend für Bosch" = "fits Bosch"), never as the maker; no brand that was not in the old title.
+//   4. Invent nothing: every number (size, quantity) and every colour must already be in the old title.
+//   5. No keyword lists: no keyword more often than before, no emojis, no new special characters or capitalised words.
+// Checked on 19 Nov 2026 against all 745 active eBay titles of the shop (each title against itself): what stood out is listed
+// in the exceptions below (filler words, special characters from the old title, claims from the old title only as a note).
 import { TITEL_MAX_ZEICHEN } from "./regeln.mjs";
 
-// Wörter, die in einem neuen Titel nicht stehen dürfen (als ganzes Wort, Groß-/Kleinschreibung egal). Der Grund steht im Prüfergebnis.
+// Words that must not appear in a new title (as a whole word, case does not matter). The reason is in the check result.
 const VERBOTEN = [
   { muster: /\boriginal\w*|\boem\b/i, grund: "“Original”/“OEM” claims the part comes from the brand owner (trademark risk)." },
   { muster: /\b(beste[nmrs]?|best|top|nr\.?\s?1|nummer\s?1|testsieger|premium|perfekt\w*|ultimativ\w*|einzigartig\w*)\b/i, grund: "Superlatives and quality claims cannot be proven (unfair competition)." },
@@ -22,7 +22,7 @@ const VERBOTEN = [
   { muster: /\b(garantie\w*|lebenslang\w*|unzerstörbar\w*|bruchsicher\w*)\b/i, grund: "Guarantee and durability promises create legal obligations." },
 ];
 
-// Fremdmarken, die im Katalog vorkommen (Liste von der Gruppe gepflegt). Eine Marke darf nur zusammen mit einem Bezugswort stehen.
+// Foreign brands that occur in the catalogue (list kept by the group). A brand may only appear together with a reference word.
 export const MARKEN = ["bosch", "makita", "metabo", "ryobi", "stihl", "festool", "dewalt", "milwaukee", "einhell", "gardena", "kärcher", "karcher",
   "hilti", "parkside", "ikea", "kallax", "billy", "trofast", "variera", "thule", "hymer", "vw", "volkswagen", "bmw", "tesla", "apple", "dyson",
   "sonos", "kermi", "new era", "flexfit", "worx", "black+decker", "hikoki", "wera", "wiha", "knipex", "samsung", "philips", "xiaomi", "garmin",
@@ -30,21 +30,21 @@ export const MARKEN = ["bosch", "makita", "metabo", "ryobi", "stihl", "festool",
   "bestway", "webasto", "dometic", "fritz!box", "fritzfon", "blink", "ring", "sortimo", "babyzen"];
 const BEZUG = /\b(passend|kompatibel|geeignet|für)\b/i;
 const FARBEN = ["schwarz", "weiß", "weiss", "grau", "rot", "blau", "grün", "gelb", "orange", "pink", "rosa", "lila", "violett", "braun", "beige", "gold", "silber", "transparent", "anthrazit"];
-// Füllwörter dürfen mehrfach vorkommen ("passend für A … für B"), sie sind keine Schlagwörter
+// Filler words may occur several times ("passend für A … für B"), they are not keywords
 export const FUELL = new Set(["für", "mit", "und", "oder", "von", "zum", "zur", "der", "die", "das", "den", "dem", "ein", "eine", "auf", "aus", "passend", "kompatibel", "geeignet", "set", "stk", "stück"]);
 const EMOJI = /[\p{Extended_Pictographic}✅✔⭐]/u;
 const ERLAUBT = /[\p{L}\p{N}\s\-/,.&()+'"×:]/u;
 
 const klein = (s) => String(s ?? "").toLowerCase();
-// Titel aus pm.db tragen manchmal HTML-Entitäten (&amp;): vor dem Prüfen in Zeichen umwandeln
+// Titles from pm.db sometimes carry HTML entities (&amp;): convert them into characters before checking
 const entities = (s) => String(s ?? "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 const woerter = (s) => klein(s).match(/[\p{L}\p{N}][\p{L}\p{N}+&-]*/gu) || [];
 const zahlen = (s) => klein(s).match(/\d+(?:[.,]\d+)?/g) || [];
 const zaehle = (liste) => liste.reduce((m, w) => m.set(w, (m.get(w) || 0) + 1), new Map());
 const enthaeltMarke = (text, m) => new RegExp(`(^|[^\\p{L}\\p{N}])${m.replace(/[+.*?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "iu").test(text);
 export const markenIn = (text) => MARKEN.filter((m) => enthaeltMarke(klein(entities(text)), m));
-// Steht die Marke vor dem ersten Bezugswort ("BMW X3 Armlehne passend")? Dann liest sie sich, als wären wir der Hersteller.
-// Gefunden am 20.11. an echten KI-Vorschlägen: die alte Regel verlangte nur IRGENDWO ein Bezugswort.
+// Is the brand before the first reference word ("BMW X3 Armlehne passend")? Then it reads as if we were the maker.
+// Found on 20 Nov on real AI suggestions: the old rule demanded a reference word only SOMEWHERE.
 const markeVorBezug = (text, m) => {
   const t = klein(entities(text));
   const stelle = t.search(new RegExp(`(^|[^\\p{L}\\p{N}])${m.replace(/[+.*?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "iu"));
@@ -52,9 +52,9 @@ const markeVorBezug = (text, m) => {
   return stelle >= 0 && (bezug < 0 || stelle < bezug);
 };
 
-// Prüft einen neuen Titel gegen den alten. Liefert { ok, verstoesse, hinweise }; ok nur ohne Verstoß.
-// verstoesse blockieren die Freigabe. hinweise blockieren nicht: sie markieren Riskantes, das schon im alten Titel stand
-// (z. B. ist "Webasto Air Top" ein Produktname, "TOP" am Titelende eine Behauptung), und der Admin soll es ansehen.
+// Checks a new title against the old one. Returns { ok, verstoesse, hinweise }; ok only without a violation.
+// verstoesse (violations) block the approval. hinweise (notes) do not block: they mark risky things that were already in the old title
+// (e.g. "Webasto Air Top" is a product name, "TOP" at the end of a title is a claim), and the admin should look at it.
 export function pruefeTitel(neu, alt) {
   const v = [], h = [];
   const n = entities(neu).replace(/\s+/g, " ").trim();
@@ -69,7 +69,7 @@ export function pruefeTitel(neu, alt) {
     if (klein(a).match(muster)?.[0] === klein(m[0])) h.push({ regel: "behauptung", text: `“${m[0]}” was already in the old title. Check it: ${grund}` });
     else melde("behauptung", `“${m[0]}”: ${grund}`);
   }
-  // Marken: keine neuen, und Marken nur zusammen mit einem Bezugswort ("passend für …")
+  // Brands: no new ones, and brands only together with a reference word ("passend für …")
   const neueMarken = markenIn(n), alteMarken = markenIn(a);
   for (const m of neueMarken) if (!alteMarken.includes(m)) melde("marke", `“${m}” is a brand that was not in the old title. Brands must not be added.`);
   if (neueMarken.length && !BEZUG.test(n)) melde("marke", "A brand may only appear as a reference, e.g. “passend für …”, never as if we were the maker.");
@@ -77,12 +77,12 @@ export function pruefeTitel(neu, alt) {
     if (markeVorBezug(a, m)) h.push({ regel: "marke", text: `“${m}” stands before “passend für …”, as in the old title. Check it: a brand in front reads as if we were the maker.` });
     else melde("marke", `“${m}” must come after “passend für …” or “kompatibel mit …”. A brand in front reads as if we were the maker.`);
   }
-  // Nichts erfinden: Zahlen und Farben müssen schon im alten Titel stehen
+  // Invent nothing: numbers and colours must already be in the old title
   const alteZahlen = new Set(zahlen(a));
   for (const z of zahlen(n)) if (!alteZahlen.has(z)) melde("erfunden", `The number “${z}” is not in the old title. Sizes and quantities must not be made up.`);
   const alteWoerter = woerter(a);
   for (const f of FARBEN) if (woerter(n).includes(f) && !alteWoerter.includes(f)) melde("erfunden", `The colour “${f}” is not in the old title.`);
-  // Form: kein Schlagwort öfter als im alten Titel, keine Emojis, keine neuen Sonderzeichen, keine neuen Großbuchstaben-Wörter
+  // Form: no keyword more often than in the old title, no emojis, no new special characters, no new capitalised words
   const vorher = zaehle(alteWoerter);
   for (const [w, k] of zaehle(woerter(n))) {
     if (k < 2 || w.length < 3 || /^\d/.test(w) || FUELL.has(w) || k <= (vorher.get(w) || 0)) continue;
@@ -97,7 +97,7 @@ export function pruefeTitel(neu, alt) {
   return { ok: v.length === 0, verstoesse: v, hinweise: h };
 }
 
-// Der Teil des KI-Auftrags, der die Regeln beschreibt: dieselben Regeln wie oben, damit die meisten Vorschläge gleich durchgehen.
+// The part of the AI task that describes the rules: the same rules as above, so that most suggestions pass at once.
 export const REGELN_FUER_KI = [
   `At most ${TITEL_MAX_ZEICHEN} characters.`,
   "German, like the old title. Start with the product type (what it is), then what it fits; put the words buyers search for early.",

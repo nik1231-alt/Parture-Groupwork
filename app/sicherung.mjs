@@ -1,12 +1,12 @@
-// Sicherung der App-Daten (daten/app.db: Benutzer, Tests, Freigaben, Protokoll; daten/traffic-tage.db: Tages-Traffic).
-// pm.db wird nicht gesichert: sie lässt sich jederzeit aus eBay neu bauen (npm run export).
+// Backup of the app data (daten/app.db: users, tests, approvals, log; daten/traffic-tage.db: daily traffic).
+// pm.db is not backed up: it can be rebuilt from eBay at any time (npm run export).
 //
-//   npm run sicherung                 jetzt sichern (auch in einen zweiten Ordner, wenn SICHERUNG_ZIEL2 gesetzt ist)
-//   npm run sicherung -- liste        vorhandene Sicherungen
-//   npm run sicherung -- wiederherstellen <datei>   Sicherung zurückspielen (App vorher stoppen!)
+//   npm run sicherung                 back up now (also into a second folder if SICHERUNG_ZIEL2 is set)
+//   npm run sicherung -- liste        existing backups
+//   npm run sicherung -- wiederherstellen <file>   restore a backup (stop the app first!)
 //
-// Gesichert wird mit dem Online-Backup von SQLite: mitten im Betrieb, ohne halb geschriebene Dateien. Jede Sicherung wird danach
-// auf Unversehrtheit geprüft; eine kaputte Datei zählt nicht als Sicherung. Behalten werden die letzten 14 Tage (SICHERUNG_BEHALTEN).
+// The backup uses SQLite's online backup: during operation, without half-written files. Every backup is afterwards
+// checked for integrity; a broken file does not count as a backup. The last 14 days are kept (SICHERUNG_BEHALTEN).
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -24,19 +24,19 @@ export function istHeil(pfad) {
   catch { return false; } finally { try { db?.close(); } catch { /* schon zu */ } }
 }
 
-// Sichert alle vorhandenen Quellen nach ziel. quellen: [{ name, pfad }]. Liefert { gesichert: [{name, datei, bytes}], fehler: [..] }.
+// Backs up all existing sources to ziel. quellen: [{ name, pfad }]. Returns { gesichert: [{name, datei, bytes}], fehler: [..] }.
 export async function sichere({ quellen, ziel, ziel2 = "", behalte = 14, jetzt = new Date() }) {
   const gesichert = []; const fehler = [];
   fs.mkdirSync(ziel, { recursive: true });
   for (const q of quellen) {
-    if (!fs.existsSync(q.pfad)) continue;           // z. B. noch kein Traffic-Cache
+    if (!fs.existsSync(q.pfad)) continue;           // e.g. no traffic cache yet
     const datei = path.join(ziel, dateiName(q.name, jetzt));
     let db;
     try {
       db = new Database(q.pfad, { readonly: true, fileMustExist: true });
       await db.backup(datei);
       db.close(); db = null;
-      // Die Kopie behält sonst den WAL-Modus der Quelle und legt beim Öffnen Nebendateien (-wal, -shm) an: zurück auf eine einzelne Datei
+      // Otherwise the copy keeps the WAL mode of the source and creates side files (-wal, -shm) when opened: back to a single file
       { const k = new Database(datei); try { k.pragma("journal_mode = DELETE"); } finally { k.close(); } }
       if (!istHeil(datei)) { fs.rmSync(datei, { force: true }); throw new Error("The backup copy failed the integrity check"); }
       if (ziel2) { fs.mkdirSync(ziel2, { recursive: true }); fs.copyFileSync(datei, path.join(ziel2, path.basename(datei))); }
@@ -47,7 +47,7 @@ export async function sichere({ quellen, ziel, ziel2 = "", behalte = 14, jetzt =
   return { gesichert, fehler };
 }
 
-// Pro Quelle nur die neuesten "behalte" Dateien lassen (die Namen sortieren nach Zeit)
+// Per source keep only the newest "behalte" files (the names sort by time)
 function aufraeumen(ordner, namen, behalte) {
   for (const n of namen) {
     const dateien = fs.readdirSync(ordner).filter((f) => new RegExp(`^${n}-\\d{4}-\\d{2}-\\d{2}-\\d{4}\\.db$`).test(f)).sort();
@@ -61,7 +61,7 @@ export function liste(ordner) {
     .map((f) => { const s = fs.statSync(path.join(ordner, f)); return { datei: f, bytes: s.size, geaendert: s.mtime.toISOString() }; });
 }
 
-// Spielt eine Sicherung zurück. Die bisherige Datei wird nicht gelöscht, sondern daneben abgelegt.
+// Restores a backup. The previous file is not deleted but put aside next to it.
 export function stelleWiederHer(sicherung, zielDatei, jetzt = new Date()) {
   if (!fs.existsSync(sicherung)) throw new Error("Backup not found: " + sicherung);
   if (!istHeil(sicherung)) throw new Error("This backup failed the integrity check, it is not restored.");
@@ -74,7 +74,7 @@ export function stelleWiederHer(sicherung, zielDatei, jetzt = new Date()) {
   return { alt };
 }
 
-// Aus der Umgebung (.env bzw. Prozess): Pfade der Quellen und des Sicherungsordners
+// From the environment (.env or process): paths of the sources and of the backup folder
 export function konfiguration(env = process.env, wurzel = WURZEL) {
   return {
     quellen: QUELLEN.map((q) => ({ name: q.name, pfad: path.resolve(wurzel, env[q.env] || q.standard) })),
@@ -95,9 +95,9 @@ async function haupt() {
     const datei = process.argv[3]; if (!datei) { console.error("Aufruf: npm run sicherung -- wiederherstellen <datei aus daten/sicherung>"); process.exit(2); }
     const pfad = path.isAbsolute(datei) ? datei : fs.existsSync(path.resolve(datei)) ? path.resolve(datei) : path.join(k.ziel, datei);
     const quelle = k.quellen.find((q) => path.basename(pfad).startsWith(q.name + "-"));
-    if (!quelle) { console.error("Der Dateiname passt zu keiner Quelle (app-… oder traffic-tage-…)."); process.exit(2); }
+    if (!quelle) { console.error("The file name does not match any source (app-… or traffic-tage-…)."); process.exit(2); }
     const r = stelleWiederHer(pfad, quelle.pfad);
-    console.log(`Zurückgespielt nach ${quelle.pfad}.` + (r.alt ? ` Die bisherige Datei liegt unter ${r.alt}.` : "") + " Jetzt die App neu starten.");
+    console.log(`Restored to ${quelle.pfad}.` + (r.alt ? ` The previous file is at ${r.alt}.` : "") + " Now restart the app.");
     return;
   }
   const r = await sichere(k);

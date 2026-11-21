@@ -1,5 +1,5 @@
-// Oberfläche nur englisch (Checkliste A1.11): sichtbare Texte in public/ und Fehlermeldungen der Module, die bei der Oberfläche
-// ankommen, enthalten keine Umlaute und kein ß. Kommentare dürfen deutsch bleiben, deshalb werden sie vorher entfernt.
+// Interface English only (checklist A1.11): visible texts in public/ and error messages of the modules that reach the interface
+// contain no umlauts and no ß. Comments are English as well; they are removed beforehand anyway so that only strings are checked.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -8,8 +8,8 @@ import path from "node:path";
 const WURZEL = path.join(import.meta.dirname, "..");
 const DEUTSCH = /[äöüÄÖÜß]/;
 
-// Zerlegt JavaScript grob in Zeichenketten ('…', "…", `…`) und überspringt Kommentare. Regex-Literale werden nicht erkannt;
-// in den Dateien hier enthält keines ein Anführungszeichen, und ein Fehlgriff würde den Test eher rot als falsch grün machen.
+// Splits JavaScript roughly into strings ('…', "…", `…`) and skips comments. Regex literals are not recognised;
+// none of the files here contains a quotation mark in one, and a mistake would make the test turn red rather than wrongly green.
 function zeichenketten(quelle) {
   const aus = []; let i = 0;
   while (i < quelle.length) {
@@ -26,20 +26,20 @@ function zeichenketten(quelle) {
   return aus;
 }
 
-test("Zerleger: findet Zeichenketten und überspringt Kommentare (auch mit Umlauten und Adressen)", () => {
+test("Splitter: finds strings and skips comments (also with umlauts and addresses)", () => {
   const z = zeichenketten('// Kommentar mit Ä\nconst a = "eins"; /* Größe */ const b = `zwei ${x}`; const u = "https://x.y/z"; // noch ein Ö');
   assert.deepEqual(z.map((x) => x.text), ["eins", "zwei ${x}", "https://x.y/z"]);
-  assert.ok(zeichenketten('const t = "Fehler: ungültig";').some((x) => DEUTSCH.test(x.text)), "ein deutscher Text würde gefunden");
+  assert.ok(zeichenketten('const t = "Fehler: ungültig";').some((x) => DEUTSCH.test(x.text)), "a German text would be found");
 });
 
-test("public/*.js: keine Umlaute oder ß in Zeichenketten (alles Sichtbare ist englisch)", () => {
+test("public/*.js: no umlauts or ß in strings (everything visible is English)", () => {
   const funde = [];
   for (const f of fs.readdirSync(path.join(WURZEL, "public")).filter((x) => x.endsWith(".js")))
     for (const z of zeichenketten(fs.readFileSync(path.join(WURZEL, "public", f), "utf8"))) if (DEUTSCH.test(z.text)) funde.push(`${f}:${z.zeile} ${z.text.slice(0, 80)}`);
   assert.deepEqual(funde, []);
 });
 
-test("public/*.html: keine Umlaute oder ß außerhalb von Kommentaren", () => {
+test("public/*.html: no umlauts or ß outside comments", () => {
   const funde = [];
   for (const f of fs.readdirSync(path.join(WURZEL, "public")).filter((x) => x.endsWith(".html"))) {
     const ohne = fs.readFileSync(path.join(WURZEL, "public", f), "utf8").replace(/<!--[\s\S]*?-->/g, "");
@@ -48,8 +48,8 @@ test("public/*.html: keine Umlaute oder ß außerhalb von Kommentaren", () => {
   assert.deepEqual(funde, []);
 });
 
-test("app/*.mjs: Fehlermeldungen an die Oberfläche (new Error, fehler(status, …)) sind englisch", () => {
-  // Nur Dateien, deren Meldungen über den Server bei der Oberfläche ankommen (Befehlszeilen-Werkzeuge wie benutzer.mjs und waechter.mjs bleiben deutsch)
+test("app/*.mjs: error messages to the interface (new Error, fehler(status, …)) are English", () => {
+  // Only files whose messages reach the interface through the server (command-line tools such as benutzer.mjs and waechter.mjs are English too, but do not reach the interface)
   const ui = ["auswertung", "bewertung", "demo", "ebay-schreiben", "einstellungen", "experimente", "export-ebay", "freigabe", "login", "protokoll", "regeln", "rollen", "server", "sicherung", "titelhilfe", "traffic"];
   const muster = /(?:new Error|fehler)\(\s*(?:\d+\s*,\s*)?(["'`])((?:\\.|(?!\1).)*)\1/g;
   const woerter = /\b(nicht|nur|fehlt|gefunden|antwortet|bitte|unter|kein|keine|ungültig)\b/i;
