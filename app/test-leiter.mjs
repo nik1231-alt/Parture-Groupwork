@@ -8,7 +8,8 @@ import * as protokoll from "./protokoll.mjs";
 import * as leiter from "./leiter.mjs";
 
 // Without a control group, so that the intake in the older tests stays predictable; the control group has its own tests below
-const E = { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 900, leiterMax: 3, leiterKontrolle: false, leiterNurOhneVerkauf: "nein" };
+// Waiting times pinned to 14 / 14 / 21 days: the dates in these tests are built on them (the defaults are 4 / 4 / 4 since 21.11.)
+const E = { ...EINSTELLUNGEN, modus: "fest", festeGrenze: 900, leiterMax: 3, leiterKontrolle: false, leiterNurOhneVerkauf: "nein", leiterTageTitel: 14, leiterTageWerbung: 14, leiterTagePreis: 21 };
 const ADMIN = { name: "niko", rolle: "admin" }, BUILDER = { name: "anna", rolle: "builder" };
 const T0 = new Date("2026-11-20T09:00:00Z");
 const tag = (n) => new Date(T0.getTime() + n * 864e5);
@@ -196,16 +197,16 @@ test("Evaluation with control group: if the whole shop rises the net effect show
   }
 });
 
-test("Control time over (all three waiting times): the control listing leaves the group and pauses for 90 days", () => {
+test("Control time over (all three waiting times plus the buffer): the control listing leaves the group and pauses for 90 days", () => {
   const d = neueDb();
   leiter.nimmAuf(d, shop(), { ...EK, leiterMax: 1 }, T0, { seed: 7 });
   const ktr = d.prepare("SELECT number FROM leiter WHERE stufe = 'kontrolle'").get().number;
-  assert.equal(leiter.kontrollTage(EK), 49);
-  leiter.werteAus(d, daten({}, "2027-01-07", { einst: EK }), tag(50));
+  assert.equal(leiter.kontrollTage(EK), 14 + 14 + 21 + leiter.KONTROLLE_PUFFER);
+  leiter.werteAus(d, daten({}, "2027-01-14", { einst: EK }), tag(57));
   assert.equal(zeile(d, ktr).stufe, "kontrolle", "one day before the end: still in the group");
-  leiter.werteAus(d, daten({}, "2027-01-08", { einst: EK }), tag(51));
+  leiter.werteAus(d, daten({}, "2027-01-15", { einst: EK }), tag(58));
   assert.equal(zeile(d, ktr).stufe, "raus"); assert.equal(zeile(d, ktr).ergebnis, "kontrolle");
-  const t = leiter.trichter(d, shop(), EK, tag(51)).liste.find((x) => x.number === ktr);
+  const t = leiter.trichter(d, shop(), EK, tag(58)).liste.find((x) => x.number === ktr);
   assert.equal(t.status, "raus"); assert.equal(t.art, "pause");
 });
 

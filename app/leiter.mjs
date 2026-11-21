@@ -25,7 +25,10 @@ import * as protokoll from "./protokoll.mjs";
 
 export const STUFEN = ["titel", "werbung", "preis", "pruefung"];
 export const KONTROLLE = "kontrolle";
-export const kontrollTage = (einst = EINSTELLUNGEN) => einst.leiterTageTitel + einst.leiterTageWerbung + einst.leiterTagePreis;
+// The control group stays unchanged for all three waiting times plus a buffer: the next phase starts only when an admin decides,
+// usually a day or more after a waiting time ends, and the last phase must still be measured against the control group.
+export const KONTROLLE_PUFFER = 7;
+export const kontrollTage = (einst = EINSTELLUNGEN) => einst.leiterTageTitel + einst.leiterTageWerbung + einst.leiterTagePreis + KONTROLLE_PUFFER;
 export const ENTSCHEIDUNGEN = ["ueberarbeiten", "offline", "behalten"];
 // After so many days a listing that has left the ladder may come back in (if it has low impressions again)
 export const WIEDER_NACH_TAGEN = 90;
