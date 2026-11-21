@@ -73,6 +73,8 @@ All products
 - **Seen again** means: impressions per day during the waiting time, scaled to 90 days, are no longer below the diagnosis limit.
 - **Net effect** of a phase = (listing after ÷ before) ÷ (control group after ÷ before) − 1, over exactly the same days. If the
   whole shop gets busier, the control group rises too and the net effect stays near zero. From +20 % a phase counts as clearly better.
+  "Before" is the 30 days before the phase started, computed for listing and control group **with the same, current data**
+  (not a value stored at the start, which can miss days that arrived later).
 - **The lot** uses a stored seed, so the same candidates and the same seed always give the same split (`ziehe` in `app/experimente.mjs`).
   Since 21 Nov it draws in **pairs**: the drawn listings are sorted by impressions, neighbours form a pair, and a coin decides which
   of each pair is tested. So both groups get one listing of every size and a strong listing cannot land in one group by chance.

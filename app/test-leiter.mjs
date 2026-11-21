@@ -85,7 +85,8 @@ test("Recovery: enough impressions again after the waiting time -> leaves the la
   leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
   leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
   await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: schreiber(), impTag: impVon() }, T0);
-  const a = leiter.werteAus(d, daten({ A: 12 }, "2026-12-04"), tag(15));   // 12 am Tag = 1.080 in 90 Tagen >= 900
+  // 3 a day before the start (270 in 90 days), 12 a day after it (1,080 >= 900); "before" is read from the data (F11)
+  const a = leiter.werteAus(d, { ...daten({}, "2026-12-04"), impTag: (nr, von) => (von >= "2026-11-20" ? 12 : 3) }, tag(15));
   assert.equal(a[0].erholt, true); assert.equal(a[0].vorher90, 270);
   assert.equal(zeile(d, "A").stufe, "raus"); assert.equal(zeile(d, "A").ergebnis, "erholt");
   assert.deepEqual(leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, tag(15)), ["B"], "A may not come back in for 90 days, B moves up");
@@ -429,6 +430,18 @@ test("Outside changes (F6): after an app change the old value counts for 2 days,
   // The evaluation of that listing notes it
   const m = leiter.schiebeVonHand(d2, ADMIN, "A", "weiter", daten({}, "2026-11-27", { einst: E }), tag(8), { vorzeitigBestaetigt: true });
   assert.ok(m.wert.messung.fremdSeit, "the evaluation carries fremdSeit");
+});
+
+test("Before figure (F11): computed with the data of now, like the control group, not the value stored at the start", () => {
+  const d = neueDb(), e = { ...EK, leiterMax: 1 };
+  const [nr] = leiter.nimmAuf(d, shop(), e, T0, { seed: 7 });
+  leiter.setzeTitelVorschlag(d, BUILDER, nr, titelVorschlag, T0);
+  // At the start the last days were missing: 2 a day were known; later the complete data shows 3 a day for everyone
+  leiter.starteVonHand(d, ADMIN, nr, { impTag: () => 2 }, T0);
+  assert.equal(Math.round(zeile(d, nr).basis_imp_tag * 90), 180, "what was known at the start stays stored");
+  const r = leiter.schiebeVonHand(d, ADMIN, nr, "weiter", { ...daten({}, "2026-11-24", { einst: { ...e, leiterTageTitel: 4 } }), impTag: () => 3 }, tag(5));
+  assert.equal(r.wert.messung.vorher90, 270, "before = the same 30 days, with the data of now");
+  assert.equal(r.wert.messung.netto, 0, "listing and control both stayed at 3 a day: no effect (the stored 180 would have shown +50 %)");
 });
 
 test("Outside changes (F6): a step done by hand on eBay notes the new state from the catalogue after 2 days instead of raising an alarm", () => {

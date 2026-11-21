@@ -166,6 +166,18 @@ The eBay writer can set a title, a price and switch an ad on, not off.
       the honest limit, pointing to the file that shows it.
 - [x] Written last, so it describes the final state after F1–F8. *(Also fixed: "every night" → every hour, 193 → 253 tests.)*
 
+### F11 · "Before" computed with the same data as the control group ✅ (PR #67)
+**Question:** "Is your before/after comparison fair to both groups?" Found during the visual check after F1–F10: Results showed
+4,290 impressions "before" for the test group, the balance line 4,674 over the same 30 days. The test listings' "before" was
+stored at the start (20 Nov), when the hub still lacked the last days (eBay request limit); the control group's "before" is
+computed at the evaluation with the complete data. That mismatch alone would have shown Phase 1 as about +9 %.
+
+- [x] `vorher90Von` in `app/leiter.mjs`: evaluations (automatic and by hand) and the live interim compute the listing's "before"
+      with the data of now, over the same 30 days as the control group. `basis_imp_tag` stays stored as what was known at the start.
+- [x] Test: start with incomplete data (2 a day), later complete data (3 a day for everyone) → net effect 0, not +50 %.
+- [x] *Day by day* (`dashboard.mjs`) already computed both groups from the daily data, it was not affected.
+- [x] README: how "before" is computed.
+
 ### F10 · One eBay write per listing at a time ✅ (PR #66)
 **Question:** "Two admins click Approve at the same time?" Found while writing F9: the funnel had no lock (only the old
 title tests had one), so two clicks during the eBay call could both write.
