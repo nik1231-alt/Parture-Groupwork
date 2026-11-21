@@ -159,6 +159,7 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
 - [`docs/architektur.md`](docs/architektur.md): the system on one page, decisions and the alternatives we rejected
 - [`docs/tests.md`](docs/tests.md): which test checks what, and what the tests do not cover
 - [`docs/walkthrough.md`](docs/walkthrough.md): questions for the repository walkthrough, with answers
+- [`docs/fix-checkliste.md`](docs/fix-checkliste.md): the fixes from our own "how would the professor attack this?" review, ticked one by one
 - [`docs/sicherheit.md`](docs/sicherheit.md): threats, measures and the test behind each one
 - [`docs/entwicklung.md`](docs/entwicklung.md): how the team works (branches, preview, pull requests, reviews)
 - [`AGENTS.md`](AGENTS.md): rules for coding agents working in this repository
