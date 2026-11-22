@@ -47,7 +47,7 @@ writing (if title or price is not what the app expects, it writes nothing). → 
 ## What are its limits?
 
 **What do the tests cover, and what not?**
-253 tests: accepted and rejected actions for every module, every route without login and with the wrong role. Not covered:
+254 tests: accepted and rejected actions for every module, every route without login and with the wrong role. Not covered:
 the real eBay and Gemini APIs, the layout in a browser, real impression effects. → `docs/tests.md`
 
 **What happens if eBay or Gemini is unavailable?**

@@ -9,6 +9,13 @@ cannot be edited.
 **Live:** https://app.parture-team.com (PROD) · https://vorschau.parture-team.com (preview)
 Both sit behind Cloudflare Access (one-time e-mail code), then the app's own login.
 
+**Access for the teaching staff:** PROD changes real eBay listings of a real shop, so it is not open to everyone.
+1. Open the link; Cloudflare asks for an e-mail address and sends a one-time code (the addresses of the teaching staff are on the allow list).
+2. Sign in to the app with the account `teaching` (role *builder*: sees every page, cannot change anything on eBay). Its password is in the
+   Moodle submission, never in this repository.
+
+Everything can also be tried without any access: the local start below runs the same app on the team copy of the data, as a dry run.
+
 ## Team
 
 | Name | Student number |
