@@ -191,7 +191,7 @@ title tests had one), so two clicks during the eBay call could both write.
 ## B. Only the team can do these (Niko)
 
 - [ ] **S1 Repo public.** Decide about the old history (an early team copy of `pm.db` had units of all channels; no costs
-      or personal data; the secret scan is clean). Settings → Danger zone → Change visibility.
+      or personal data; the secret scan is clean). **Decided 22 Nov: the history stays as it is** (all four old versions checked: no customers, no e-mail addresses, no costs). Settings → Danger zone → Change visibility.
 - [ ] **S2 Branch protection** once public (free then): main requires a pull request and the `tests` check, no force push.
       Server-KI can set it with the API after S1.
 - [ ] **S3 Access for the teaching staff:** Cloudflare Zero Trust → Access → "Groupwork PROD (parture)" → policy
