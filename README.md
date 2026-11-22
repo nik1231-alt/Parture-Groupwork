@@ -25,6 +25,12 @@ Everything can also be tried without any access: the local start below runs the 
 | Embleton Helmut Oscar Weitmann | 79945 |
 | Elias Luka Thiele | 73922 |
 
+## Stack
+
+Plain **Node.js** with SQLite, not the course standard (Python with Streamlit): the shop's existing systems and its eBay
+integration run on Node.js, and this app changes real listings of that shop. We did not agree this with the teaching staff
+beforehand and raised it with them at the hand-in. Reasons and the price we paid: [`docs/architektur.md`](docs/architektur.md), *Decisions*.
+
 ## Run it locally
 
 Requirements: Node.js 22 (`.nvmrc`). No keys needed: without them every eBay step is a dry run and titles come from the
