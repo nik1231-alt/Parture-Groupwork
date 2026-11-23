@@ -593,7 +593,10 @@ const POST_ROUTEN = {
     const b = await leseJson(req), nr = String(b?.number ?? "").slice(0, 40);
     const r = antwort(leiter.schiebeVonHand(appDb(), ctx, nr, b?.ziel, leiterDaten(produkteLaden()), undefined, { vorzeitigBestaetigt: b?.vorzeitig === true }));
     const sprung = r.stufe === "werbung" ? await werbungSpruenge([nr]) : [];
-    return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null };
+    // The title did not help: set it back on eBay now (leiter.setzeTitelZurueck). If that is not possible right now, it is
+    // tried again with the approval of the next step.
+    const tz = r.ziel === "weiter" ? (await mitSperre(nr, () => leiter.setzeTitelZurueck(appDb(), ctx, nr, { items: leiterKontext(nr).kanaele, schreiber }))).wert : null;
+    return { ...r, stufe: sprung.length ? "preis" : r.stufe, werbungUebersprungen: sprung[0]?.kampagnen || null, titelZurueck: tz?.text || null };
   },
   "/api/leiter/vonhand": async (req, ctx) => { adminNoetig(ctx); const b = await leseJson(req); return antwort(leiter.starteVonHand(appDb(), ctx, String(b?.number ?? "").slice(0, 40), { impTag })); },
   "/api/leiter/ueberspringen": async (req, ctx) => {

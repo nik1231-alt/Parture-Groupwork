@@ -743,7 +743,7 @@ const EREIGNIS_TEXT = { aufgenommen: "Entered the ladder (low impressions)", vor
   probelauf: "Dry run, nothing changed", fehlgeschlagen: "Change failed", gestartet: "Waiting time started", ausgewertet: "Checked after the waiting time", uebersprungen: "Step skipped",
   pruefung: "Moved to the manual check", entschieden: "Decided", abgebrochen: "Taken off the ladder",
   kontrolle: "Drawn into the control group (stays unchanged)", kontrolle_ende: "Control time over",
-  stand: "Expected state on eBay noted", fremd: "Changed outside the app", rueckgaengig: "Undone on eBay" };
+  stand: "Expected state on eBay noted", fremd: "Changed outside the app", rueckgaengig: "Undone on eBay", titel_zurueck: "Old title set back on eBay (the new one did not help)" };
 
 async function ladeLeiter() {
   const root = $("#ansicht-ladder");
@@ -948,7 +948,7 @@ function leiterZeile(a, l) {
     // Before the waiting time is complete the confirmation says that it ends early and that this is recorded (F2)
     const frueh = s.gelaufen < s.tage, frage = (normal) => (frueh ? `End early after ${s.gelaufen} of ${s.tage} days? (recorded)` : normal);
     if (istAdmin()) haupt = el("span", { class: "knopf-paar" },
-      zweiStufig(el("button", { class: "knopf knopf-klein" + (e?.ziel === "weiter" ? " knopf-akzent" : ""), type: "button", text: `Next phase →` }), frage("Really move on?"), () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "weiter", vorzeitig: frueh }, (r) => r.werbungUebersprungen ? `Already advertised (${r.werbungUebersprungen.join(", ")}): moved straight to the price step.` : `Moved to ${STUFE_TEXT[r.stufe] || r.stufe}.`)),
+      zweiStufig(el("button", { class: "knopf knopf-klein" + (e?.ziel === "weiter" ? " knopf-akzent" : ""), type: "button", text: `Next phase →` }), frage(a.stufe === "titel" ? "Move on and set the old title back?" : "Really move on?"), () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "weiter", vorzeitig: frueh }, (r) => (r.werbungUebersprungen ? `Already advertised (${r.werbungUebersprungen.join(", ")}): moved straight to the price step.` : `Moved to ${STUFE_TEXT[r.stufe] || r.stufe}.`) + (r.titelZurueck ? " " + r.titelZurueck : ""))),
       zweiStufig(el("button", { class: "knopf knopf-klein" + (e?.ziel === "erholt" ? " knopf-akzent" : ""), type: "button", text: "Seen again ✓" }), frage("Really mark as seen again?"), () => leiterAktion("/api/leiter/schieben", { number: a.number, ziel: "erholt", vorzeitig: frueh }, "Marked as seen again; the listing left the ladder.")));
   } else if (a.phase === "offen") {
     mitte = el("p", { class: "klein", text: "Title, ads and price did not bring the impressions back. Open the row to decide: rework, take offline or keep." });
@@ -1303,7 +1303,7 @@ const LOG_TEXT = {
   password_changed: "Password changed", backup: "Backup", test_created: "Test created", test_started: "Test started", test_started_manually: "Test started manually", test_closed: "Test closed", traffic_sync: "Traffic import",
   ladder_run: "Ladder run", ladder_added: "Put on the ladder", ladder_freigegeben: "Ladder step changed on eBay", ladder_probelauf: "Ladder step: dry run", ladder_fehlgeschlagen: "Ladder step failed", ladder_started_manually: "Ladder step started by hand",
   ladder_skipped: "Ladder step skipped", ladder_decided: "Manual check decided", ladder_removed: "Taken off the ladder",
-  ladder_sold_removed: "Sold listings taken off the ladder", ladder_start_over: "Ladder started over", ladder_moved: "Moved to the next step",
+  ladder_sold_removed: "Sold listings taken off the ladder", ladder_start_over: "Ladder started over", ladder_moved: "Moved to the next step", ladder_title_reverted: "Old title set back on eBay",
   ladder_outside_change: "Changed outside the app", ladder_undone: "Undone on eBay", ladder_undo_dry_run: "Undo: dry run", ladder_undo_failed: "Undo failed",
 };
 // The log details have German keys (that is how they are in the database); they are shown in English
