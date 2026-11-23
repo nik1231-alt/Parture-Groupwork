@@ -27,7 +27,10 @@ const eur = (v) => (v == null ? "–" : Number(v).toLocaleString(LOCALE, { style
 const prozent = (v, stellen = 1) => (v == null ? "–" : (100 * v).toLocaleString(LOCALE, { minimumFractionDigits: stellen, maximumFractionDigits: stellen }) + " %");
 const aenderung = (v) => (v == null ? "n/a" : (v >= 0 ? "+" : "") + Math.round(100 * v) + " %");
 const datum = (s) => (s && !Number.isNaN(Date.parse(s)) ? new Date(s).toLocaleDateString(LOCALE) : "–");
+// Every picture in the app is a 48 px thumbnail. The shop's image server scales on request: without "width" it sends the
+// original (about 160 kB each, 5 MB for the first screen of Products), with it about 6 kB.
 const bildUrl = (u) => (typeof u === "string" && /^https:\/\//i.test(u) ? u : null);
+const vorschauBild = (u) => { const b = bildUrl(u); return b && /^https:\/\/cdn\.shopify\.com\//i.test(b) && !/[?&]width=/.test(b) ? b + (b.includes("?") ? "&" : "?") + "width=96" : b; };
 const SEITENGROESSE = 40;
 // Wide tables scroll in their own box, never the whole page (phone width)
 const rollbar = (tabelle) => el("div", { class: "rollbar" }, tabelle);
@@ -79,7 +82,8 @@ async function api(pfad, optionen) {
   try { return await apiRoh(pfad, optionen); } finally { anfrageEndet(); }
 }
 async function apiRoh(pfad, optionen) {
-  const r = await fetch(pfad, optionen);
+  let r;
+  try { r = await fetch(pfad, optionen); } catch { throw new Error("The server cannot be reached. Check the connection and try again."); }
   // Session expired: reload the same address. The server then shows the login page, the address (#tests/5) stays,
   // after the login it goes back exactly there, and typed titles are in the cache (entwurf = draft).
   if (r.status === 401) { location.reload(); throw new Error("Your session has expired. Please sign in again."); }
@@ -104,13 +108,17 @@ async function kopiere(text) {
 function zeigeFehler(e, erneut) {
   const box = $("#fehler");
   box.hidden = false;
-  fuelle(box, el("strong", { text: "Something went wrong. " }), document.createTextNode(e.message + " "), erneut ? el("button", { class: "knopf", type: "button", onclick: erneut, text: "Try again" }) : null);
+  fuelle(box, el("strong", { text: "Something went wrong. " }), document.createTextNode(e.message + " "), erneut ? el("button", { class: "knopf", type: "button", onclick: () => { box.hidden = true; erneut(); }, text: "Try again" }) : null);
 }
 // Two-step button for consequential actions: the first click asks, the second executes (back after 4 seconds)
 function zweiStufig(knopf, frage, aktion) {
   const text = knopf.textContent; let t;
   knopf.addEventListener("click", () => {
-    if (knopf.dataset.scharf === "1") { clearTimeout(t); knopf.dataset.scharf = ""; knopf.textContent = text; aktion(); return; }
+    if (knopf.dataset.scharf === "1") {
+      clearTimeout(t); knopf.dataset.scharf = ""; knopf.disabled = true; knopf.textContent = "Working …";
+      Promise.resolve().then(aktion).catch(() => {}).finally(() => { knopf.disabled = false; knopf.textContent = text; });
+      return;
+    }
     knopf.dataset.scharf = "1"; knopf.textContent = frage;
     t = setTimeout(() => { knopf.dataset.scharf = ""; knopf.textContent = text; }, 4000);
   });
@@ -175,6 +183,7 @@ function route() {
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
   window.scrollTo(0, 0);
+  if (!ersterAufruf) $("#fehler").hidden = true; // an error belongs to the page it happened on
   // Nothing drawn yet on this page: placeholders until the data is there
   skelett(ansicht === "listings" ? (zustand.daten || ersterAufruf ? null : $("#liste")) : ansicht === "settings" ? $("#einstellungen") : ansicht === "tests" ? (arg ? null : $("#tests-uebersicht")) : ansicht === "account" ? null : $("#ansicht-" + ansicht), ansicht === "listings" ? "zeilen" : "karten");
   // Always load the listings fresh: tests and settings change which listings are where
@@ -183,7 +192,7 @@ function route() {
   if (ansicht === "problem") ladeProblem();
   if (ansicht === "ergebnisse") ladeErgebnisse();
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
-  if (ansicht === "ladder") { if (arg === "work") zustand.funnelTab = "overview"; else if (arg && FUNNEL_TABS.includes(arg)) zustand.funnelTab = arg; else if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; zustand.funnelTab = "all"; } ladeLeiter(); }
+  if (ansicht === "ladder") { if (arg === "work") zustand.funnelTab = "overview"; else if (arg && FUNNEL_TABS.includes(arg)) zustand.funnelTab = arg; else if (arg) { let suche = ""; try { suche = decodeURIComponent(arg); } catch { /* broken address: no search */ } zustand.funnelSuche = suche; zustand.funnelFilter = "alle"; zustand.funnelTab = suche ? "all" : "overview"; } else { zustand.funnelTab = "overview"; zustand.funnelSuche = ""; } ladeLeiter(); }
   if (ansicht === "settings") ladeEinstellungen();
   if (ansicht === "approvals") ladeFreigaben();
   if (ansicht === "team") ladeTeam();
@@ -197,7 +206,7 @@ function gefiltert() {
   const num = (v) => (v == null ? 0 : Number(v));
   const zeit = (v) => (Number.isNaN(Date.parse(v)) ? 0 : Date.parse(v));
   const sortierer = {
-    potential: (a, b) => num(b.units_90d) / (num(b.impressionen_90d) + 1) - num(a.units_90d) / (num(a.impressionen_90d) + 1) || num(b.units_total) - num(a.units_total),
+    potential: (a, b) => (a.impressionen_90d == null) - (b.impressionen_90d == null) || num(b.units_90d) / (num(b.impressionen_90d) + 1) - num(a.units_90d) / (num(a.impressionen_90d) + 1) || num(b.units_total) - num(a.units_total),
     verkaeufe: (a, b) => num(b.units_90d) - num(a.units_90d),
     impressionen_auf: (a, b) => num(a.impressionen_90d) - num(b.impressionen_90d),
     impressionen_ab: (a, b) => num(b.impressionen_90d) - num(a.impressionen_90d),
@@ -234,7 +243,7 @@ function zeichneListe() {
 const kennzahl = (name, wert) => el("div", {}, el("dt", { text: name }), el("dd", { text: wert }));
 
 function zeile(p) {
-  const bild = bildUrl(p.image_url);
+  const bild = vorschauBild(p.image_url);
   const fu = zustand.funnel?.get(p.number);
   const hinweis = fu ? el("div", { class: "hinweiszeile" }, el("span", {}, statusChip(fu.status), " ", fu.grund), el("a", { class: "knopf knopf-klein", href: `#ladder/${encodeURIComponent(p.number)}`, text: "Show in Funnel" })) : null;
   const mehrInfo = el("div", { class: "produkt-mehr" }, el("p", { class: "leise klein", text: "Loading variants, eBay listing and history …" }));
@@ -349,7 +358,7 @@ function zeichneTestUebersicht() {
 
 function zurueck() { return el("a", { class: "knopf knopf-leise", href: "#tests", text: "← All tests" }); }
 function listingName(a) { return el("div", {}, el("div", { class: "titel", text: a.alt || "(untitled)" }), el("div", { class: "nummer", text: "No. " + a.number })); }
-function bildVon(a) { const b = bildUrl(a.bild); return b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }); }
+function bildVon(a) { const b = vorschauBild(a.bild); return b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }); }
 async function neuLaden(id) { zustand.detail = await api("/api/experiment?id=" + id); zeichneDetail(zustand.detail); ladeZaehler(); }
 async function aktion(pfad, body, id, ok) {
   try { await post(pfad, body); if (ok) meldung(ok); await neuLaden(id); } catch (e) { meldung(e.message); }
@@ -910,7 +919,7 @@ function sammelFreigabe(liste, l, gruppe = "titel") {
 
 // One row of the work list: image, title (old → new), figures, status, one main button; unfold for everything else
 function leiterZeile(a, l) {
-  const b = bildUrl(a.image_url), v = a.vorschlag;
+  const b = vorschauBild(a.image_url), v = a.vorschlag;
   const live = a.stufe === "titel" ? l.schreiben?.titel : a.stufe === "werbung" ? l.schreiben?.werbung : l.schreiben?.preis;
   const ebayLink = a.ebay_id ? el("a", { class: "ebay-link", href: `https://www.ebay.de/itm/${encodeURIComponent(a.ebay_id)}`, target: "_blank", rel: "noopener noreferrer", text: "eBay ↗" }) : null;
   const marken = [
@@ -933,7 +942,7 @@ function leiterZeile(a, l) {
     if (istAdmin() && v && !v.nichtMoeglich) { haupt = freigabeKnopf(a, live); haken = el("input", { type: "checkbox", class: "zeile-haken", "data-gruppe": "sonst", value: a.number, "aria-label": "Tick for approval" }); }
   } else if (a.phase === "laeuft") {
     const s = a.stand, e = empfehlung(a, l);
-    mitte = el("div", {}, el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(Math.min(1, s.gelaufen / s.tage) * 100)}%` })),
+    mitte = el("div", {}, a.stufe === "titel" && v?.alt && v?.titel ? titelDiff(v.alt, v.titel) : null, el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(Math.min(1, s.gelaufen / s.tage) * 100)}%` })),
       el("p", { class: "leise klein", text: `Started ${datum(a.stufe_start + "T12:00:00Z")} · data day ${s.gelaufen} of ${s.tage} · due ${datum(s.ende + "T12:00:00Z")}` }),
       e ? el("p", { class: "empfehlung " + e.klasse, text: e.text }) : null);
     // Before the waiting time is complete the confirmation says that it ends early and that this is recorded (F2)
@@ -985,6 +994,7 @@ function empfehlung(a, l) {
 function zeileMehr(a, l) {
   const teile = [];
   if (a.phase === "laeuft" && a.stand) teile.push(zwischenstand(a.stand));
+  if (a.phase === "laeuft" && a.stufe === "titel" && a.vorschlag?.begruendung) teile.push(el("p", { class: "leise klein", text: "Why this title: " + a.vorschlag.begruendung }));
   if (a.phase === "vorschlag" && a.stufe === "titel") {
     const v = a.vorschlag;
     if (v?.begruendung) teile.push(el("p", { class: "leise klein", text: "Why: " + v.begruendung }));
@@ -1022,7 +1032,7 @@ function steuerZeile(l) {
       el("li", { text: `Advertised on eBay: ${l.werbung?.anzahl ?? "?"} listings${l.werbung?.stand ? ` (checked ${zeitpunkt(l.werbung.stand)})` : ""}${l.werbung?.fehler ? " · check failed: " + l.werbung.fehler : ""}` })),
     el("div", { class: "aktionen", style: "margin-top:0" },
       el("button", { class: "knopf knopf-klein", type: "button", text: "Get AI titles", onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/lauf", {}, (r) => `${r.titelVorschlaege} new AI titles.`); } }),
-      behalten ? zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Start over" }), "Really reset everything not changed on eBay?", () => leiterAktion("/api/leiter/neustart", { grund: "Start over" }, (r) => `${r.zurueckgesetzt} listings are eligible again${r.behalten ? `, ${r.behalten} stay (already changed on eBay)` : ""}.`)) : null));
+      behalten ? zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Start over" }), "Reset everything not changed on eBay, also the control group?", () => leiterAktion("/api/leiter/neustart", { grund: "Start over" }, (r) => `${r.zurueckgesetzt} listings are eligible again${r.behalten ? `, ${r.behalten} stay (already changed on eBay)` : ""}.`)) : null));
 }
 
 // Key figures at the top: how big the shop is, how many impressions it has and where the products stand right now
@@ -1140,7 +1150,7 @@ function statusInhalt(f) {
   const suche = el("input", { type: "search", value: zustand.funnelSuche || "", placeholder: "Search by name or number", "aria-label": "Search products in the funnel", maxlength: 100,
     oninput: () => { zustand.funnelSuche = suche.value; zustand.funnelSichtbar = 50; zeichneTreffer(); } });
   const tabelle = el("div", { class: "tabelle" }), treffer = el("p", { class: "leise ergebnis-zeile" }), mehr = el("div", { class: "mehr" });
-  const zeile = (x) => { const b = bildUrl(x.image_url); return el("div", { class: "fzeile" },
+  const zeile = (x) => { const b = vorschauBild(x.image_url); return el("div", { class: "fzeile" },
     b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
     el("div", { class: "name" }, el("div", { class: "titel", text: x.title || "(untitled)" }), el("div", { class: "nummer", text: `No. ${x.number} · ${zahl(x.impressionen_90d)} impressions · ${zahl(x.units_90d ?? 0)} eBay sales in 90 days` })),
     el("div", {}, statusChip(x.status)), el("div", { class: "grund leise", text: x.grund })); };
@@ -1193,10 +1203,20 @@ function titelEingabe(a, v) {
   const feld = el("input", { class: "feld", type: "text", maxlength: String(zustand.betrieb?.regeln?.titelMaxZeichen || 80), value: v?.titel || "", "aria-label": "Your own title for product " + a.number, placeholder: "Your own title" });
   const zaehler = el("span", { class: "leise klein", text: `${feld.value.length} / ${feld.maxLength}` });
   feld.addEventListener("input", () => { zaehler.textContent = `${feld.value.length} / ${feld.maxLength}`; });
+  // A refused title: the reason stays under the field and the typed text stays (before, the list was redrawn, the row
+  // closed, the text was gone and the reason showed for 4.5 seconds at the bottom of the page).
+  const grund = el("p", { class: "fehlerzeile klein", role: "alert" });
+  const speichern = async (ev) => {
+    grund.textContent = ""; ev.target.disabled = true;
+    try { await post("/api/leiter/titel", { number: a.number, titel: feld.value }); }
+    catch (e) { grund.textContent = e.message; ev.target.disabled = false; feld.setAttribute("aria-invalid", "true"); feld.focus(); return; }
+    meldung("Title saved, it passed the rule check."); await ladeLeiter(); ladeZaehler();
+  };
+  feld.addEventListener("input", () => { grund.textContent = ""; feld.removeAttribute("aria-invalid"); });
   return el("div", { class: "eigener-titel" }, el("div", { class: "leise klein", text: "Your own title (checked by the same rules) or a new AI suggestion:" }),
-    el("div", { class: "eingabezeile", style: "margin-top:6px" }, feld, zaehler),
+    el("div", { class: "eingabezeile", style: "margin-top:6px" }, feld, zaehler), grund,
     el("div", { class: "aktionen" },
-      el("button", { class: "knopf", type: "button", text: "Use my title", onclick: () => leiterAktion("/api/leiter/titel", { number: a.number, titel: feld.value }, "Title saved, it passed the rule check.") }),
+      el("button", { class: "knopf", type: "button", text: "Use my title", onclick: speichern }),
       el("button", { class: "knopf", type: "button", text: "Ask the AI again", onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/neuvorschlag", { number: a.number }, "New suggestion ready."); } })));
 }
 
@@ -1233,7 +1253,7 @@ function zeichneKonto() {
   const alt = el("input", { class: "feld", type: "password", autocomplete: "current-password", required: true, maxlength: 200, "aria-label": "Current password" });
   const neu = el("input", { class: "feld", type: "password", autocomplete: "new-password", required: true, minlength: 10, maxlength: 200, "aria-label": "New password" });
   const neu2 = el("input", { class: "feld", type: "password", autocomplete: "new-password", required: true, minlength: 10, maxlength: 200, "aria-label": "Repeat new password" });
-  const fehler = el("p", { class: "leise", role: "alert" });
+  const fehler = el("p", { class: "fehlerzeile", role: "alert" });
   const knopf = el("button", { class: "knopf", type: "submit", text: "Change password" });
   const form = el("form", { class: "panel", onsubmit: async (ev) => {
     ev.preventDefault(); fehler.textContent = "";
@@ -1266,7 +1286,7 @@ async function ladeTeam() {
             wahl.value = b.rolle;
             wahl.addEventListener("change", async () => {
               wahl.disabled = true;
-              try { await post("/api/rolle", { name: b.name, rolle: wahl.value }); meldung(`${b.name} is now ${wahl.value === "admin" ? "an admin" : "a builder"}.`); }
+              try { await post("/api/rolle", { name: b.name, rolle: wahl.value }); meldung(`${b.name} is now ${wahl.value === "admin" ? "an admin" : "a builder"}.`); if (b.name === zustand.ich.name) return location.reload(); }
               catch (e) { meldung(e.message); }
               ladeTeam();
             });
@@ -1283,6 +1303,8 @@ const LOG_TEXT = {
   password_changed: "Password changed", backup: "Backup", test_created: "Test created", test_started: "Test started", test_started_manually: "Test started manually", test_closed: "Test closed", traffic_sync: "Traffic import",
   ladder_run: "Ladder run", ladder_added: "Put on the ladder", ladder_freigegeben: "Ladder step changed on eBay", ladder_probelauf: "Ladder step: dry run", ladder_fehlgeschlagen: "Ladder step failed", ladder_started_manually: "Ladder step started by hand",
   ladder_skipped: "Ladder step skipped", ladder_decided: "Manual check decided", ladder_removed: "Taken off the ladder",
+  ladder_sold_removed: "Sold listings taken off the ladder", ladder_start_over: "Ladder started over", ladder_moved: "Moved to the next step",
+  ladder_outside_change: "Changed outside the app", ladder_undone: "Undone on eBay", ladder_undo_dry_run: "Undo: dry run", ladder_undo_failed: "Undo failed",
 };
 // The log details have German keys (that is how they are in the database); they are shown in English
 const DETAIL_TEXT = {
@@ -1293,8 +1315,9 @@ const DETAIL_TEXT = {
   seed: "draw number", kontrolle: "control", gesperrt: "excluded (price experiment)", ohneZugangsdaten: "no eBay credentials", abschluss: "outcome", gekuerzt: "shortened",
   produkte: "products", kanaele: "channels", trafficBis: "traffic up to", tageGeholt: "days fetched", tageVorhanden: "days available", vollstaendig: "complete", limitErreicht: "limit reached",
   nachgeprueft: "days rechecked", abweichungen: "corrections", abdeckungMittel: "coverage (mean)", abdeckungMin: "coverage (min)", sekunden: "seconds",
+  verkaufteEntfernt: "sold, taken off", bewegung: "moved", ziel: "to", gemessenTage: "days measured", vorzeitig: "early", netto: "net effect", kind: "kind", entfernt: "removed", nummern: "products", zurueckgesetzt: "reset", behalten: "kept",
 };
-const WERT_TEXT = { titel: "new title", zurueck: "revert", behalten: "keep", true: "yes", false: "no" };
+const WERT_TEXT = { titel: "new title", zurueck: "revert", behalten: "keep", true: "yes", false: "no", hand: "by hand", automatisch: "automatic", tag: "day", ziehen: "draw" };
 const ERGEBNIS_TEXT = { ok: "ok", error: "error", dry_run: "dry run", refused: "refused" };
 // Nested values (e.g. the suggestion of a ladder step) readable instead of as JSON: the important part first, check details removed
 const WICHTIG = ["titel", "alt", "satz", "neu", "quelle", "modell"];
@@ -1387,7 +1410,7 @@ function zeichneEinstellungen() {
       const neu = await post("/api/einstellungen", { werte });
       meldung("Settings saved. The listings are re-evaluated with the new values.");
       await ladeEinstellungen(); laden(); return neu;
-    } catch (x) { fehler.textContent = x.message; speichern.disabled = false; }
+    } catch (x) { fehler.textContent = x.message; speichern.disabled = false; fehler.scrollIntoView({ block: "center", behavior: "smooth" }); }
   });
   $("#einstellungen").replaceChildren(form);
   aktualisiereSichtbar();

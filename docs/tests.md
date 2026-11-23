@@ -1,6 +1,6 @@
 # What the tests check, and what they do not
 
-`npm test` runs every file below with Node's built-in test runner: **272 tests, all green on `main`**, about 40 seconds
+`npm test` runs every file below with Node's built-in test runner: **279 tests, all green on `main`**, about 40 seconds
 (measured 23.11.2026). CI runs the same command on every pull request. No test talks to the real eBay or Gemini, and no
 test touches `pm.db` or `app.db`: each one builds a throwaway database in memory or in a temp folder.
 

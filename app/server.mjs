@@ -44,6 +44,8 @@ function appDb() {
   fs.mkdirSync(path.dirname(APPDB_PFAD), { recursive: true });
   const d = new Database(APPDB_PFAD);
   d.pragma("journal_mode = WAL");
+  // Wait at most 1 s for a lock (the default is 5 s): the wait is synchronous and stops every other request
+  d.pragma("busy_timeout = 1000");
   einstellungen.bereiteVor(d);
   experimente.bereiteVor(d);
   login.bereiteVor(d);
@@ -70,7 +72,19 @@ const adminNoetig = (ctx) => { if (ctx?.rolle !== "admin") throw Object.assign(n
 const ki = kiTitel.erzeuge();
 const tabelleDa = (db, t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
 // Impressions per day of a product for the days after "von" up to and including "bis" (YYYY-MM-DD), from the daily values in pm.db
-const impTag = (nummer, von, bis) => mitDb((db) => ladeImpressionenProTag(db, nummer, von, bis));
+// Remembered until pm.db changes (it is replaced as a whole file, so time and size of the file tell): one Funnel or Results
+// request asks 220 to 260 times for only 40 different (product, from, to), and every question scans the whole traffic table.
+// Measured on 23 Nov 2026: /api/leiter 1,575 ms and /api/ergebnisse 1,899 ms, with the server answering nobody else meanwhile.
+let impMerk = { stempel: "", werte: new Map() };
+const impTag = (nummer, von, bis) => {
+  let stempel = "";
+  try { const s = fs.statSync(dbPfad()); stempel = s.mtimeMs + ":" + s.size; } catch { /* no file: mitDb below gives the clear message */ }
+  if (!stempel) return mitDb((db) => ladeImpressionenProTag(db, nummer, von, bis));
+  if (impMerk.stempel !== stempel) impMerk = { stempel, werte: new Map() };
+  const schluessel = nummer + "|" + von + "|" + bis;
+  if (!impMerk.werte.has(schluessel)) impMerk.werte.set(schluessel, mitDb((db) => ladeImpressionenProTag(db, nummer, von, bis)));
+  return impMerk.werte.get(schluessel);
+};
 const trafficBis = () => { try { return mitDb((db) => db.prepare("SELECT traffic_bis FROM stand").get()?.traffic_bis ?? null); } catch { return null; } };
 // Price and variants of a product for the price suggestion of step 3
 const leiterKontext = (nummer) => mitDb((db) => {
@@ -320,7 +334,8 @@ function pruefeSicherung() {
   fuehreSicherungAus("system");
 }
 function sicherungStatus() {
-  const k = sicherung.konfiguration(); const alle = sicherung.liste(k.ziel);
+  const k = sicherung.konfiguration(); let alle = [];
+  try { alle = sicherung.liste(k.ziel); } catch (e) { console.error("Backup folder unreadable:", e.message); }
   return { automatisch: SICH_AUTO, uhrzeit: SICH_UHR, letzte: alle[0]?.geaendert ?? null, anzahl: alle.length, zweiterOrt: !!k.ziel2, laeuft: sicherungLaeuft };
 }
 // How old is the traffic data compared with the target? Target: today minus the delay of the data source (LA time):
@@ -486,7 +501,21 @@ const POST_ROUTEN = {
     protokoll.schreibe(appDb(), { benutzer: ctx.name, rolle: ctx.rolle, aktion: "test_created", objekt: "test " + r.id, details: { seed: r.seed, test: r.test, kontrolle: r.kontrolle, gesperrt: r.gesperrt } });
     return r;
   },
-  "/api/experiment/titel": async (req) => antwort(experimente.setzeTitel(appDb(), await leseJson(req))),
+  // The older test page checks a typed title with the same rules as the funnel (no "Original", no new brands or sizes, no claims).
+  // Until 23 Nov 2026 only the funnel did; here any text within the length limit was accepted.
+  "/api/experiment/titel": async (req) => {
+    const b = await leseJson(req);
+    // Only where the module itself would accept the title (test still open, length fine, not the old title):
+    // every other refusal keeps its own message and status.
+    const alt = b && typeof b === "object" && Number.isInteger(b.id) && typeof b.number === "string"
+      ? appDb().prepare("SELECT a.alt FROM experiment_angebot a JOIN experiment e ON e.id = a.experiment_id WHERE a.experiment_id = ? AND a.number = ? AND a.gruppe = 'test' AND e.status = 'vorbereitet'").get(b.id, b.number)?.alt : null;
+    const neu = typeof b?.neu === "string" ? b.neu.replace(/\s+/g, " ").trim() : "";
+    if (alt != null && neu && neu.length <= TITEL_MAX_ZEICHEN && neu !== alt.replace(/\s+/g, " ").trim()) {
+      const pruefung = pruefeTitel(neu, alt);
+      if (!pruefung.ok) throw Object.assign(new Error("The title breaks a rule: " + pruefung.verstoesse.map((v) => v.text).join(" ")), { status: 400 });
+    }
+    return antwort(experimente.setzeTitel(appDb(), b));
+  },
   // Builder and admin: send a suggestion for approval. Only an admin lets the titles be changed on eBay.
   "/api/experiment/freigabe": async (req, ctx) => {
     const b = await leseJson(req);
@@ -599,8 +628,11 @@ const POST_ROUTEN = {
 };
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, "http://x");
   const json = (code, body) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(body)); };
+  // An address that cannot be read ("//", "/\\") is answered with 400. Until 23 Nov 2026 it was read outside the try below,
+  // and one such request without any login ended the whole process.
+  let url;
+  try { url = new URL(req.url, "http://x"); } catch { return json(400, { ok: false, error: "Bad request." }); }
   // Protective headers for every response: no embedding in foreign pages, no guessing of the file type, scripts only from the app itself.
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -650,7 +682,8 @@ const server = http.createServer(async (req, res) => {
     if (route && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: await route(url.searchParams, ctx) });
     if (route) return json(405, { ok: false, error: "GET only." });
     if (Object.hasOwn(POST_ROUTEN, url.pathname)) return json(405, { ok: false, error: "POST only." });
-    // static files from public/
+    // static files from public/ (reading only)
+    if (req.method !== "GET" && req.method !== "HEAD") return json(405, { ok: false, error: "GET only." });
     const rel = url.pathname === "/" ? "/index.html" : url.pathname;
     const datei = path.join(WURZEL, "public", path.normalize(rel).replace(/^(\.\.[/\\])+/, ""));
     if (datei.startsWith(path.join(WURZEL, "public")) && fs.existsSync(datei) && fs.statSync(datei).isFile()) {
@@ -663,7 +696,14 @@ const server = http.createServer(async (req, res) => {
       return fs.createReadStream(datei).pipe(res);
     }
     json(404, { ok: false, error: "Not found." });
-  } catch (e) { json(e.status || 500, { ok: false, error: e.message }); }
+  } catch (e) {
+    // A database that cannot be read or is busy (pm.db half written or broken, app.db locked by a backup) is "try again later",
+    // not an error of the request: 503 and a message for people. The SQLite text goes to the console only.
+    const code = String(e.code || "");
+    if (!e.status && /^SQLITE_(BUSY|LOCKED)/.test(code)) { console.error("Database busy:", e.message); return json(503, { ok: false, error: "The app is busy right now. Please try again in a moment." }); }
+    if (!e.status && /^SQLITE_(NOTADB|CORRUPT|CANTOPEN|IOERR|READONLY|ERROR)/.test(code)) { console.error("Database unreadable:", e.message); return json(503, { ok: false, error: "The data cannot be read right now. Please try again in a few minutes." }); }
+    json(e.status || 500, { ok: false, error: e.message });
+  }
 });
 
 server.listen(PORT, "127.0.0.1", () => {

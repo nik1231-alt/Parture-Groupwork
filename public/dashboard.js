@@ -11,7 +11,7 @@ const Dashboard = (() => {
   };
   const st = (x, y, t, klasse, anker = "middle") => { const n = sv("text", { x, y, class: "d-text " + klasse, "text-anchor": anker }); n.textContent = t; return n; };
   const z = (v, d = 0) => (v == null ? "–" : Number(v).toLocaleString(LOCALE, { minimumFractionDigits: d, maximumFractionDigits: d }));
-  const vz = (v) => (v == null ? "n/a" : (v >= 0 ? "+" : "−") + Math.abs(Math.round(100 * v)).toLocaleString(LOCALE) + " %");
+  const vz = (v) => (v == null ? "n/a" : (Math.round(100 * v) === 0 ? "" : v > 0 ? "+" : "−") + Math.abs(Math.round(100 * v)).toLocaleString(LOCALE) + " %");
   const pzt = (v) => (v == null || !Number.isFinite(v) ? "–" : (100 * v).toLocaleString(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " %");
   const tagText = (t) => (t ? new Date(t + "T12:00:00Z").toLocaleDateString(LOCALE) : "–");
   const quote = (a, b) => (b > 0 ? a / b : null);
