@@ -82,7 +82,8 @@ async function api(pfad, optionen) {
   try { return await apiRoh(pfad, optionen); } finally { anfrageEndet(); }
 }
 async function apiRoh(pfad, optionen) {
-  const r = await fetch(pfad, optionen);
+  let r;
+  try { r = await fetch(pfad, optionen); } catch { throw new Error("The server cannot be reached. Check the connection and try again."); }
   // Session expired: reload the same address. The server then shows the login page, the address (#tests/5) stays,
   // after the login it goes back exactly there, and typed titles are in the cache (entwurf = draft).
   if (r.status === 401) { location.reload(); throw new Error("Your session has expired. Please sign in again."); }
@@ -107,13 +108,17 @@ async function kopiere(text) {
 function zeigeFehler(e, erneut) {
   const box = $("#fehler");
   box.hidden = false;
-  fuelle(box, el("strong", { text: "Something went wrong. " }), document.createTextNode(e.message + " "), erneut ? el("button", { class: "knopf", type: "button", onclick: erneut, text: "Try again" }) : null);
+  fuelle(box, el("strong", { text: "Something went wrong. " }), document.createTextNode(e.message + " "), erneut ? el("button", { class: "knopf", type: "button", onclick: () => { box.hidden = true; erneut(); }, text: "Try again" }) : null);
 }
 // Two-step button for consequential actions: the first click asks, the second executes (back after 4 seconds)
 function zweiStufig(knopf, frage, aktion) {
   const text = knopf.textContent; let t;
   knopf.addEventListener("click", () => {
-    if (knopf.dataset.scharf === "1") { clearTimeout(t); knopf.dataset.scharf = ""; knopf.textContent = text; aktion(); return; }
+    if (knopf.dataset.scharf === "1") {
+      clearTimeout(t); knopf.dataset.scharf = ""; knopf.disabled = true; knopf.textContent = "Working …";
+      Promise.resolve().then(aktion).catch(() => {}).finally(() => { knopf.disabled = false; knopf.textContent = text; });
+      return;
+    }
     knopf.dataset.scharf = "1"; knopf.textContent = frage;
     t = setTimeout(() => { knopf.dataset.scharf = ""; knopf.textContent = text; }, 4000);
   });
@@ -178,6 +183,7 @@ function route() {
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
   window.scrollTo(0, 0);
+  if (!ersterAufruf) $("#fehler").hidden = true; // an error belongs to the page it happened on
   // Nothing drawn yet on this page: placeholders until the data is there
   skelett(ansicht === "listings" ? (zustand.daten || ersterAufruf ? null : $("#liste")) : ansicht === "settings" ? $("#einstellungen") : ansicht === "tests" ? (arg ? null : $("#tests-uebersicht")) : ansicht === "account" ? null : $("#ansicht-" + ansicht), ansicht === "listings" ? "zeilen" : "karten");
   // Always load the listings fresh: tests and settings change which listings are where
@@ -186,7 +192,7 @@ function route() {
   if (ansicht === "problem") ladeProblem();
   if (ansicht === "ergebnisse") ladeErgebnisse();
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
-  if (ansicht === "ladder") { if (arg === "work") zustand.funnelTab = "overview"; else if (arg && FUNNEL_TABS.includes(arg)) zustand.funnelTab = arg; else if (arg) { zustand.funnelSuche = decodeURIComponent(arg); zustand.funnelFilter = "alle"; zustand.funnelTab = "all"; } ladeLeiter(); }
+  if (ansicht === "ladder") { if (arg === "work") zustand.funnelTab = "overview"; else if (arg && FUNNEL_TABS.includes(arg)) zustand.funnelTab = arg; else if (arg) { let suche = ""; try { suche = decodeURIComponent(arg); } catch { /* broken address: no search */ } zustand.funnelSuche = suche; zustand.funnelFilter = "alle"; zustand.funnelTab = suche ? "all" : "overview"; } else { zustand.funnelTab = "overview"; zustand.funnelSuche = ""; } ladeLeiter(); }
   if (ansicht === "settings") ladeEinstellungen();
   if (ansicht === "approvals") ladeFreigaben();
   if (ansicht === "team") ladeTeam();
@@ -936,7 +942,7 @@ function leiterZeile(a, l) {
     if (istAdmin() && v && !v.nichtMoeglich) { haupt = freigabeKnopf(a, live); haken = el("input", { type: "checkbox", class: "zeile-haken", "data-gruppe": "sonst", value: a.number, "aria-label": "Tick for approval" }); }
   } else if (a.phase === "laeuft") {
     const s = a.stand, e = empfehlung(a, l);
-    mitte = el("div", {}, el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(Math.min(1, s.gelaufen / s.tage) * 100)}%` })),
+    mitte = el("div", {}, a.stufe === "titel" && v?.alt && v?.titel ? titelDiff(v.alt, v.titel) : null, el("div", { class: "fortschritt", role: "progressbar", "aria-valuemin": 0, "aria-valuemax": s.tage, "aria-valuenow": s.gelaufen, "aria-label": "Waiting time" }, el("span", { style: `width:${Math.round(Math.min(1, s.gelaufen / s.tage) * 100)}%` })),
       el("p", { class: "leise klein", text: `Started ${datum(a.stufe_start + "T12:00:00Z")} · data day ${s.gelaufen} of ${s.tage} · due ${datum(s.ende + "T12:00:00Z")}` }),
       e ? el("p", { class: "empfehlung " + e.klasse, text: e.text }) : null);
     // Before the waiting time is complete the confirmation says that it ends early and that this is recorded (F2)
@@ -988,6 +994,7 @@ function empfehlung(a, l) {
 function zeileMehr(a, l) {
   const teile = [];
   if (a.phase === "laeuft" && a.stand) teile.push(zwischenstand(a.stand));
+  if (a.phase === "laeuft" && a.stufe === "titel" && a.vorschlag?.begruendung) teile.push(el("p", { class: "leise klein", text: "Why this title: " + a.vorschlag.begruendung }));
   if (a.phase === "vorschlag" && a.stufe === "titel") {
     const v = a.vorschlag;
     if (v?.begruendung) teile.push(el("p", { class: "leise klein", text: "Why: " + v.begruendung }));
@@ -1236,7 +1243,7 @@ function zeichneKonto() {
   const alt = el("input", { class: "feld", type: "password", autocomplete: "current-password", required: true, maxlength: 200, "aria-label": "Current password" });
   const neu = el("input", { class: "feld", type: "password", autocomplete: "new-password", required: true, minlength: 10, maxlength: 200, "aria-label": "New password" });
   const neu2 = el("input", { class: "feld", type: "password", autocomplete: "new-password", required: true, minlength: 10, maxlength: 200, "aria-label": "Repeat new password" });
-  const fehler = el("p", { class: "leise", role: "alert" });
+  const fehler = el("p", { class: "fehlerzeile", role: "alert" });
   const knopf = el("button", { class: "knopf", type: "submit", text: "Change password" });
   const form = el("form", { class: "panel", onsubmit: async (ev) => {
     ev.preventDefault(); fehler.textContent = "";
@@ -1269,7 +1276,7 @@ async function ladeTeam() {
             wahl.value = b.rolle;
             wahl.addEventListener("change", async () => {
               wahl.disabled = true;
-              try { await post("/api/rolle", { name: b.name, rolle: wahl.value }); meldung(`${b.name} is now ${wahl.value === "admin" ? "an admin" : "a builder"}.`); }
+              try { await post("/api/rolle", { name: b.name, rolle: wahl.value }); meldung(`${b.name} is now ${wahl.value === "admin" ? "an admin" : "a builder"}.`); if (b.name === zustand.ich.name) return location.reload(); }
               catch (e) { meldung(e.message); }
               ladeTeam();
             });
@@ -1286,6 +1293,8 @@ const LOG_TEXT = {
   password_changed: "Password changed", backup: "Backup", test_created: "Test created", test_started: "Test started", test_started_manually: "Test started manually", test_closed: "Test closed", traffic_sync: "Traffic import",
   ladder_run: "Ladder run", ladder_added: "Put on the ladder", ladder_freigegeben: "Ladder step changed on eBay", ladder_probelauf: "Ladder step: dry run", ladder_fehlgeschlagen: "Ladder step failed", ladder_started_manually: "Ladder step started by hand",
   ladder_skipped: "Ladder step skipped", ladder_decided: "Manual check decided", ladder_removed: "Taken off the ladder",
+  ladder_sold_removed: "Sold listings taken off the ladder", ladder_start_over: "Ladder started over", ladder_moved: "Moved to the next step",
+  ladder_outside_change: "Changed outside the app", ladder_undone: "Undone on eBay", ladder_undo_dry_run: "Undo: dry run", ladder_undo_failed: "Undo failed",
 };
 // The log details have German keys (that is how they are in the database); they are shown in English
 const DETAIL_TEXT = {
@@ -1296,8 +1305,9 @@ const DETAIL_TEXT = {
   seed: "draw number", kontrolle: "control", gesperrt: "excluded (price experiment)", ohneZugangsdaten: "no eBay credentials", abschluss: "outcome", gekuerzt: "shortened",
   produkte: "products", kanaele: "channels", trafficBis: "traffic up to", tageGeholt: "days fetched", tageVorhanden: "days available", vollstaendig: "complete", limitErreicht: "limit reached",
   nachgeprueft: "days rechecked", abweichungen: "corrections", abdeckungMittel: "coverage (mean)", abdeckungMin: "coverage (min)", sekunden: "seconds",
+  verkaufteEntfernt: "sold, taken off", bewegung: "moved", ziel: "to", gemessenTage: "days measured", vorzeitig: "early", netto: "net effect", kind: "kind", entfernt: "removed", nummern: "products", zurueckgesetzt: "reset", behalten: "kept",
 };
-const WERT_TEXT = { titel: "new title", zurueck: "revert", behalten: "keep", true: "yes", false: "no" };
+const WERT_TEXT = { titel: "new title", zurueck: "revert", behalten: "keep", true: "yes", false: "no", hand: "by hand", automatisch: "automatic", tag: "day", ziehen: "draw" };
 const ERGEBNIS_TEXT = { ok: "ok", error: "error", dry_run: "dry run", refused: "refused" };
 // Nested values (e.g. the suggestion of a ladder step) readable instead of as JSON: the important part first, check details removed
 const WICHTIG = ["titel", "alt", "satz", "neu", "quelle", "modell"];

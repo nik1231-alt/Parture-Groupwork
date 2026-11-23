@@ -126,3 +126,33 @@ test("Thumbnails: the shop's image server gets a width, other addresses stay unc
   assert.equal(vorschauBild(null), null);
   assert.equal(quelle.split("\n").filter((z) => /= bildUrl\(/.test(z) && !z.startsWith("const vorschauBild")).length, 0, "every picture goes through vorschauBild");
 });
+
+test("Log: every action the server writes has an English label in the interface", () => {
+  const app = fs.readFileSync(path.join(WURZEL, "public", "app.js"), "utf8");
+  const tabelle = app.slice(app.indexOf("const LOG_TEXT = {"), app.indexOf("};", app.indexOf("const LOG_TEXT = {")));
+  const aktionen = new Set();
+  for (const f of fs.readdirSync(path.join(WURZEL, "app")).filter((d) => d.endsWith(".mjs") && !d.startsWith("test"))) {
+    for (const m of fs.readFileSync(path.join(WURZEL, "app", f), "utf8").matchAll(/aktion: "([a-z_]+)"(?! \+)/g)) aktionen.add(m[1]);
+  }
+  assert.ok(aktionen.size > 20, "the actions were found");
+  const ohne = [...aktionen].filter((a) => !new RegExp("\\b" + a + ": \"").test(tabelle));
+  assert.deepEqual(ohne, [], "actions without a label would show their raw name in the Log");
+});
+
+// Two-step button (public/app.js): the second click executes, and until the action is done further clicks do nothing.
+test("Two-step button: asks first, runs once, is locked while the action runs, is usable again afterwards", async () => {
+  const app = fs.readFileSync(path.join(WURZEL, "public", "app.js"), "utf8");
+  const start = app.indexOf("function zweiStufig("), teil = app.slice(start, app.indexOf("\n}\n", start) + 3);
+  const zweiStufig = new Function(teil + "; return zweiStufig;")();
+  let klick; const knopf = { textContent: "Next phase", dataset: {}, disabled: false, addEventListener: (_, f) => { klick = () => { if (!knopf.disabled) f(); }; } };
+  let laeufe = 0, fertig;
+  zweiStufig(knopf, "Really?", () => { laeufe++; return new Promise((r) => { fertig = r; }); });
+  klick();
+  assert.equal(knopf.textContent, "Really?"); assert.equal(laeufe, 0, "the first click only asks");
+  klick(); await new Promise((r) => setTimeout(r, 5));
+  assert.equal(laeufe, 1); assert.equal(knopf.disabled, true, "locked while the action runs");
+  klick(); klick(); await new Promise((r) => setTimeout(r, 5));
+  assert.equal(laeufe, 1, "more clicks during the action send nothing");
+  fertig(); await new Promise((r) => setTimeout(r, 5));
+  assert.equal(knopf.disabled, false); assert.equal(knopf.textContent, "Next phase");
+});
