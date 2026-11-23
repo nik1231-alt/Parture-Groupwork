@@ -62,7 +62,7 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 
 | Page | Who | What |
 |---|---|---|
-| **Shop** | everyone | the first page: who the shop is, what it already runs by its own software (printer farm, slicing, orders and shipping, customer service, controlling; built by the shop outside this course) and where this app fits in |
+| **Shop** | everyone | the first page: who the shop is, its scale (six-figure revenue in the first year, 25 printers, products and live listings from the data), what it has already automated (printer scheduling, slicing, shipping, customer service, controlling and more; built by the shop outside this course) and where this app fits in |
 | **Products** | everyone | every product with eBay price, eBay sales, impressions and diagnosis; open a row for its variants, channel reference details, funnel status and full history |
 | **Problem** | everyone | live analysis of why the app exists (eBay only): 80 % of eBay sales come from 17.8 % of the eBay listings, 80 % of eBay impressions from 35 % of the listings (20.11.2026); seen × sold for every listing; how impressions are spread |
 | **Funnel** | everyone (actions: admin) | KPIs and one tree in which every product sits in exactly one branch (not eligible with its reasons, eligible, drawn → control group / test group → phases, seen again, pausing); a running phase shows its live interim against the control group; click a step to work on it (draw, approve, decide); the effect of each phase, and a table of all products with their status and the reason for it |

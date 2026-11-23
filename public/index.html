@@ -38,36 +38,41 @@
 
   <!-- Shop: the business behind the app, in one screen. Static text; the two counts come from the data (ladeShop in app.js). -->
   <section id="ansicht-shop" hidden>
-    <div class="einstieg">
-      <h1>The shop behind this app</h1>
-      <p><strong>Parture</strong> designs, prints and sells 3D-printed spare parts, holders and accessories. The parts are printed
-        in-house on the shop's own printer farm and sold on eBay, Amazon and the shop's own web shop.</p>
+    <div class="shop-kopf">
+      <p class="shop-ober">The shop behind this app</p>
+      <h1>Parture prints and sells 3D-printed parts.</h1>
+      <p class="shop-unter">Spare parts, holders and accessories, made in-house and sold on eBay, Amazon and its own web shop.</p>
     </div>
     <div class="shop-zahlen" id="shop-zahlen" aria-live="polite">
-      <div class="shop-zahl"><strong id="shop-produkte">–</strong><span>products in the catalogue</span></div>
+      <div class="shop-zahl shop-zahl-haupt"><strong>6-figure</strong><span>revenue in the first year of building the company</span></div>
+      <div class="shop-zahl"><strong>25</strong><span>printers in the own farm</span></div>
+      <div class="shop-zahl"><strong id="shop-produkte">–</strong><span>products</span></div>
       <div class="shop-zahl"><strong id="shop-angebote">–</strong><span>live eBay listings</span></div>
-      <div class="shop-zahl"><strong>3</strong><span>sales channels: eBay, Amazon, web shop</span></div>
-      <div class="shop-zahl"><strong>1</strong><span>own printer farm, no outside production</span></div>
+      <div class="shop-zahl"><strong>3</strong><span>sales channels</span></div>
     </div>
 
-    <h2 class="shop-titel">What the shop already runs by software</h2>
-    <p class="leise shop-hinweis">Built by the shop itself over the last year, outside this course. It is the system this app plugs into.</p>
+    <div class="shop-zeile">
+      <h2>Already automated</h2>
+      <span class="shop-marke">built by the shop, outside this course</span>
+    </div>
     <div class="shop-karten">
-      <div class="panel"><h3>Printer farm</h3><p>A scheduler decides which printer prints which plate next, from open orders and stock. It watches every printer and keeps stock per part and colour.</p></div>
-      <div class="panel"><h3>Slicing</h3><p>3D models are turned into print plates by a slicing worker, so a new part can go from model to printer without manual plate building.</p></div>
-      <div class="panel"><h3>Orders and shipping</h3><p>Orders from all channels arrive in one place. Shipping labels for letters and parcels are created there, and the tracking number goes back to the marketplace.</p></div>
-      <div class="panel"><h3>Customer service</h3><p>One inbox for every channel. A daily run reads each open case in full, decides and answers; refunds and replacements stay within fixed limits.</p></div>
-      <div class="panel"><h3>Catalogue and channels</h3><p>One product master feeds eBay, Amazon and the web shop. Title, price and stock changes are passed on to the channels.</p></div>
-      <div class="panel"><h3>Controlling</h3><p>Cash flow and contribution per product are computed from bank and marketplace data, so decisions rest on numbers and not on feeling.</p></div>
-      <div class="panel"><h3>New products</h3><p>A daily run looks for demand on eBay, finds printable models with a free licence, checks them and prepares the listing.</p></div>
-      <div class="panel"><h3>Operations</h3><p>Every automatic run reports to one board. A run that fails or stays silent shows up there instead of going unnoticed.</p></div>
+      <div class="shop-karte"><span class="shop-zeichen" aria-hidden="true">01</span><div><h3>Printer scheduling</h3><p>Which printer prints what next.</p></div></div>
+      <div class="shop-karte"><span class="shop-zeichen" aria-hidden="true">02</span><div><h3>Slicing</h3><p>From 3D model to print plate.</p></div></div>
+      <div class="shop-karte"><span class="shop-zeichen" aria-hidden="true">03</span><div><h3>Shipping</h3><p>Labels and tracking for every channel.</p></div></div>
+      <div class="shop-karte"><span class="shop-zeichen" aria-hidden="true">04</span><div><h3>Customer service</h3><p>One inbox, answered by a daily run.</p></div></div>
+      <div class="shop-karte"><span class="shop-zeichen" aria-hidden="true">05</span><div><h3>Catalogue</h3><p>One product master for all channels.</p></div></div>
+      <div class="shop-karte"><span class="shop-zeichen" aria-hidden="true">06</span><div><h3>Controlling</h3><p>Cash flow and margin per product.</p></div></div>
+      <div class="shop-karte"><span class="shop-zeichen" aria-hidden="true">07</span><div><h3>New products</h3><p>From demand on eBay to a listing.</p></div></div>
+      <div class="shop-karte"><span class="shop-zeichen" aria-hidden="true">08</span><div><h3>Monitoring</h3><p>Every run reports; failures show up.</p></div></div>
     </div>
 
-    <h2 class="shop-titel">Where this project fits in</h2>
-    <div class="panel shop-projekt">
-      <p><strong>The gap:</strong> the shop could produce, ship and answer, but nobody looked systematically at the many eBay listings that buyers hardly ever see.</p>
-      <p><strong>The Listing Lab</strong> (this app, the team project) closes it: it reads an hourly, whitelisted export of the catalogue, finds those listings, draws a test and a control group by lot, and moves the test listings through three levers: new title, ads, lower price. Nothing changes on eBay until an admin approves it.</p>
-      <p class="aktionen"><a class="knopf knopf-akzent" href="#problem">See the problem in numbers</a> <a class="knopf" href="#ladder">Open the funnel</a> <a class="knopf" href="#listings">All products</a></p>
+    <div class="shop-zeile">
+      <h2>What was missing</h2>
+      <span class="shop-marke shop-marke-akzent">this app, the team project</span>
+    </div>
+    <div class="shop-projekt">
+      <p>Most eBay listings are hardly ever seen by buyers. The <strong>Listing Lab</strong> finds them and tests three levers against a control group: new title, ads, lower price. Nothing changes on eBay without an admin's approval.</p>
+      <p class="aktionen"><a class="knopf knopf-akzent" href="#problem">The problem in numbers</a> <a class="knopf" href="#ladder">Open the funnel</a> <a class="knopf" href="#listings">All products</a></p>
     </div>
   </section>
 
