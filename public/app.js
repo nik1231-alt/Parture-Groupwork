@@ -27,7 +27,10 @@ const eur = (v) => (v == null ? "–" : Number(v).toLocaleString(LOCALE, { style
 const prozent = (v, stellen = 1) => (v == null ? "–" : (100 * v).toLocaleString(LOCALE, { minimumFractionDigits: stellen, maximumFractionDigits: stellen }) + " %");
 const aenderung = (v) => (v == null ? "n/a" : (v >= 0 ? "+" : "") + Math.round(100 * v) + " %");
 const datum = (s) => (s && !Number.isNaN(Date.parse(s)) ? new Date(s).toLocaleDateString(LOCALE) : "–");
+// Every picture in the app is a 48 px thumbnail. The shop's image server scales on request: without "width" it sends the
+// original (about 160 kB each, 5 MB for the first screen of Products), with it about 6 kB.
 const bildUrl = (u) => (typeof u === "string" && /^https:\/\//i.test(u) ? u : null);
+const vorschauBild = (u) => { const b = bildUrl(u); return b && /^https:\/\/cdn\.shopify\.com\//i.test(b) && !/[?&]width=/.test(b) ? b + (b.includes("?") ? "&" : "?") + "width=96" : b; };
 const SEITENGROESSE = 40;
 // Wide tables scroll in their own box, never the whole page (phone width)
 const rollbar = (tabelle) => el("div", { class: "rollbar" }, tabelle);
@@ -234,7 +237,7 @@ function zeichneListe() {
 const kennzahl = (name, wert) => el("div", {}, el("dt", { text: name }), el("dd", { text: wert }));
 
 function zeile(p) {
-  const bild = bildUrl(p.image_url);
+  const bild = vorschauBild(p.image_url);
   const fu = zustand.funnel?.get(p.number);
   const hinweis = fu ? el("div", { class: "hinweiszeile" }, el("span", {}, statusChip(fu.status), " ", fu.grund), el("a", { class: "knopf knopf-klein", href: `#ladder/${encodeURIComponent(p.number)}`, text: "Show in Funnel" })) : null;
   const mehrInfo = el("div", { class: "produkt-mehr" }, el("p", { class: "leise klein", text: "Loading variants, eBay listing and history …" }));
@@ -349,7 +352,7 @@ function zeichneTestUebersicht() {
 
 function zurueck() { return el("a", { class: "knopf knopf-leise", href: "#tests", text: "← All tests" }); }
 function listingName(a) { return el("div", {}, el("div", { class: "titel", text: a.alt || "(untitled)" }), el("div", { class: "nummer", text: "No. " + a.number })); }
-function bildVon(a) { const b = bildUrl(a.bild); return b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }); }
+function bildVon(a) { const b = vorschauBild(a.bild); return b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }); }
 async function neuLaden(id) { zustand.detail = await api("/api/experiment?id=" + id); zeichneDetail(zustand.detail); ladeZaehler(); }
 async function aktion(pfad, body, id, ok) {
   try { await post(pfad, body); if (ok) meldung(ok); await neuLaden(id); } catch (e) { meldung(e.message); }
@@ -910,7 +913,7 @@ function sammelFreigabe(liste, l, gruppe = "titel") {
 
 // One row of the work list: image, title (old → new), figures, status, one main button; unfold for everything else
 function leiterZeile(a, l) {
-  const b = bildUrl(a.image_url), v = a.vorschlag;
+  const b = vorschauBild(a.image_url), v = a.vorschlag;
   const live = a.stufe === "titel" ? l.schreiben?.titel : a.stufe === "werbung" ? l.schreiben?.werbung : l.schreiben?.preis;
   const ebayLink = a.ebay_id ? el("a", { class: "ebay-link", href: `https://www.ebay.de/itm/${encodeURIComponent(a.ebay_id)}`, target: "_blank", rel: "noopener noreferrer", text: "eBay ↗" }) : null;
   const marken = [
@@ -1140,7 +1143,7 @@ function statusInhalt(f) {
   const suche = el("input", { type: "search", value: zustand.funnelSuche || "", placeholder: "Search by name or number", "aria-label": "Search products in the funnel", maxlength: 100,
     oninput: () => { zustand.funnelSuche = suche.value; zustand.funnelSichtbar = 50; zeichneTreffer(); } });
   const tabelle = el("div", { class: "tabelle" }), treffer = el("p", { class: "leise ergebnis-zeile" }), mehr = el("div", { class: "mehr" });
-  const zeile = (x) => { const b = bildUrl(x.image_url); return el("div", { class: "fzeile" },
+  const zeile = (x) => { const b = vorschauBild(x.image_url); return el("div", { class: "fzeile" },
     b ? el("img", { class: "bild", src: b, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : el("span", { class: "bild" }),
     el("div", { class: "name" }, el("div", { class: "titel", text: x.title || "(untitled)" }), el("div", { class: "nummer", text: `No. ${x.number} · ${zahl(x.impressionen_90d)} impressions · ${zahl(x.units_90d ?? 0)} eBay sales in 90 days` })),
     el("div", {}, statusChip(x.status)), el("div", { class: "grund leise", text: x.grund })); };

@@ -110,3 +110,19 @@ test("Loading indicator: the page has the bar, and motion is switched off for pe
   const css = fs.readFileSync(path.join(WURZEL, "public", "app.css"), "utf8");
   assert.ok(css.includes("prefers-reduced-motion: reduce) { .skelett, .skelett-teil { animation: none"));
 });
+
+// Thumbnails (public/app.js): pictures of the shop's image server are asked for in a small size; everything else stays as it is.
+test("Thumbnails: the shop's image server gets a width, other addresses stay unchanged, non-https stays out", () => {
+  const quelle = fs.readFileSync(path.join(WURZEL, "public", "app.js"), "utf8");
+  const zeilen = quelle.split("\n").filter((z) => z.startsWith("const bildUrl = ") || z.startsWith("const vorschauBild = "));
+  assert.equal(zeilen.length, 2);
+  const vorschauBild = new Function(zeilen.join("\n") + "; return vorschauBild;")();
+  assert.equal(vorschauBild("https://cdn.shopify.com/s/files/1/a.jpg?v=1"), "https://cdn.shopify.com/s/files/1/a.jpg?v=1&width=96");
+  assert.equal(vorschauBild("https://cdn.shopify.com/s/files/1/a.jpg"), "https://cdn.shopify.com/s/files/1/a.jpg?width=96");
+  assert.equal(vorschauBild("https://cdn.shopify.com/a.jpg?width=400"), "https://cdn.shopify.com/a.jpg?width=400", "a width that is there is kept");
+  assert.equal(vorschauBild("https://i.ebayimg.com/images/g/x/s-l500.jpg"), "https://i.ebayimg.com/images/g/x/s-l500.jpg");
+  assert.equal(vorschauBild("http://cdn.shopify.com/a.jpg"), null);
+  assert.equal(vorschauBild("javascript:alert(1)"), null);
+  assert.equal(vorschauBild(null), null);
+  assert.equal(quelle.split("\n").filter((z) => /= bildUrl\(/.test(z) && !z.startsWith("const vorschauBild")).length, 0, "every picture goes through vorschauBild");
+});

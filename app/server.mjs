@@ -70,7 +70,19 @@ const adminNoetig = (ctx) => { if (ctx?.rolle !== "admin") throw Object.assign(n
 const ki = kiTitel.erzeuge();
 const tabelleDa = (db, t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
 // Impressions per day of a product for the days after "von" up to and including "bis" (YYYY-MM-DD), from the daily values in pm.db
-const impTag = (nummer, von, bis) => mitDb((db) => ladeImpressionenProTag(db, nummer, von, bis));
+// Remembered until pm.db changes (it is replaced as a whole file, so time and size of the file tell): one Funnel or Results
+// request asks 220 to 260 times for only 40 different (product, from, to), and every question scans the whole traffic table.
+// Measured on 23 Nov 2026: /api/leiter 1,575 ms and /api/ergebnisse 1,899 ms, with the server answering nobody else meanwhile.
+let impMerk = { stempel: "", werte: new Map() };
+const impTag = (nummer, von, bis) => {
+  let stempel = "";
+  try { const s = fs.statSync(dbPfad()); stempel = s.mtimeMs + ":" + s.size; } catch { /* no file: mitDb below gives the clear message */ }
+  if (!stempel) return mitDb((db) => ladeImpressionenProTag(db, nummer, von, bis));
+  if (impMerk.stempel !== stempel) impMerk = { stempel, werte: new Map() };
+  const schluessel = nummer + "|" + von + "|" + bis;
+  if (!impMerk.werte.has(schluessel)) impMerk.werte.set(schluessel, mitDb((db) => ladeImpressionenProTag(db, nummer, von, bis)));
+  return impMerk.werte.get(schluessel);
+};
 const trafficBis = () => { try { return mitDb((db) => db.prepare("SELECT traffic_bis FROM stand").get()?.traffic_bis ?? null); } catch { return null; } };
 // Price and variants of a product for the price suggestion of step 3
 const leiterKontext = (nummer) => mitDb((db) => {
