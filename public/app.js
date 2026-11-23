@@ -938,7 +938,7 @@ function leiterZeile(a, l) {
     if (istAdmin()) haken = el("input", { type: "checkbox", class: "zeile-haken", "data-gruppe": "sonst", value: a.number, "aria-label": "Tick for approval" });
     if (istAdmin()) haupt = a.beworben ? zweiStufig(el("button", { class: "knopf knopf-akzent knopf-klein", type: "button", text: "Move to price step" }), "Really?", () => leiterAktion("/api/leiter/freigabe", { number: a.number }, (r) => r.text)) : freigabeKnopf(a, live);
   } else if (a.phase === "vorschlag" && a.stufe === "preis") {
-    mitte = v?.nichtMoeglich ? el("p", { class: "hinweis hinweis-warnung klein", text: v.nichtMoeglich }) : el("p", { class: "klein" }, "Price ", el("del", { text: eur(v?.alt) }), " → ", el("strong", { text: eur(v?.neu) }), ` (−${Math.round((v?.schritt ?? 0) * 100)} %${v?.minimum ? `, never below ${eur(v.minimum)}` : ""}). The app does not know the costs: check that it still pays off.`);
+    mitte = v?.nichtMoeglich ? el("p", { class: "hinweis hinweis-warnung klein", text: v.nichtMoeglich }) : el("p", { class: "klein" }, v?.staffel ? "Prices per variant " : "Price ", ...(v?.staffel || [{ alt: v?.alt, neu: v?.neu }]).flatMap((q, i) => [i ? " · " : "", el("del", { text: eur(q.alt) }), " → ", el("strong", { text: eur(q.neu) })]), ` (−${Math.round((v?.schritt ?? 0) * 100)} %${v?.staffel ? " each" : ""}${v?.minimum ? `, never below ${eur(v.minimum)}` : ""}). The app does not know the costs: check that it still pays off.`);
     if (istAdmin() && v && !v.nichtMoeglich) { haupt = freigabeKnopf(a, live); haken = el("input", { type: "checkbox", class: "zeile-haken", "data-gruppe": "sonst", value: a.number, "aria-label": "Tick for approval" }); }
   } else if (a.phase === "laeuft") {
     const s = a.stand, e = empfehlung(a, l);

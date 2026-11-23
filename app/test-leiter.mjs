@@ -122,9 +122,11 @@ test("Do not overwrite: different title or price on eBay -> failed, nothing chan
   assert.equal(p.wert.ausgang, "fehlgeschlagen"); assert.match(p.wert.text, /7\.50/); assert.equal(s.auf.length, 0);
 });
 
-test("Price suggestion: variants with different prices are not lowered", () => {
-  const v = leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 8 }], varianten: [{ price: 8 }, { price: 14 }] });
-  assert.match(v.nichtMoeglich, /different prices/);
+test("Price suggestion: variants with different prices each go down by the same percentage", () => {
+  const v = leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 7.99 }], varianten: [{ price: 14.99 }, { price: 7.99 }, { price: 9.99 }] });
+  assert.deepEqual(v, { alt: 7.99, neu: 7.19, schritt: 0.1, minimum: E.preisMinimum, staffel: [{ alt: 7.99, neu: 7.19 }, { alt: 9.99, neu: 8.99 }, { alt: 14.99, neu: 13.49 }] });
+  // the floor counts for the lowest variant: 3.19 − 10 % = 2.87 < 2.99 → the whole step is not possible
+  assert.match(leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 3.19 }], varianten: [{ price: 3.19 }, { price: 9.99 }] }).nichtMoeglich, /lowest price the app may set/);
   assert.deepEqual(leiter.baueVorschlag("preis", E, { kanaele: [{ preis_aktuell: 4.99 }], varianten: [{ price: 4.99 }] }), { alt: 4.99, neu: 4.49, schritt: 0.1, minimum: E.preisMinimum });
 });
 
@@ -593,4 +595,59 @@ test("Title back: without writing it is a dry run that records nothing; if eBay 
   aus = false;
   assert.equal((await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: kaputt, impTag: impVon() }, tag(15))).wert.ausgang, "angewendet");
   assert.deepEqual(kaputt.ebay, { titel: "Halter A", preis: 9.99, werbung: 0.1 });
+});
+
+// ---------- Prices of listings with variants (Niko, 23 Nov 2026) ----------
+// eBay stand-in with three variants; setzeVariantenPreise gets every variant with its new price, as the real writer does.
+const variantenEbay = (preise) => {
+  const ebay = { titel: "Halter A", variationen: preise.map((p, i) => ({ sku: "A-" + i, skuRoh: "A-" + i, preis: p, spezifika: [{ name: "Farbe", werte: ["F" + i] }] })) }, auf = [];
+  return { ebay, auf, konfiguriert: () => true, schreibenAn: () => true, werbungAn: () => true, preisAn: () => true,
+    lies: async () => ({ ok: true, titel: ebay.titel, status: "Active", verkauft: 0, preis: null, variationen: ebay.variationen.map((x) => ({ ...x })) }),
+    setzeTitel: async (id, t) => { ebay.titel = t; return { ok: true, meldung: "" }; },
+    setzePreis: async () => { auf.push("setzePreis"); return { ok: false, meldung: "wrong call for a listing with variants" }; },
+    setzeVariantenPreise: async (id, vs) => { auf.push(vs.map((x) => x.preis)); assert.ok(vs.every((x) => x.spezifika.length && x.skuRoh), "every variant keeps its properties and SKU"); ebay.variationen = vs.map((x) => ({ ...x })); return { ok: true, meldung: "" }; } };
+};
+// a listing waiting at the price step with the given suggestion
+function amPreis(preise) {
+  const d = neueDb();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  const v = leiter.baueVorschlag("preis", E, { kanaele: ITEMS.map((k) => ({ ...k, preis_aktuell: preise[0] })), varianten: preise.map((p) => ({ price: p })) });
+  d.prepare("UPDATE leiter SET stufe = 'preis', phase = 'vorschlag', vorschlag = ? WHERE number = 'A'").run(JSON.stringify(v));
+  return d;
+}
+
+test("Variants: different prices go down by the same percentage each, and Undo puts every price back", async () => {
+  const s = variantenEbay([7.99, 9.99, 14.99]), d = amPreis([7.99, 9.99, 14.99]);
+  const r = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon(), einst: E }, T0);
+  assert.equal(r.wert.ausgang, "angewendet"); assert.match(r.wert.text, /Now on eBay: 7\.19 \/ 8\.99 \/ 13\.49 €/);
+  assert.deepEqual(s.auf, [[7.19, 8.99, 13.49]], "one call with all variants, never the call for listings without variants");
+  const stand = JSON.parse(d.prepare("SELECT details FROM leiter_verlauf WHERE number = 'A' AND ereignis = 'stand' ORDER BY id DESC LIMIT 1").get().details);
+  assert.equal(stand.preis, null, "with several prices no single price is expected from the catalogue");
+  const u = await leiter.macheRueckgaengig(d, ADMIN, "A", { items: ITEMS, schreiber: s }, tag(1));
+  assert.equal(u.wert.ausgang, "rueckgaengig"); assert.match(u.wert.text, /set the price back to 7\.99 \/ 9\.99 \/ 14\.99 €|price back to 7\.99/);
+  assert.deepEqual(s.ebay.variationen.map((x) => x.preis), [7.99, 9.99, 14.99]);
+});
+
+test("Variants: one price for all variants goes through the same call (the listing that eBay refused before)", async () => {
+  const s = variantenEbay([14.99, 14.99, 14.99]), d = amPreis([14.99]);
+  assert.equal((await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon(), einst: E }, T0)).wert.ausgang, "angewendet");
+  assert.deepEqual(s.auf, [[13.49, 13.49, 13.49]]);
+});
+
+test("Variants: a price on eBay that the suggestion does not know stops everything, nothing is written", async () => {
+  const s = variantenEbay([7.99, 9.99, 12.5]), d = amPreis([7.99, 9.99, 14.99]);
+  const r = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon(), einst: E }, T0);
+  assert.equal(r.wert.ausgang, "fehlgeschlagen"); assert.match(r.wert.text, /price on eBay \(7\.99 \/ 9\.99 \/ 12\.50 €\) is not the expected 7\.99 \/ 9\.99 \/ 14\.99 €/);
+  assert.deepEqual(s.auf, []); assert.equal(zeile(d, "A").phase, "vorschlag");
+});
+
+test("Price suggestions that were 'not possible' under older rules are built again; one that is still not possible stays", () => {
+  const d = neueDb();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 2 }, T0);
+  d.prepare("UPDATE leiter SET stufe = 'preis', phase = 'vorschlag', vorschlag = ?").run(JSON.stringify({ nichtMoeglich: "The variants have different prices (7.99 / 9.99 €)." }));
+  const fuer = (nr) => (nr === "A" ? { kanaele: [{ preis_aktuell: 7.99 }], varianten: [{ price: 7.99 }, { price: 9.99 }] } : { kanaele: [{ preis_aktuell: 3.19 }], varianten: [] });
+  assert.deepEqual(leiter.erneuerePreisVorschlaege(d, E, fuer, T0), ["A"]);
+  assert.deepEqual(JSON.parse(zeile(d, "A").vorschlag).staffel, [{ alt: 7.99, neu: 7.19 }, { alt: 9.99, neu: 8.99 }]);
+  assert.match(JSON.parse(zeile(d, "B").vorschlag).nichtMoeglich, /different prices/, "B would go below the floor: its old note stays");
+  assert.deepEqual(leiter.erneuerePreisVorschlaege(d, E, fuer, T0), [], "nothing left to renew");
 });
