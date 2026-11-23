@@ -184,7 +184,7 @@ title tests had one), so two clicks during the eBay call could both write.
 
 - [x] `mitSperre` in `app/server.mjs`: Approve, Approve all and Undo share one lock per listing; a second request gets 409.
 - [x] Walkthrough answer corrected.
-- [ ] Test: not automated — it needs an eBay call slow enough to overlap; with the recorded writer the call returns at once.
+- [x] Test: `app/test-listing-lock.mjs` holds the first eBay call open (a promise the test resolves) and proves the 409, that a different listing is not blocked and that the lock is free again afterwards, also after an error. The lock moved to `app/listing-lock.mjs` for this (issue #70).
 
 ---
 

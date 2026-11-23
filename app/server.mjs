@@ -27,6 +27,7 @@ import * as problem from "./problem.mjs";
 import * as dashboard from "./dashboard.mjs";
 import * as kiTitel from "./ki-titel.mjs";
 import { pruefeTitel } from "./titel-regeln.mjs";
+import { createListingLock } from "./listing-lock.mjs";
 import { spawn } from "node:child_process";
 
 const WURZEL = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -110,12 +111,8 @@ async function werbungSpruenge(nummern = null) {
 // the price step. If this cannot be checked (no access, eBay error), nothing is approved.
 // One eBay write per listing at a time (review 21 Nov): a second click or a second admin during the eBay call gets 409 instead of
 // writing twice. Approve, Approve all and Undo share the lock.
-const ebayLaeuft = new Set();
-async function mitSperre(nr, aufgabe) {
-  if (ebayLaeuft.has(nr)) throw Object.assign(new Error("This listing is being changed on eBay right now. Wait a moment and reload."), { status: 409 });
-  ebayLaeuft.add(nr);
-  try { return await aufgabe(); } finally { ebayLaeuft.delete(nr); }
-}
+// The lock itself is in listing-lock.mjs (tested there with a slow writer).
+const mitSperre = createListingLock();
 const freigeben = (ctx, nr) => mitSperre(nr, () => freigebenOhneSperre(ctx, nr));
 async function freigebenOhneSperre(ctx, nr) {
   const z = appDb().prepare("SELECT stufe, phase FROM leiter WHERE number = ?").get(nr);

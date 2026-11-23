@@ -47,7 +47,7 @@ writing (if title or price is not what the app expects, it writes nothing). → 
 ## What are its limits?
 
 **What do the tests cover, and what not?**
-264 tests: accepted and rejected actions for every module, every route without login and with the wrong role. Not covered:
+268 tests: accepted and rejected actions for every module, every route without login and with the wrong role. Not covered:
 the real eBay and Gemini APIs, the layout in a browser, real impression effects. → `docs/tests.md`
 
 **What happens if eBay or Gemini is unavailable?**
@@ -131,7 +131,7 @@ own campaign), title. Read before write, dry run without switches, and the listi
 
 **"Two admins click Approve at the same time?"** One eBay write per listing at a time: a second click during the eBay call gets
 "being changed right now" instead of writing twice (Approve, Approve all and Undo share the lock); *Approve all* reports every
-listing separately. → `mitSperre` in `app/server.mjs`
+listing separately. → `mitSperre` in `app/server.mjs`, lock in `app/listing-lock.mjs`, test `app/test-listing-lock.mjs`
 
 ### AI titles
 
