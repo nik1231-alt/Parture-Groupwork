@@ -101,6 +101,20 @@ function portAusEnv(ordner) {
   return Number(process.env.PM_PORT) || 5060;
 }
 
+// Waits until the app is not in the middle of something (istBeschaeftigt: async () => boolean), at most maxMs. Returns how it
+// ended: "frei" (nothing was running), "gewartet" (something ran and finished) or "abgelaufen" (still running after maxMs:
+// the caller restarts anyway, so a hanging request can never block a rollout for good).
+export async function warteBisFrei({ istBeschaeftigt, maxMs = 300e3, schrittMs = 2000, log = () => {}, schlaf = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+  let gewartet = 0;
+  while (await istBeschaeftigt()) {
+    if (gewartet === 0) log("The app is in the middle of an action (a draw, an approval, the daily run or a backup): the restart waits.");
+    if (gewartet >= maxMs) { log(`Still busy after ${Math.round(maxMs / 1000)} s: restarting anyway.`); return "abgelaufen"; }
+    await schlaf(schrittMs); gewartet += schrittMs;
+  }
+  if (gewartet) log(`The action is done after ${Math.round(gewartet / 1000)} s.`);
+  return gewartet ? "gewartet" : "frei";
+}
+
 // ---- Hauptprogramm ----
 async function haupt() {
   const arg = (n) => { const i = process.argv.indexOf("--" + n); return i >= 0 ? process.argv[i + 1] : undefined; };
@@ -147,6 +161,11 @@ async function haupt() {
   const gesund = async () => {
     try { const r = await fetch(`http://127.0.0.1:${port}/healthz`, { signal: AbortSignal.timeout(5000) }); return r.ok; } catch { return false; }
   };
+  // Is the app working on something right now? An app that does not answer or an older version without the field counts as free.
+  const beschaeftigt = async () => {
+    try { const r = await fetch(`http://127.0.0.1:${port}/healthz`, { signal: AbortSignal.timeout(5000) }); return (await r.json()).beschaeftigt === true; } catch { return false; }
+  };
+  const warteMs = Math.max(0, Number(process.env.WAECHTER_WARTE_S ?? 300)) * 1000;
   setInterval(async () => {
     if (!kind || beendet || Date.now() - startAm < anlaufS * 1000) return;
     if (await gesund()) { fehlschlaege = 0; return; }
@@ -160,9 +179,9 @@ async function haupt() {
     try {
       // Stop the app before npm ci (see the head); the restart timer of the exit handler is defused in the process, otherwise the app would
       // start again in the middle of npm ci and hold the files open again.
-      const vorInstallation = async () => { log("Dependencies changed: stopping the app for npm ci."); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } };
+      const vorInstallation = async () => { await warteBisFrei({ istBeschaeftigt: beschaeftigt, maxMs: warteMs, log }); log("Dependencies changed: stopping the app for npm ci."); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } };
       const e = await aktualisiere({ ordner, branch, hart, vorInstallation });
-      if (e.status === "ausgerollt") { log(`Rolled out: ${e.von.slice(0, 7)} → ${e.nach.slice(0, 7)} (tests passed). Restarting.`); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } starte(); }
+      if (e.status === "ausgerollt") { log(`Rolled out: ${e.von.slice(0, 7)} → ${e.nach.slice(0, 7)} (tests passed). Restarting.`); await warteBisFrei({ istBeschaeftigt: beschaeftigt, maxMs: warteMs, log }); await stoppe(); if (geplant) { clearTimeout(geplant); geplant = null; } starte(); }
       else if (e.status === "abgelehnt") { log(`REJECTED ${e.nach.slice(0, 7)}: ${e.grund}. Old version ${e.von.slice(0, 7)} keeps running.\n${e.ausgabe}`); if (e.appGestoppt) starte(); }
       else if (e.status === "blockiert" || e.status === "fehler") { if (e.grund !== leseStatus(ordner).letzterHinweis) { log(`${e.status.toUpperCase()}: ${e.grund}`); schreibeStatus(ordner, { letzterHinweis: e.grund }); } }
       else if (leseStatus(ordner).letzterHinweis) schreibeStatus(ordner, { letzterHinweis: null });

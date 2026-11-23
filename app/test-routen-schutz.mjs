@@ -37,7 +37,7 @@ const schluessel = (r) => `${r.methode} ${r.pfad}`;
 
 // Deliberately reachable without a login. Whoever adds something here must justify it in the review.
 const OEFFENTLICH = new Set([
-  "GET /healthz",      // Lebenszeichen für den Wächter: nur { ok, version }
+  "GET /healthz",      // Lebenszeichen für den Wächter: nur { ok, version, beschaeftigt }
   "POST /api/login",   // Anmeldung selbst
   "GET /api/ich",      // sagt der Oberfläche nur, ob jemand angemeldet ist
   "POST /api/logout",  // löscht nur die Sitzung des mitgeschickten Cookies, ohne Cookie passiert nichts
@@ -113,7 +113,9 @@ test("every non-public route: an invented or expired cookie opens nothing", asyn
 
 test("public routes: reachable without login, but without data or effect", async () => {
   const h = await (await fetch(basis + "/healthz")).json();
-  assert.deepEqual(Object.keys(h).sort(), ["ok", "version"]);
+  // beschaeftigt is a yes/no for the watcher (wait with a restart); it says nothing about who does what
+  assert.deepEqual(Object.keys(h).sort(), ["beschaeftigt", "ok", "version"]);
+  assert.equal(typeof h.beschaeftigt, "boolean");
   const ich = (await (await fetch(basis + "/api/ich")).json()).daten;
   assert.deepEqual([ich.angemeldet, ich.name, ich.rolle], [false, null, null]);
   assert.equal((await anfrage({ methode: "POST", pfad: "/api/logout" })).status, 200, "logging out without a session does no harm");
