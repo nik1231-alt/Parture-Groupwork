@@ -167,16 +167,22 @@ export const ohneTitelVorschlag = (db) => db.prepare("SELECT number FROM leiter 
 export function baueVorschlag(stufe, einst, { kanaele = [], varianten = [] } = {}) {
   if (stufe === "werbung") return { satz: einst.werbesatz };
   if (stufe === "preis") {
-    const preise = [...new Set([...kanaele.map((k) => Number(k.preis_aktuell)), ...varianten.map((v) => Number(v.price))].filter((x) => x > 0))];
+    const preise = [...new Set([...kanaele.map((k) => Number(k.preis_aktuell)), ...varianten.map((v) => Number(v.price))].filter((x) => x > 0))].sort((a, b) => a - b);
     if (!kanaele.length || !preise.length) return { nichtMoeglich: "The current eBay price is not known." };
-    if (preise.length > 1) return { nichtMoeglich: `The variants have different prices (${preise.map((p) => p.toFixed(2)).join(" / ")} €). One step down would break the price ladder, please decide by hand.` };
-    const alt = preise[0], neu = Math.floor(alt * (1 - einst.preisSchritt) * 100) / 100, minimum = einst.preisMinimum;
+    // Variants with different prices: every price goes down by the same percentage, so the steps between them stay
+    // (Niko, 23 Nov 2026; before, such a listing stopped here). alt/neu are the lowest price, staffel holds every pair.
+    const runter = (p) => Math.floor(p * (1 - einst.preisSchritt) * 100) / 100;
+    const alt = preise[0], neu = runter(alt), minimum = einst.preisMinimum;
     // F3: never below the lowest price the app may set (the step is skipped to the manual check instead)
     if (minimum > 0 && neu < minimum) return { nichtMoeglich: `One step down (${neu.toFixed(2)} €) would go below the lowest price the app may set (${minimum.toFixed(2)} €, Settings). Skip this step to the manual check, or change the price by hand.`, alt, neu, minimum };
-    return { alt, neu, schritt: einst.preisSchritt, minimum };
+    return preise.length > 1 ? { alt, neu, schritt: einst.preisSchritt, minimum, staffel: preise.map((p) => ({ alt: p, neu: runter(p) })) } : { alt, neu, schritt: einst.preisSchritt, minimum };
   }
   return null;
 }
+// The price pairs of a suggestion (one for a single price, several for variants with different prices) and the lookup in them
+const preisPaare = (v) => (v.staffel?.length ? v.staffel : [{ alt: v.alt, neu: v.neu }]);
+const gleich = (a, b) => Math.abs(Number(a) - Number(b)) <= 0.005;
+const zeigePreise = (liste) => liste.map((p) => Number(p).toFixed(2)).join(" / ");
 
 function inPhase(db, number, stufen, phase) {
   const z = lade(db, String(number ?? ""));
@@ -217,12 +223,13 @@ export async function fuehreAus(stufe, v, items, schreiber) {
     if (stufe === "titel" && norm(g.titel) !== norm(v.alt) && norm(g.titel) !== norm(v.titel)) return { ausgang: "fehlgeschlagen", text: `The title on eBay is not the expected one, nothing was overwritten. On eBay now: “${g.titel}”` };
     if (stufe === "preis") {
       const jetzt = g.variationen?.length ? [...new Set(g.variationen.map((x) => x.preis))] : [g.preis];
-      if (jetzt.length !== 1 || Math.abs(jetzt[0] - v.alt) > 0.005) return { ausgang: "fehlgeschlagen", text: `The price on eBay (${jetzt.map((p) => Number(p).toFixed(2)).join(" / ")} €) is not the expected ${v.alt.toFixed(2)} €, nothing was changed.` };
+      if (jetzt.some((p) => !preisPaare(v).some((q) => gleich(q.alt, p)))) return { ausgang: "fehlgeschlagen", text: `The price on eBay (${zeigePreise(jetzt)} €) is not the expected ${zeigePreise(preisPaare(v).map((q) => q.alt))} €, nothing was changed.` };
     }
     if (!schalter) { texte.push(`Dry run: listing ${it.external_id} was read and would be changed. Writing is switched off (${name}).`); continue; }
     const r = stufe === "titel" ? (norm(g.titel) === norm(v.titel) ? { ok: true, meldung: "already current" } : await schreiber.setzeTitel(String(it.external_id), v.titel))
       : stufe === "werbung" ? await schreiber.setzeWerbung(String(it.external_id), v.satz)
-      : await schreiber.setzePreis(String(it.external_id), g.variationen?.map((x) => x.sku) || [], v.neu);
+      : g.variationen?.length ? await schreiber.setzeVariantenPreise(String(it.external_id), g.variationen.map((x) => ({ ...x, preis: preisPaare(v).find((q) => gleich(q.alt, x.preis)).neu })))
+      : await schreiber.setzePreis(String(it.external_id), [], preisPaare(v).find((q) => gleich(q.alt, g.preis)).neu);
     if (!r.ok) return { ausgang: "fehlgeschlagen", text: "eBay refused the change: " + r.meldung };
     // Read back: does eBay now really show the new title / price? (Proof for the demo and the history)
     let nachher = "";
@@ -264,7 +271,7 @@ export async function gibFrei(db, nutzer, number, { items, schreiber, impTag, ei
     // F6: from now on eBay should show the new title or price; until the catalogue has caught up the old value still counts
     const s0 = letzterStand(db, z.number) || { titel: items[0]?.title ?? null, preis: Number(items[0]?.preis_aktuell) || null };
     if (z.stufe === "titel") merkeStand(db, z.number, z.stufe, { titel: v.titel, preis: s0.preis, vorher: { titel: v.alt, preis: s0.preis }, grund: "title changed by the app" }, nutzer.name, jetzt);
-    if (z.stufe === "preis") merkeStand(db, z.number, z.stufe, { titel: s0.titel, preis: v.neu, vorher: { titel: s0.titel, preis: v.alt }, grund: "price changed by the app" }, nutzer.name, jetzt);
+    if (z.stufe === "preis") merkeStand(db, z.number, z.stufe, { titel: s0.titel, preis: v.staffel ? null : v.neu, vorher: { titel: s0.titel, preis: v.staffel ? null : v.alt }, grund: "price changed by the app" }, nutzer.name, jetzt);
     starte(db, z, impTag, nutzer, jetzt);
   }
   return ok({ number: z.number, ausgang: r.ausgang, text: r.text });
@@ -508,7 +515,7 @@ export function aenderungenDerApp(db, z) {
   return db.prepare("SELECT stufe, details, at FROM leiter_verlauf WHERE number = ? AND at >= ? AND ereignis = 'freigegeben' ORDER BY id").all(z.number, z.eingestiegen_at)
     .map((e) => ({ stufe: e.stufe, v: json(e.details)?.vorschlag, at: e.at })).filter((x) => x.v && TEIL[x.stufe]);
 }
-const beschreibe = (t) => (t.stufe === "titel" ? `set the title back to “${t.v.alt}”` : t.stufe === "preis" ? `set the price back to ${Number(t.v.alt).toFixed(2)} €` : "remove the ad");
+const beschreibe = (t) => (t.stufe === "titel" ? `set the title back to “${t.v.alt}”` : t.stufe === "preis" ? `set the price back to ${zeigePreise(preisPaare(t.v).map((q) => q.alt))} €` : "remove the ad");
 export async function macheRueckgaengig(db, nutzer, number, { items, schreiber }, jetzt = new Date()) {
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can undo changes on eBay.");
   const z = lade(db, String(number ?? ""));
@@ -535,8 +542,10 @@ export async function macheRueckgaengig(db, nutzer, number, { items, schreiber }
       try {
         if (t.stufe === "preis") {
           const preise = g.variationen?.length ? [...new Set(g.variationen.map((x) => x.preis))] : [g.preis];
-          if (preise.length !== 1 || Math.abs(preise[0] - t.v.neu) > 0.005) { texte.push(`Price not undone: eBay shows ${preise.map((p) => Number(p).toFixed(2)).join(" / ")} €, not the ${Number(t.v.neu).toFixed(2)} € the app set.`); continue; }
-          r = await schreiber.setzePreis(id, g.variationen?.map((x) => x.sku) || [], t.v.alt);
+          const paare = preisPaare(t.v);
+          if (preise.some((p) => !paare.some((q) => gleich(q.neu, p)))) { texte.push(`Price not undone: eBay shows ${zeigePreise(preise)} €, not the ${zeigePreise(paare.map((q) => q.neu))} € the app set.`); continue; }
+          r = g.variationen?.length ? await schreiber.setzeVariantenPreise(id, g.variationen.map((x) => ({ ...x, preis: paare.find((q) => gleich(q.neu, x.preis)).alt })))
+            : await schreiber.setzePreis(id, [], paare.find((q) => gleich(q.neu, g.preis)).alt);
         } else if (t.stufe === "werbung") r = await schreiber.entferneWerbung(id);
         else {
           if (norm(g.titel) !== norm(t.v.titel)) { texte.push(`Title not undone: eBay shows “${g.titel}”, not the title the app set.`); continue; }
@@ -606,6 +615,21 @@ export async function setzeTitelZurueck(db, nutzer, number, { items, schreiber }
   })();
   protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_title_reverted", objekt: "product " + z.number, details: { von: v.titel, zu: v.alt, text } }, jetzt);
   return ok({ number: z.number, ausgang: "zurueckgesetzt", text });
+}
+
+// Price suggestions that are "not possible" are built again with today's rules (run once after every start): a listing whose
+// variants have different prices stopped at the price step until 23 Nov 2026 and can go on now. fuer(number) → { kanaele, varianten }.
+export function erneuerePreisVorschlaege(db, einst, fuer, jetzt = new Date()) {
+  const erneuert = [];
+  for (const z of db.prepare("SELECT number, vorschlag FROM leiter WHERE stufe = 'preis' AND phase = 'vorschlag'").all()) {
+    if (!json(z.vorschlag)?.nichtMoeglich) continue;
+    let n; try { n = baueVorschlag("preis", einst, fuer(z.number)); } catch { continue; }
+    if (!n || n.nichtMoeglich) continue;
+    setze(db, z.number, { vorschlag: n }, jetzt);
+    verlauf(db, z.number, "preis", "vorschlag", { erneuert: true }, "system", jetzt);
+    erneuert.push(z.number);
+  }
+  return erneuert;
 }
 
 // "Start over": everything that has not been changed on eBay yet goes back to "Eligible" (the control group too). Listings with

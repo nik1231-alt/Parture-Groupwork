@@ -50,12 +50,28 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
 
   // Reads title, status, sales and price of a listing (read only). For variant listings: price per variant (SKU).
   async function lies(itemId) {
-    const felder = ["Item.Title", "Item.SellingStatus.QuantitySold", "Item.SellingStatus.ListingStatus", "Item.StartPrice", "Item.Variations.Variation.SKU", "Item.Variations.Variation.StartPrice"];
+    const felder = ["Item.Title", "Item.SellingStatus.QuantitySold", "Item.SellingStatus.ListingStatus", "Item.StartPrice", "Item.Variations.Variation.SKU", "Item.Variations.Variation.StartPrice", "Item.Variations.Variation.VariationSpecifics"];
     const r = await trading("GetItem", `<ItemID>${xmlText(itemId)}</ItemID>${felder.map((f) => `<OutputSelector>${f}</OutputSelector>`).join("")}`);
     if (r.ack === "Failure" || r.http !== 200) return { ok: false, meldung: r.fehler.map((f) => f.text).join(" ") || "eBay answered with HTTP " + r.http };
-    const variationen = alle(r.xml, "Variation").map((v) => ({ sku: entities(tag(v, "SKU")), preis: Number(tag(v, "StartPrice")) }));
+    // skuRoh and spezifika stay exactly as eBay sent them (still XML-escaped): setzeVariantenPreise sends them back unchanged
+    const variationen = alle(r.xml, "Variation").map((v) => ({ sku: entities(tag(v, "SKU")), preis: Number(tag(v, "StartPrice")), skuRoh: tag(v, "SKU"),
+      spezifika: alle(tag(v, "VariationSpecifics") || "", "NameValueList").map((n) => ({ name: tag(n, "Name"), werte: alle(n, "Value") })) }));
     const ohneVariationen = r.xml.replace(/<Variations>[\s\S]*<\/Variations>/, "");
     return { ok: true, titel: entities(tag(r.xml, "Title")), status: tag(r.xml, "ListingStatus"), verkauft: Number(tag(r.xml, "QuantitySold") || 0), preis: Number(tag(ohneVariationen, "StartPrice")) || null, variationen };
+  }
+
+  // Sets the prices of a listing with variants (ladder, step 3): variationen as read by lies(), each with its new preis.
+  // Every variant is named by its properties (e.g. Farbe = Schwarz), not only by its SKU: ReviseInventoryStatus, the call
+  // for listings without variants below, was refused by eBay when the listing itself carries the SKU of one of its variants
+  // (error 21916735, product 405 on 23 Nov 2026). All variants are sent, so each keeps or gets exactly the price given here.
+  async function setzeVariantenPreise(itemId, variationen) {
+    if (!schreibenAn() || !preisAn()) return { ok: false, meldung: "Changing prices on eBay is switched off (EBAY_SCHREIBEN and EBAY_PREIS must be 'an')." };
+    if (!variationen?.length || variationen.some((v) => !(v.preis > 0) || !v.spezifika?.length || v.spezifika.some((s) => !s.name || !s.werte.length))) return { ok: false, meldung: "The variants of this listing could not be read completely, so nothing was changed." };
+    const teile = variationen.map((v) => `<Variation>${v.skuRoh ? `<SKU>${v.skuRoh}</SKU>` : ""}<StartPrice currencyID="EUR">${v.preis.toFixed(2)}</StartPrice><VariationSpecifics>${v.spezifika.map((s) => `<NameValueList><Name>${s.name}</Name>${s.werte.map((w) => `<Value>${w}</Value>`).join("")}</NameValueList>`).join("")}</VariationSpecifics></Variation>`);
+    const r = await trading("ReviseFixedPriceItem", `<Item><ItemID>${xmlText(itemId)}</ItemID><Variations>${teile.join("")}</Variations></Item>`);
+    const m = r.fehler.map((f) => (f.code ? `[${f.code}] ` : "") + f.text).join(" ");
+    if (!(r.http === 200 && (r.ack === "Success" || r.ack === "Warning"))) return { ok: false, meldung: m || "eBay answered with HTTP " + r.http };
+    return { ok: true, meldung: m };
   }
 
   // Sets the price (ladder, step 3). skus empty = listing without variants; otherwise all variants get the same price.
@@ -170,5 +186,5 @@ export function erzeuge({ env = process.env, fetchFn = fetch, jetzt = () => Date
     return { ok: false, ack: r.ack, meldung: meldung || "eBay answered with HTTP " + r.http };
   }
 
-  return { schreibenAn, werbungAn, preisAn, konfiguriert, lies, setzeTitel, setzePreis, setzeWerbung, entferneWerbung, istBeworben, beworbeneAngebote };
+  return { schreibenAn, werbungAn, preisAn, konfiguriert, lies, setzeTitel, setzePreis, setzeVariantenPreise, setzeWerbung, entferneWerbung, istBeworben, beworbeneAngebote };
 }

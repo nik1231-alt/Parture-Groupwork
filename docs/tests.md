@@ -1,6 +1,6 @@
 # What the tests check, and what they do not
 
-`npm test` runs every file below with Node's built-in test runner: **283 tests, all green on `main`**, about 40 seconds
+`npm test` runs every file below with Node's built-in test runner: **288 tests, all green on `main`**, about 40 seconds
 (measured 23.11.2026). CI runs the same command on every pull request. No test talks to the real eBay or Gemini, and no
 test touches `pm.db` or `app.db`: each one builds a throwaway database in memory or in a temp folder.
 
@@ -8,7 +8,7 @@ test touches `pm.db` or `app.db`: each one builds a throwaway database in memory
 
 | Module | Test files | Accepted and rejected actions covered |
 |---|---|---|
-| `leiter.mjs` | `test-leiter.mjs` (35) | intake only of eligible listings; lot with seed and control group; net effect = 0 when the whole shop rises, real effect when only the listing rises; end of the control time; funnel status = candidates of the next run; approval only by admins (403); a title that failed the rule check cannot be approved (400); no overwrite when the title or price on eBay differs; dry run without the switch; variants with different prices are not lowered |
+| `leiter.mjs` | `test-leiter.mjs` (39) | intake only of eligible listings; lot with seed and control group; net effect = 0 when the whole shop rises, real effect when only the listing rises; end of the control time; funnel status = candidates of the next run; approval only by admins (403); a title that failed the rule check cannot be approved (400); no overwrite when the title or price on eBay differs; dry run without the switch; variants with different prices are not lowered |
 | `titel-regeln.mjs`, `ki-titel.mjs` | `test-titel-regeln.mjs` (8) | superlatives, "Original", new brands, new numbers, keyword lists are refused; all 745 real titles checked; Gemini answer parsed from a fake `fetch` |
 | `ebay-schreiben.mjs`, `freigabe.mjs` | `test-freigabe.mjs` (26) | four locks before writing (keys, switch, admin, expected title); eBay errors keep the step open; approvals of at most 50 listings |
 | `login.mjs`, `rollen.mjs` | `test-http.mjs`, `test-rollen-http.mjs`, `test.mjs` | wrong password, lockout after failed tries, expired session, changing your own password, there is always one admin |

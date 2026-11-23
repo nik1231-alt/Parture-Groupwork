@@ -370,3 +370,33 @@ test("eBay latch 4: every outcome is in the log — approved, refused, read erro
   assert.ok(log.every((z) => z.benutzer === "niko" && z.rolle === "admin"), "who triggered it is recorded");
   assert.equal(log.find((z) => z.aktion === "ebay_refused").details.aktuell_bei_ebay, "Von Hand geändert");
 });
+
+// ---------- eBay writer: prices of a listing with variants ----------
+test("eBay writer: variant prices go out in one ReviseFixedPriceItem with every variant named by its properties", async () => {
+  const gesendet = [];
+  const getItem = `<GetItemResponse><Ack>Success</Ack><Item><Title>Halter &amp; mehr</Title><SellingStatus><ListingStatus>Active</ListingStatus></SellingStatus><SKU>405-S</SKU><Variations>
+    <Variation><SKU>405-S</SKU><StartPrice currencyID="EUR">7.99</StartPrice><VariationSpecifics><NameValueList><Name>Farbe</Name><Value>Schwarz</Value></NameValueList></VariationSpecifics></Variation>
+    <Variation><SKU>87 - Wei&amp;ß -   - F</SKU><StartPrice currencyID="EUR">9.99</StartPrice><VariationSpecifics><NameValueList><Name>Farbe</Name><Value>Wei&amp;ß</Value></NameValueList><NameValueList><Name>Größe</Name><Value>L</Value></NameValueList></VariationSpecifics></Variation>
+    <VariationSpecificsSet><NameValueList><Name>Farbe</Name><Value>Schwarz</Value><Value>Weiß</Value></NameValueList></VariationSpecificsSet></Variations></Item></GetItemResponse>`;
+  const fetchFn = async (url, o) => {
+    if (String(url).includes("oauth2")) return { status: 200, json: async () => ({ access_token: "t", expires_in: 7200 }) };
+    gesendet.push([o.headers["X-EBAY-API-CALL-NAME"], o.body]);
+    return { status: 200, text: async () => (o.headers["X-EBAY-API-CALL-NAME"] === "GetItem" ? getItem : "<ReviseFixedPriceItemResponse><Ack>Success</Ack></ReviseFixedPriceItemResponse>") };
+  };
+  const env = { EBAY_APP_ID: "a", EBAY_CERT_ID: "b", EBAY_REFRESH_TOKEN: "c", EBAY_SCHREIBEN: "an", EBAY_PREIS: "an" };
+  const s = erzeuge({ env, fetchFn });
+  const g = await s.lies("123456789012");
+  assert.deepEqual(g.variationen.map((v) => [v.sku, v.preis, v.spezifika.length]), [["405-S", 7.99, 1], ["87 - Wei&ß -   - F", 9.99, 2]], "two variants, the set of all values is not a third one");
+  const r = await s.setzeVariantenPreise("123456789012", g.variationen.map((v) => ({ ...v, preis: v.preis === 7.99 ? 7.19 : 8.99 })));
+  assert.equal(r.ok, true);
+  const [aufruf, body] = gesendet.at(-1);
+  assert.equal(aufruf, "ReviseFixedPriceItem");
+  assert.match(body, /<Item><ItemID>123456789012<\/ItemID><Variations><Variation><SKU>405-S<\/SKU><StartPrice currencyID="EUR">7\.19<\/StartPrice><VariationSpecifics><NameValueList><Name>Farbe<\/Name><Value>Schwarz<\/Value><\/NameValueList><\/VariationSpecifics><\/Variation>/);
+  assert.match(body, /<SKU>87 - Wei&amp;ß -   - F<\/SKU><StartPrice currencyID="EUR">8\.99<\/StartPrice>.*<Name>Größe<\/Name><Value>L<\/Value>/, "SKU and properties go back exactly as eBay sent them");
+  assert.ok(!body.includes("Quantity"), "stock is not touched");
+  // switched off, or variants not read completely: nothing is sent
+  const vorher = gesendet.length;
+  assert.match((await erzeuge({ env: { ...env, EBAY_PREIS: "" }, fetchFn }).setzeVariantenPreise("1", g.variationen)).meldung, /switched off/);
+  assert.match((await s.setzeVariantenPreise("1", [{ sku: "x", preis: 5, spezifika: [] }])).meldung, /could not be read completely/);
+  assert.equal(gesendet.length, vorher);
+});

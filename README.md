@@ -93,6 +93,9 @@ All products
   back on eBay: right after *Next phase →*, or with the approval of the next phase if the daily run moved the listing on. The
   ad of Phase 2 stays when the price goes down in Phase 3. A title that worked (*Seen again*) stays. As with every change the
   app reads the listing first and leaves a title alone that somebody else changed in the meantime.
+- **Listings with variants** go through the price phase too: every variant goes down by the same percentage, so the steps
+  between them stay (7.99 / 9.99 / 14.99 € become 7.19 / 8.99 / 13.49 €). The lowest variant counts for the price floor. If
+  eBay shows a price the suggestion does not know, nothing is written.
 - **Net effect** of a phase = (listing after ÷ before) ÷ (control group after ÷ before) − 1, over exactly the same days. If the
   whole shop gets busier, the control group rises too and the net effect stays near zero. From +20 % a phase counts as clearly better.
   "Before" is the 30 days before the phase started, computed for listing and control group **with the same, current data**

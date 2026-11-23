@@ -716,6 +716,8 @@ server.listen(PORT, "127.0.0.1", () => {
   // List of the advertised eBay listings (phase 2 only for non-advertised ones): at start and every 6 hours
   // After every rollout once: listings already sold on eBay without an eBay change come off the ladder (leiter.raeumeVerkaufteAb)
   setTimeout(() => { try { const p = produkteLaden(); leiter.raeumeVerkaufteAb(appDb(), p, leiterDaten(p).einst); } catch (e) { console.error("Ladder clean-up:", e.message); } }, 20e3).unref();
+  // and price suggestions that were "not possible" under older rules are built again (leiter.erneuerePreisVorschlaege)
+  setTimeout(() => { try { const n = leiter.erneuerePreisVorschlaege(appDb(), einst(), leiterKontext); if (n.length) console.log("Price suggestions renewed: " + n.join(", ")); } catch (e) { console.error("Price suggestions:", e.message); } }, 22e3).unref();
   // F6: compare the ladder with the catalogue every 15 minutes (the hub export arrives every hour, no eBay calls)
   setTimeout(pruefeFremd, 30e3).unref(); setInterval(pruefeFremd, 15 * 60e3).unref();
   if (schreiber.konfiguriert()) { setTimeout(() => aktualisiereWerbung().catch(() => {}), 30e3).unref(); setInterval(() => aktualisiereWerbung().catch(() => {}), 6 * 3600e3).unref(); }
