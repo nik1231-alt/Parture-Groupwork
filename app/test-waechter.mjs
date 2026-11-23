@@ -203,3 +203,18 @@ http.createServer((q, s) => {
 });
 
 test.after(() => fs.rmSync(wurzel, { recursive: true, force: true }));
+
+// ---------- A rollout waits while the app is working (23 Nov 2026: a restart cut off a running draw) ----------
+test("Restart waits: at once when nothing runs, after the action when one runs, and not for ever", async () => {
+  const { warteBisFrei } = await import("./waechter.mjs");
+  const zeilen = [], schlaf = async () => {}, log = (m) => zeilen.push(m);
+  assert.equal(await warteBisFrei({ istBeschaeftigt: async () => false, log, schlaf }), "frei");
+  assert.deepEqual(zeilen, [], "nothing to say when nothing was running");
+  let runden = 3;
+  assert.equal(await warteBisFrei({ istBeschaeftigt: async () => runden-- > 0, log, schlaf, schrittMs: 2000 }), "gewartet");
+  assert.match(zeilen[0], /the restart waits/); assert.match(zeilen[1], /done after 6 s/);
+  zeilen.length = 0; let fragen = 0;
+  assert.equal(await warteBisFrei({ istBeschaeftigt: async () => { fragen++; return true; }, log, schlaf, maxMs: 10000, schrittMs: 2000 }), "abgelaufen");
+  assert.equal(fragen, 6, "asks every step until the limit, then gives up");
+  assert.match(zeilen.at(-1), /Still busy after 10 s: restarting anyway/);
+});

@@ -58,6 +58,30 @@ test("Data age: without a traffic date or with an unreadable value there is no w
   for (const bis of [null, "gestern", "2026-13-99x"]) { setzeStand(bis); const d = (await betrieb(c)).daten; assert.equal(d.veraltet, false); assert.equal(d.rueckstandTage, null); }
 });
 
+test("/healthz says when the app is in the middle of an action, so the watcher can wait with a restart", async () => {
+  const http = await import("node:http");
+  assert.equal((await (await fetch(basis + "/healthz")).json()).beschaeftigt, false, "at rest");
+  const login = await fetch(basis + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "anna", passwort: "ein-langes-passwort" }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  // a request of a signed-in user whose body arrives slowly: the server is working on it for that long
+  const koerper = JSON.stringify({ alt: "x", neu: "y" });
+  const fertig = new Promise((resolve) => {
+    const r = http.request(basis + "/api/experiment/titel", { method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(koerper), Cookie: cookie, Origin: basis } }, (a) => { a.resume(); a.on("end", resolve); });
+    r.on("error", resolve);
+    r.flushHeaders();
+    setTimeout(() => r.end(koerper), 600);
+  });
+  await new Promise((r) => setTimeout(r, 250));
+  assert.equal((await (await fetch(basis + "/healthz")).json()).beschaeftigt, true, "while the request is open");
+  await fertig;
+  assert.equal((await (await fetch(basis + "/healthz")).json()).beschaeftigt, false, "afterwards");
+  // a request without a login never counts: nobody from outside can hold a rollout back
+  const fremd = new Promise((resolve) => { const r = http.request(basis + "/api/experiment/titel", { method: "POST", headers: { "Content-Type": "application/json", "Content-Length": 5 } }, (a) => { a.resume(); a.on("end", () => { clearTimeout(t); r.destroy(); resolve(); }); }); r.on("error", () => { clearTimeout(t); resolve(); }); r.flushHeaders(); const t = setTimeout(() => r.end("{}   "), 400); });
+  await new Promise((r) => setTimeout(r, 150));
+  assert.equal((await (await fetch(basis + "/healthz")).json()).beschaeftigt, false);
+  await fremd;
+});
+
 test("The environment is in the status, and /healthz shows the version from the watcher status without login", async () => {
   assert.equal((await betrieb(await cookie())).umgebung, "vorschau");
   // On the server this test runs INSIDE the watcher folder, where daten/waechter-status.json with the rolled-out commit lies.

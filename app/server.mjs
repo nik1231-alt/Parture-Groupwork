@@ -184,6 +184,7 @@ function pruefeFremd() {
   catch (e) { console.error("Check for outside changes:", e.message); }
 }
 let leiterLaeuft = false;
+let offeneAenderungen = 0; // POST requests of signed-in users that are being worked on right now (see /healthz)
 // One run: evaluate waiting times, take in new listings, suggest titles for step 1. Changes nothing on eBay.
 // Movement "hand" (default since 20 Nov): the daily run only fetches AI titles; taking in only by the button "Draw listings by lot"
 // (art "ziehen"), pushing on only by the button on the card (leiter.schiebeVonHand).
@@ -642,7 +643,10 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'");
   try {
-    if (url.pathname === "/healthz") return json(200, { ok: true, version: versionKurz() });
+    // beschaeftigt: an action of a signed-in user is running (a draw with its AI titles, an approval writing to eBay), or the
+    // daily run or a backup. The watcher waits with a restart while this is true: on 23 Nov 2026 a rollout restarted the
+    // app ten seconds into a draw, and the admin got an error although the draw itself had worked.
+    if (url.pathname === "/healthz") return json(200, { ok: true, version: versionKurz(), beschaeftigt: offeneAenderungen > 0 || leiterLaeuft || sicherungLaeuft });
     if (!(await accessOk(req))) return json(401, { ok: false, error: "No valid access (Cloudflare Access)." });
     // ---- Login: without a login only the login page, its files and /api/login are reachable ----
     const sicher = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https";
@@ -680,7 +684,10 @@ const server = http.createServer(async (req, res) => {
     }
     const ctx = benutzer ? { name: benutzer.name, rolle: rollen.rolleVon(appDb(), benutzer.name) ?? "builder" } : null;
     // The same address may read (GET) and write (POST): the method decides
-    if (req.method === "POST" && Object.hasOwn(POST_ROUTEN, url.pathname)) return json(200, { ok: true, daten: await POST_ROUTEN[url.pathname](req, ctx) });
+    if (req.method === "POST" && Object.hasOwn(POST_ROUTEN, url.pathname)) {
+      offeneAenderungen++;
+      try { return json(200, { ok: true, daten: await POST_ROUTEN[url.pathname](req, ctx) }); } finally { offeneAenderungen--; }
+    }
     const route = Object.hasOwn(ROUTEN, url.pathname) ? ROUTEN[url.pathname] : null;
     if (route && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: await route(url.searchParams, ctx) });
     if (route) return json(405, { ok: false, error: "GET only." });
