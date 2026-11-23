@@ -45,7 +45,7 @@ yet**: the group does that after review (A5.2). Order of merging: #10 → #11 �
 | A5.5 PR template, A5.7 `.mailmap`, A5.8 AI share | done, A5.8 to be checked by the group | #14 |
 | A5.6 Delete old branches | open: only after the merge | — |
 | A6.1, A6.2, A6.4, A6.5 README, architecture, development, glossary | done; A6.1 blind rehearsal open | #14, #12, issue #20 |
-| B1.1 Lion's approval | done: Lion by Telegram on 19 Nov "Yes 1123" | message centre #1123 |
+| B1.1 the co-owner's approval | done: the co-owner by Telegram on 19 Nov "Yes 1123" | message centre #1123 |
 | B1.5, B1.9 Shopify note, revert plan | done (template) | #14 `docs/belege/revert-plan.md` |
 | B1.10 No own Analytics calls | checked: `EBAY_TRAFFIC_AUTO` on PROD is empty | — |
 | B2.2, B2.3 Backup, watcher logs | checked 19 Nov: backup of 18 Nov in both places, logs without errors since the fix of 18 Nov | repeat before the demo |
@@ -65,7 +65,7 @@ on PROD every listing was on "Wait" and no test found candidates. Since 19 Nov t
 | Security | scrypt passwords, lock after failed attempts, cookies HttpOnly + SameSite=Strict + Secure, origin check, CSP, X-Frame-Options, roles on the server, Access JWT check, append-only log (DB trigger), secret scan in the CI, write switch `EBAY_SCHREIBEN` | Present, but described nowhere as a whole and not every measure has a test (A3). |
 | Git | 9 merged pull requests, **0 reviews**, 0 issues, commits: nik1231-alt 10, Niko 5, EmbletonNova 4, server AI 4, **Alexius76 0, giacomogrilli 0** | The most critical finding for "collaboration" (A5). |
 | CI | `.github/workflows/pruefung.yml`: npm ci, secret scan with history, tests, Ubuntu only | Two Windows-specific errors (EPERM/EBUSY) were found only on the server (A4.5). |
-| Operation | PROD `app.parture-team.com` (main) and PREVIEW `vorschau.parture-team.com` (vorschau) behind Cloudflare Access, watcher with a test gate, daily backup, restore rehearsed | Done. Open: eBay keys on PROD and Lion's approval (B1). |
+| Operation | PROD `app.parture-team.com` (main) and PREVIEW `vorschau.parture-team.com` (vorschau) behind Cloudflare Access, watcher with a test gate, daily backup, restore rehearsed | Done. Open: eBay keys on PROD and the co-owner's approval (B1). |
 | Data | `pm.db` every night 04:30 from the hub: 984 products, 2,155 channels, 6,357 images, traffic 120 days (98 days present, coverage 98.6 %) | Done. The team copy `daten-team/pm.db` is older and without traffic tables (A2.3). |
 
 ---
@@ -173,15 +173,15 @@ The order is mandatory, no step is skipped. Outside the probes and the demo the 
 
 | # | Item | Who | Proof | By |
 |---|---|---|---|---|
-| B1.1 | Lion's approval in the hub's message centre (#1123): eBay access for the app, the four test listings, title test with revert. Without this click nothing live happens | Lion | Answer to #1123 | as soon as possible |
+| B1.1 | the co-owner's approval in the hub's message centre (#1123): eBay access for the app, the four test listings, title test with revert. Without this click nothing live happens | Co-owner | Answer to #1123 | as soon as possible |
 | B1.2 | eBay developer app (Niko's account) with **only** the necessary scopes; consent on the seller account; keys typed **by Niko himself** into `C:\parture\prod\.env` (the editor is opened by the server, nothing via chat or repo) | Niko | `.env` shows "set" (never the value) | after B1.1 |
 | B1.3 | Restart the PROD watcher (stop the task, end the app process, start the task); `/api/betrieb` shows `zugangsdaten: true`, `schreibenAn: false` | Server AI | Output | after B1.2 |
 | B1.4 | Block list from the hub: the 50 listings of the running price-decrease test (until 24 Nov) must not go into any title test; list in `pm.db` as table `sperre` (extend the whitelist export) and taken into account by the draw (A1.3) | Server AI (export), Builder 2 (draw) | Test: a blocked listing is never drawn | 21 Nov |
-| B1.5 | Shopify twins: the four test listings have Shopify counterparts; the hub writes Shopify title changes to eBay within 10 minutes. **During a test do not touch the Shopify titles of these products.** A sentence in `docs/vorfuehrung.md` and a note in the app on the Approvals page | Niko (agreement with Lion), Builder 1 (note) | Sentence + screenshot | 24 Nov |
+| B1.5 | Shopify twins: the four test listings have Shopify counterparts; the hub writes Shopify title changes to eBay within 10 minutes. **During a test do not touch the Shopify titles of these products.** A sentence in `docs/vorfuehrung.md` and a note in the app on the Approvals page | Niko (agreement with the co-owner), Builder 1 (note) | Sentence + screenshot | 24 Nov |
 | B1.6 | Dry run on PROD with two listings with the switch off: the log shows "would change", eBay unchanged | Niko | Log | 24 Nov |
-| B1.7 | **Mini test with Lion present**: switch on, one listing, proposal → approval → check on eBay → log → revert via the app ("reverting change") → check on eBay → switch off | Niko + Lion | 4 screenshots | 24/25 Nov |
+| B1.7 | **Mini test with the co-owner present**: switch on, one listing, proposal → approval → check on eBay → log → revert via the app ("reverting change") → check on eBay → switch off | Niko + the co-owner | 4 screenshots | 24/25 Nov |
 | B1.8 | **Start the real test early** (25 Nov at the latest, draw from the four listings plus control), so that on 4 Dec with 3 days of delay **at least 7 days of real data** are in the evaluation panel and not only the example verdict | Niko | Test start in the log | 25 Nov |
-| B1.9 | Revert plan in writing: which listings, old title, who clicks, when; after the demo revert all titles or keep them deliberately (Lion decides) | Niko | `docs/belege/revert-plan.md` | 25 Nov |
+| B1.9 | Revert plan in writing: which listings, old title, who clicks, when; after the demo revert all titles or keep them deliberately (the co-owner decides) | Niko | `docs/belege/revert-plan.md` | 25 Nov |
 | B1.10 | eBay daily limit of the Analytics API: traffic comes from the hub, the app does not call Analytics itself (check: `EBAY_TRAFFIC_AUTO` stays off) | Server AI | `.env` shows off | 24 Nov |
 
 ### B2. Operation and server
@@ -191,8 +191,8 @@ The order is mandatory, no step is skipped. Outside the probes and the demo the 
 | B2.1 | Each of the four accesses logged in once on PROD **and** PREVIEW (Access PIN + app login), password changed; the handover files `C:\parture\zugang-*.txt` and `erste-passwoerter-*.txt` deleted afterwards | all; the server AI deletes | Message "in" per person, `ls` empty | 20 Nov |
 | B2.2 | Backup: daily copy in `daten/sicherung` and on `SICHERUNG_ZIEL2` (Google Drive) exists; restore rehearsed once on PREVIEW (done 17 Nov), once more before the demo | Server AI | File list with dates | 2 Dec |
 | B2.3 | Watcher logs of both environments without ERROR/REJECTED in the last 7 days before the demo; `/healthz` version = `main` | Server AI | Log excerpt | 3 Dec |
-| B2.4 | Server laptop: free memory (on 17 Nov only about 500 MB), unnecessary windows and sessions closed, no Windows updates on 3/4 Dec | Niko with Lion | Measurement | 3 Dec |
-| B2.5 | After a restart of the server nothing runs until somebody logs on (no automatic logon). On the demo day somebody is at the server or the server stays on | Lion/Niko | Agreement | 3 Dec |
+| B2.4 | Server laptop: free memory (on 17 Nov only about 500 MB), unnecessary windows and sessions closed, no Windows updates on 3/4 Dec | Niko with the co-owner | Measurement | 3 Dec |
+| B2.5 | After a restart of the server nothing runs until somebody logs on (no automatic logon). On the demo day somebody is at the server or the server stays on | Co-owner/Niko | Agreement | 3 Dec |
 | B2.6 | The Telegram message to the admin on a new proposal works on PROD (create a bot, `TELEGRAM_*` in `.env`) or deliberately leave it out and do not claim it in the demo | Niko | Test message or sentence deleted | 25 Nov |
 
 ### B3. Dress rehearsal (twice, with a stopwatch)
@@ -233,7 +233,7 @@ Taken from `docs/vorfuehrung.md` and extended. Every answer in two sentences, on
 - [ ] The revert plan (B1.9) lies next to it as a printout.
 - [ ] Fallback plan at hand: video, screenshots, local app started.
 - [ ] Niko's phone shows the Telegram message (B2.6) or the sentence about it is left out.
-- [ ] After the demo: switch off, export the log (screenshot), revert according to B1.9, a short message to Lion.
+- [ ] After the demo: switch off, export the log (screenshot), revert according to B1.9, a short message to the co-owner.
 
 ---
 
@@ -247,7 +247,7 @@ Whoever has an idea creates an issue with the label "after the demo".
 
 | Who | Focus | Items |
 |---|---|---|
-| **Niko** (admin) | eBay, Lion, approval, branch protection, issues, presentation lead | A1.5, A1.6, A1.8, A2.3, A3.3, A3.4, A3.8, A3.9, A3.11, A3.13, A5.1, A5.3, A5.4, A5.6, A5.7, A5.8, B1.*, B2.4, B2.6, B3.2, B3.5, C |
+| **Niko** (admin) | eBay, the co-owner, approval, branch protection, issues, presentation lead | A1.5, A1.6, A1.8, A2.3, A3.3, A3.4, A3.8, A3.9, A3.11, A3.13, A5.1, A5.3, A5.4, A5.6, A5.7, A5.8, B1.*, B2.4, B2.6, B3.2, B3.5, C |
 | **Builder 1** (suggestion Alexius76) | interface, listings, README, proofs, fallback plan | A1.1, A1.2, A1.10, A1.11, A3.6, A4.4, A4.6, A6.1, A6.6, B1.5, B3.3 |
 | **Builder 2** (suggestion giacomogrilli) | draw, approval states, constants, end-to-end test | A1.3, A1.4, A1.12, A2.2, A3.7, A3.12, A4.2, A4.8, A6.5, B1.4 |
 | **Builder 3** (suggestion EmbletonNova) | evaluation, security, log, architecture doc, PR template | A1.7, A1.8 (review), A1.9, A3.1, A3.2, A3.5, A4.1, A5.5, A6.2, A6.3 |
