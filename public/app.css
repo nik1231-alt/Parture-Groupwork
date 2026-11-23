@@ -11,10 +11,10 @@
   --schatten-hoch: 0 8px 28px rgba(17, 24, 39, .14);
   --radius: 10px; --radius-klein: 7px;
   --g-sichtbarkeit: #d08a10; --g-ok: #2f9a5d; --g-warten: #6b7a99;
-  -- sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
   --anzeige: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
-  -- serif: var(--anzeige); /* old name, in case something still uses it */
+  --serif: var(--anzeige); /* old name, in case something still uses it */
   --breite: 1160px;
 }
 @media (prefers-color-scheme: dark) {
