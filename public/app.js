@@ -42,7 +42,39 @@ const entwurf = {
   weg: (k) => { try { sessionStorage.removeItem("entwurf:" + k); } catch { /* ohne Zwischenspeicher */ } },
 };
 
+// ======================================================= Loading indicator
+// Every request to the server counts: while at least one is open, a bar runs along the top edge (after 150 ms, so that
+// fast answers do not flicker). A page that has nothing to show yet gets placeholders (skelett) in the shape of its
+// content, so nobody wonders whether to reload. When the last request is done, leftover placeholders are removed.
+let offeneAnfragen = 0, balkenTimer;
+function anfrageBeginnt() {
+  if (++offeneAnfragen === 1) balkenTimer = setTimeout(() => $("#ladebalken")?.classList.add("an"), 150);
+}
+function anfrageEndet() {
+  if (--offeneAnfragen > 0) return;
+  // One step later: a load that directly follows another (first the role, then the data) keeps the display
+  setTimeout(() => {
+    if (offeneAnfragen > 0) return;
+    clearTimeout(balkenTimer);
+    $("#ladebalken")?.classList.remove("an");
+    for (const s of document.querySelectorAll(".skelett")) s.remove();
+  }, 0);
+}
+// Placeholders only where nothing is drawn yet; a page that already shows data keeps it while it refreshes
+function skelett(ziel, art = "karten") {
+  if (!ziel || ziel.children.length) return;
+  const balken = (klasse) => el("div", { class: "skelett-teil " + klasse });
+  const inhalt = art === "zeilen"
+    ? Array.from({ length: 8 }, () => el("div", { class: "skelett-zeile" }, balken("sk-bild"), balken("sk-lang"), balken("sk-kurz"), balken("sk-kurz"), balken("sk-mittel")))
+    : [balken("sk-titel"), balken("sk-text"), balken("sk-text sk-schmal"), el("div", { class: "skelett-karten" }, Array.from({ length: 3 }, () => balken("sk-karte"))), balken("sk-block")];
+  ziel.append(el("div", { class: "skelett", role: "status", "aria-live": "polite" }, el("span", { class: "nur-screenreader", text: "Loading …" }), inhalt));
+}
+
 async function api(pfad, optionen) {
+  anfrageBeginnt();
+  try { return await apiRoh(pfad, optionen); } finally { anfrageEndet(); }
+}
+async function apiRoh(pfad, optionen) {
   const r = await fetch(pfad, optionen);
   // Session expired: reload the same address. The server then shows the login page, the address (#tests/5) stays,
   // after the login it goes back exactly there, and typed titles are in the cache (entwurf = draft).
@@ -139,6 +171,8 @@ function route() {
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
   window.scrollTo(0, 0);
+  // Nothing drawn yet on this page: placeholders until the data is there
+  skelett(ansicht === "listings" ? (zustand.daten || ersterAufruf ? null : $("#liste")) : ansicht === "settings" ? $("#einstellungen") : ansicht === "tests" ? (arg ? null : $("#tests-uebersicht")) : ansicht === "account" ? null : $("#ansicht-" + ansicht), ansicht === "listings" ? "zeilen" : "karten");
   // Always load the listings fresh: tests and settings change which listings are where
   if (ansicht === "listings" && !ersterAufruf) laden();
   ersterAufruf = false;
@@ -1367,4 +1401,5 @@ $("#abmelden").addEventListener("click", async () => {
 });
 const ichGeladen = api("/api/ich").then((d) => { zustand.ich = { name: d.name || "", rolle: d.rolle || "builder" }; $("#benutzer").textContent = d.name ? `${d.name} (${d.rolle === "admin" ? "admin" : "builder"})` : ""; $("#nav-team").hidden = d.rolle !== "admin"; }).catch(() => {});
 
+skelett($("#liste"), "zeilen"); // the first screen: rows are on their way
 ichGeladen.then(laden).then(route); // first know the role, then draw

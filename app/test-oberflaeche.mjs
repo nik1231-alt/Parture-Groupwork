@@ -60,3 +60,42 @@ test("app/*.mjs: error messages to the interface (new Error, fehler(status, …)
   }
   assert.deepEqual(funde, []);
 });
+
+// Loading indicator (public/app.js): the part between the heading "Loading indicator" and apiRoh runs here against a
+// tiny stand-in for the page. It must switch the bar on only for slow requests, keep it across requests that follow
+// each other directly, and remove leftover placeholders when the last request is done (also after an error).
+test("Loading indicator: bar after 150 ms, stays across chained requests, placeholders removed at the end", async () => {
+  const quelle = fs.readFileSync(path.join(WURZEL, "public", "app.js"), "utf8");
+  const teil = quelle.slice(quelle.indexOf("let offeneAnfragen"), quelle.indexOf("async function apiRoh"));
+  assert.ok(teil.includes("function skelett") && teil.includes("async function api("), "the block was found");
+  const klassen = new Set(); let platzhalter = 1, antwort;
+  const balken = { classList: { add: (k) => klassen.add(k), remove: (k) => klassen.delete(k) } };
+  const dokument = { querySelectorAll: () => (platzhalter ? [{ remove: () => { platzhalter = 0; } }] : []) };
+  const api = new Function("$", "document", "apiRoh", "el", teil + "; return api;")(() => balken, dokument, () => antwort, () => ({}));
+  const warte = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  antwort = Promise.resolve(1);                       // fast answer: no bar
+  await api("/a"); await warte(200);
+  assert.equal(klassen.has("an"), false, "a fast answer shows no bar");
+  assert.equal(platzhalter, 0, "placeholders are removed when the request is done");
+
+  platzhalter = 1; antwort = warte(250).then(() => 2); // slow answer: bar on, and it stays for the request that follows directly
+  const erste = api("/b"); await warte(200);
+  assert.equal(klassen.has("an"), true, "a slow answer shows the bar");
+  await erste; antwort = warte(100).then(() => 3); const zweite = api("/c"); await warte(20);
+  assert.equal(klassen.has("an"), true, "the bar stays for a request that follows directly");
+  assert.equal(platzhalter, 1, "placeholders stay as long as a request is open");
+  await zweite; await warte(20);
+  assert.equal(klassen.has("an"), false, "the bar goes when the last request is done");
+
+  platzhalter = 1; antwort = Promise.reject(new Error("down")); // an error ends the display as well
+  await assert.rejects(api("/d")); await warte(20);
+  assert.equal(platzhalter, 0, "placeholders are removed after an error");
+  assert.equal(klassen.has("an"), false);
+});
+
+test("Loading indicator: the page has the bar, and motion is switched off for people who asked for less of it", () => {
+  assert.match(fs.readFileSync(path.join(WURZEL, "public", "index.html"), "utf8"), /id="ladebalken"/);
+  const css = fs.readFileSync(path.join(WURZEL, "public", "app.css"), "utf8");
+  assert.ok(css.includes("prefers-reduced-motion: reduce) { .skelett, .skelett-teil { animation: none"));
+});
