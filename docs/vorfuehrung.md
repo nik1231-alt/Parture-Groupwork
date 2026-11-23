@@ -84,7 +84,7 @@ If something breaks during the demo: say in one sentence what happened, and go o
 - **Group:** the idea and the subject core: the problem analysis, the diagnosis rules, the funnel with a control group, the
   approval path, the results pages, the eBay-only scope, the interface texts.
 - **AI agents** (allowed in this course; in Git as "Parture Server-KI" or recognisable by `Co-Authored-By`): the server
-  operation (two environments, watcher, backup), the hourly data export, a large part of the tests and the documentation, and
+  operation (two environments, watcher, backup; specified and directed by Niko, including the access through Cloudflare), the hourly data export, a large part of the tests and the documentation, and
   the fixes from our own review (`docs/fix-checkliste.md`).
 - Commits on `main` at the hand-in: see `git shortlog -sn`. Most commits come from Niko and the server agent; the other
   three members contributed through their own pull requests (#3, #45, #47, #48/#55, #54 and those after this page was written).
