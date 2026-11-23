@@ -250,8 +250,13 @@ export async function gibFrei(db, nutzer, number, { items, schreiber, impTag, ei
   }
   // F3: the floor as it is set now, also for a suggestion made before it was raised
   if (z.stufe === "preis" && einst.preisMinimum > 0 && !(v.neu >= einst.preisMinimum)) return fehler(409, `The new price ${Number(v.neu).toFixed(2)} € is below the lowest price the app may set (${einst.preisMinimum.toFixed(2)} €). Nothing was changed. Skip this step or change the price by hand.`);
+  // A title that did not help goes back first (see setzeTitelZurueck). If that fails, this step is not started either:
+  // otherwise the ad or the lower price would be measured on a title that was meant to be gone.
+  const tz = z.stufe === "titel" ? null : (await setzeTitelZurueck(db, nutzer, number, { items, schreiber }, jetzt)).wert;
+  if (tz?.ausgang === "fehlgeschlagen") return fehler(409, tz.text + " Nothing was changed. Try again, or use “Undo on eBay”.");
   let r;
   try { r = await fuehreAus(z.stufe, v, items, schreiber); } catch (e) { r = { ausgang: "fehlgeschlagen", text: "Error while talking to eBay: " + e.message }; }
+  if (tz?.text) r = { ...r, text: tz.text + " " + r.text };
   const ereignis = r.ausgang === "angewendet" ? "freigegeben" : r.ausgang;
   verlauf(db, z.number, z.stufe, ereignis, { text: r.text, vorschlag: v }, nutzer.name, jetzt);
   protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_" + ereignis, objekt: "product " + z.number, details: { stufe: z.stufe, vorschlag: v, text: r.text }, ergebnis: r.ausgang === "angewendet" ? "ok" : r.ausgang === "probelauf" ? "dry_run" : "error" }, jetzt);
@@ -508,7 +513,8 @@ export async function macheRueckgaengig(db, nutzer, number, { items, schreiber }
   if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can undo changes on eBay.");
   const z = lade(db, String(number ?? ""));
   if (!z || z.stufe === "raus") return fehler(404, "This listing is not on the ladder.");
-  const teile = aenderungenDerApp(db, z).reverse();
+  const titelOffen = !!titelZurueckOffen(db, z);
+  const teile = aenderungenDerApp(db, z).filter((t) => t.stufe !== "titel" || titelOffen).reverse(); // a title already set back needs no undo
   if (!teile.length) return fehler(409, "The app has not changed this listing on eBay, so there is nothing to undo. Use “Take off the ladder” instead.");
   if (!items?.length) return fehler(409, "No active eBay listing found for this product.");
   const an = (stufe) => (stufe === "titel" ? schreiber.schreibenAn() : stufe === "werbung" ? schreiber.schreibenAn() && schreiber.werbungAn() : schreiber.schreibenAn() && schreiber.preisAn());
@@ -555,6 +561,51 @@ export async function macheRueckgaengig(db, nutzer, number, { items, schreiber }
   })();
   protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_undone", objekt: "product " + z.number, details: { teile: erledigt, text } }, jetzt);
   return ok({ number: z.number, ausgang: "rueckgaengig", text });
+}
+
+// ---------- Title back when it did not help ----------
+// A new title that did not bring the listing back is a test that failed: once the listing has moved past the title step, the
+// old title goes back onto eBay (Niko, 23 Nov 2026). The ads and the price step are then measured on the original title. The
+// ad stays when the price step follows; only the title goes back.
+// It always happens with an admin's click: right after "Next phase →" out of the title step, and otherwise together with the
+// approval of the next step (when the daily run moved the listing on by itself). Read before write as everywhere: the title is
+// set back only if eBay still shows the title the app set. Without credentials or with writing switched off nothing is
+// changed and nothing is recorded, so it is tried again with the next click.
+// "Open" = the app changed the title in this run of the ladder and has not set it back since.
+export function titelZurueckOffen(db, z) {
+  const t = db.prepare("SELECT id, details FROM leiter_verlauf WHERE number = ? AND at >= ? AND stufe = 'titel' AND ereignis = 'freigegeben' ORDER BY id DESC LIMIT 1").get(z.number, z.eingestiegen_at);
+  const v = json(t?.details)?.vorschlag;
+  if (!t || !v?.alt || !v?.titel) return null;
+  return db.prepare("SELECT 1 FROM leiter_verlauf WHERE number = ? AND ereignis = 'titel_zurueck' AND id > ?").get(z.number, t.id) ? null : v;
+}
+export async function setzeTitelZurueck(db, nutzer, number, { items, schreiber }, jetzt = new Date()) {
+  if (nutzer?.rolle !== "admin") return fehler(403, "Only an admin can change a title on eBay.");
+  const z = lade(db, String(number ?? ""));
+  const v = z && ["werbung", "preis", "pruefung"].includes(z.stufe) ? titelZurueckOffen(db, z) : null;
+  if (!v) return ok({ number, ausgang: "nichts", text: "" });
+  if (!schreiber.konfiguriert() || !schreiber.schreibenAn()) return ok({ number, ausgang: "probelauf", text: `Dry run: the title would be set back to “${v.alt}”. Nothing was changed on eBay.` });
+  if (!items?.length) return ok({ number, ausgang: "fehlgeschlagen", text: "The title was not set back: no active eBay listing found for this product." });
+  const texte = []; let gesetzt = 0, fremd = 0;
+  for (const it of items) {
+    const id = String(it.external_id);
+    let g;
+    try { g = await schreiber.lies(id); } catch (e) { g = { ok: false, meldung: e.message }; }
+    if (!g.ok) return ok({ number, ausgang: "fehlgeschlagen", text: `The title was not set back: could not read listing ${id} on eBay (${g.meldung}).` });
+    if (norm(g.titel) === norm(v.alt)) { texte.push(`Listing ${id} already shows the old title.`); continue; }
+    if (norm(g.titel) !== norm(v.titel)) { fremd++; texte.push(`Title of listing ${id} left alone: eBay shows “${g.titel}”, not the title the app set.`); continue; }
+    let r;
+    try { r = await schreiber.setzeTitel(id, v.alt); } catch (e) { r = { ok: false, meldung: e.message }; }
+    if (!r.ok) return ok({ number, ausgang: "fehlgeschlagen", text: `The title was not set back: eBay refused (${r.meldung}).` });
+    gesetzt++; texte.push(`Title of listing ${id} set back to “${v.alt}”.`);
+  }
+  const text = texte.join(" ");
+  db.transaction(() => {
+    verlauf(db, z.number, "titel", "titel_zurueck", { von: v.titel, zu: v.alt, gesetzt, fremd, text }, nutzer.name, jetzt);
+    // F6: from now on eBay should show the old title again (not where somebody else changed it: that stays marked as changed outside)
+    if (!fremd) { const s0 = letzterStand(db, z.number); merkeStand(db, z.number, z.stufe, { titel: v.alt, preis: s0?.preis ?? null, vorher: { titel: v.titel, preis: s0?.preis ?? null }, grund: "title set back by the app" }, nutzer.name, jetzt); }
+  })();
+  protokoll.schreibe(db, { ...wer(nutzer), aktion: "ladder_title_reverted", objekt: "product " + z.number, details: { von: v.titel, zu: v.alt, text } }, jetzt);
+  return ok({ number: z.number, ausgang: "zurueckgesetzt", text });
 }
 
 // "Start over": everything that has not been changed on eBay yet goes back to "Eligible" (the control group too). Listings with

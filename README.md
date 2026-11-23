@@ -89,6 +89,10 @@ All products
 ```
 
 - **Seen again** means: impressions per day during the waiting time, scaled to 90 days, are no longer below the diagnosis limit.
+- **A title that did not help goes back.** When a listing moves past Phase 1 without being seen again, the old title is set
+  back on eBay: right after *Next phase →*, or with the approval of the next phase if the daily run moved the listing on. The
+  ad of Phase 2 stays when the price goes down in Phase 3. A title that worked (*Seen again*) stays. As with every change the
+  app reads the listing first and leaves a title alone that somebody else changed in the meantime.
 - **Net effect** of a phase = (listing after ÷ before) ÷ (control group after ÷ before) − 1, over exactly the same days. If the
   whole shop gets busier, the control group rises too and the net effect stays near zero. From +20 % a phase counts as clearly better.
   "Before" is the 30 days before the phase started, computed for listing and control group **with the same, current data**
@@ -194,8 +198,9 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
   *Settings* (the earlier defaults); the control group always lasts all three waiting times plus 7 days.
 - With only a few listings per phase the net effect is noisy; it gets reliable as more listings pass through. *With more time:*
   more draws, and a pre-set number of listings per phase before anyone reads a verdict.
-- **Carry-over:** a new title can still be working when the ads start, so part of its effect is counted for the ads. Each phase is
-  measured against its own 30 days before, so it shows what was added on top. *With more time:* a pause between phases, or a
+- **Carry-over:** the title goes back before the ads start, but the days with the new title lie inside the 30 days the ads phase
+  is compared with, and eBay's search may react to a title change with a delay. Ads and price do stack: the ad keeps running
+  while the price is lower. Each phase is measured against its own 30 days before, so it shows what was added on top. *With more time:* a pause between phases, or a
   second control group that gets only the title.
 - **Spill-over:** a test listing could take impressions from other listings of the shop. With 10 of about 760 listings in
   different categories this is unlikely, but it is not proven. *With more time:* compare the control group with the rest of the shop.

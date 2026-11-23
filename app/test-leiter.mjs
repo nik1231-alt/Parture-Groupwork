@@ -77,7 +77,7 @@ test("Whole path without recovery: title -> ads -> price -> manual review -> dec
   assert.equal(zeile(d, "A").ergebnis, "offline");
   const ereignisse = d.prepare("SELECT ereignis FROM leiter_verlauf WHERE number = 'A' ORDER BY id").all().map((r) => r.ereignis);
   // "stand" after the title and the price change: what eBay should show from then on (F6); the ad changes neither
-  assert.deepEqual(ereignisse, ["aufgenommen", "vorschlag", "freigegeben", "stand", "gestartet", "ausgewertet", "vorschlag", "freigegeben", "gestartet", "ausgewertet", "vorschlag", "freigegeben", "stand", "gestartet", "ausgewertet", "pruefung", "entschieden"]);
+  assert.deepEqual(ereignisse, ["aufgenommen", "vorschlag", "freigegeben", "stand", "gestartet", "ausgewertet", "vorschlag", "titel_zurueck", "stand", "freigegeben", "gestartet", "ausgewertet", "vorschlag", "freigegeben", "stand", "gestartet", "ausgewertet", "pruefung", "entschieden"]);
 });
 
 test("Recovery: enough impressions again after the waiting time -> leaves the ladder, room for the next listing", async () => {
@@ -466,13 +466,13 @@ test("Undo on eBay (F7): price, ad and title go back in reverse order; the listi
   await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, tag(15));                 // ad
   assert.deepEqual(leiter.aenderungenDerApp(d, zeile(d, "A")).map((x) => x.stufe), ["titel", "werbung"]);
   assert.equal((await leiter.macheRueckgaengig(d, BUILDER, "A", { items: ITEMS, schreiber: s })).status, 403);
-  // eBay shows what the app wrote
-  s.lies = async () => ({ ok: true, titel: "Wandhalter passend für A", status: "Active", verkauft: 3, preis: 9.99, variationen: [] });
+  // The title went back with the approval of the ad (it did not help), so eBay shows the old title and only the ad is left
+  assert.equal(leiter.titelZurueckOffen(d, zeile(d, "A")), null);
   s.entferneWerbung = async (id) => { s.auf.push(["werbung_weg", id]); return { ok: true, meldung: "" }; };
   const vorher = s.auf.length;
   const r = await leiter.macheRueckgaengig(d, ADMIN, "A", { items: ITEMS, schreiber: s }, tag(16));
   assert.equal(r.ok, true); assert.equal(r.wert.ausgang, "rueckgaengig");
-  assert.deepEqual(s.auf.slice(vorher), [["werbung_weg", "123456789012"], ["titel", "123456789012", "Halter A"]], "last change first, title back to the old one");
+  assert.deepEqual(s.auf.slice(vorher), [["werbung_weg", "123456789012"]], "the ad is removed; the title is already back and is not written again");
   assert.equal(zeile(d, "A").stufe, "raus"); assert.equal(zeile(d, "A").ergebnis, "rueckgaengig");
   assert.equal(d.prepare("SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ladder_undone'").get().n, 1);
   const t = leiter.trichter(d, shop(), E, tag(16)).liste.find((x) => x.number === "A");
@@ -507,4 +507,90 @@ test("Undo on eBay (F7): a lowered price goes back to the old price, only if eBa
   s.lies = async () => ({ ok: true, titel: "Halter A", status: "Active", verkauft: 3, preis: 8.99, variationen: [] });
   const r = await leiter.macheRueckgaengig(d, ADMIN, "A", { items: ITEMS, schreiber: s }, tag(2));
   assert.equal(r.wert.ausgang, "rueckgaengig"); assert.deepEqual(s.auf.at(-1), ["preis", "123456789012", 9.99]);
+});
+
+// ---------- Title back when it did not help (Niko, 23 Nov 2026) ----------
+// An eBay stand-in that remembers title, ad and price, so the tests see what a buyer would see after each click.
+const merkEbay = (schalter = {}) => {
+  const ebay = { titel: "Halter A", preis: 9.99, werbung: null }, auf = [];
+  return { ebay, auf, konfiguriert: () => schalter.konfiguriert ?? true, schreibenAn: () => schalter.schreiben ?? true, werbungAn: () => true, preisAn: () => true,
+    lies: async () => (schalter.lesenKaputt?.() ? { ok: false, meldung: "eBay is down" } : { ok: true, titel: ebay.titel, status: "Active", verkauft: 0, preis: ebay.preis, variationen: [] }),
+    setzeTitel: async (id, t) => { auf.push(["titel", t]); ebay.titel = t; return { ok: true, meldung: "" }; },
+    setzeWerbung: async (id, satz) => { auf.push(["werbung", satz]); ebay.werbung = satz; return { ok: true, meldung: "" }; },
+    entferneWerbung: async () => { auf.push(["werbung_weg"]); ebay.werbung = null; return { ok: true, meldung: "" }; },
+    setzePreis: async (id, skus, p) => { auf.push(["preis", p]); ebay.preis = p; return { ok: true, meldung: "" }; } };
+};
+// Title live, waiting time over without recovery: the listing waits at the ads step
+async function bisWerbung(s) {
+  const d = neueDb();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
+  await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
+  leiter.werteAus(d, daten({}, "2026-12-04", { fuer: () => ({ kanaele: ITEMS, varianten: [] }) }), tag(15));
+  return d;
+}
+
+test("Title back: after a title step without recovery the old title returns with the next admin click; ad and price stay", async () => {
+  const s = merkEbay(), d = await bisWerbung(s);
+  assert.equal(s.ebay.titel, "Wandhalter passend für A", "the daily run alone changes nothing on eBay");
+  assert.equal(leiter.titelZurueckOffen(d, zeile(d, "A")).alt, "Halter A");
+  assert.equal((await leiter.setzeTitelZurueck(d, BUILDER, "A", { items: ITEMS, schreiber: s })).status, 403, "only an admin");
+  const r = await leiter.setzeTitelZurueck(d, ADMIN, "A", { items: ITEMS, schreiber: s }, tag(15));  // what "Next phase →" does right away
+  assert.equal(r.wert.ausgang, "zurueckgesetzt"); assert.match(r.wert.text, /set back to “Halter A”/);
+  assert.equal(s.ebay.titel, "Halter A");
+  assert.equal(d.prepare("SELECT COUNT(*) n FROM protokoll WHERE aktion = 'ladder_title_reverted'").get().n, 1);
+  assert.equal((await leiter.setzeTitelZurueck(d, ADMIN, "A", { items: ITEMS, schreiber: s }, tag(15))).wert.ausgang, "nichts", "not twice");
+  // ads, then price: the ad stays when the price goes down, the title stays the old one
+  await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, tag(15));
+  leiter.werteAus(d, daten({}, "2026-12-20", { fuer: () => ({ kanaele: ITEMS, varianten: [] }) }), tag(30));
+  await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, tag(30));
+  assert.deepEqual(s.ebay, { titel: "Halter A", preis: 8.99, werbung: 0.1 });
+  assert.deepEqual(s.auf, [["titel", "Wandhalter passend für A"], ["titel", "Halter A"], ["werbung", 0.1], ["preis", 8.99]]);
+  // the expected state for the outside-change check is the old title again: the catalogue showing it is no outside change
+  assert.deepEqual(leiter.pruefeFremdaenderungen(d, new Map([["A", { titel: "Halter A", preis: 8.99 }]]), tag(40)), []);
+});
+
+test("Title back: if nobody clicked in between, the approval of the ads step sets the title back first", async () => {
+  const s = merkEbay(), d = await bisWerbung(s);
+  const r = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, tag(15));
+  assert.equal(r.wert.ausgang, "angewendet"); assert.match(r.wert.text, /set back to “Halter A”.*changed on eBay/);
+  assert.deepEqual(s.ebay, { titel: "Halter A", preis: 9.99, werbung: 0.1 });
+});
+
+test("Title back: a title that worked stays (Seen again), and a title somebody else changed is left alone", async () => {
+  const s = merkEbay(), d = neueDb();
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
+  await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: s, impTag: impVon() }, T0);
+  leiter.schiebeVonHand(d, ADMIN, "A", "erholt", daten({}, "2026-12-04"), tag(15));
+  assert.equal((await leiter.setzeTitelZurueck(d, ADMIN, "A", { items: ITEMS, schreiber: s }, tag(15))).wert.ausgang, "nichts");
+  assert.equal(s.ebay.titel, "Wandhalter passend für A", "seen again: the new title did its job and stays");
+
+  const s2 = merkEbay(), d2 = await bisWerbung(s2);
+  s2.ebay.titel = "Von jemand anderem geändert";
+  const r = await leiter.setzeTitelZurueck(d2, ADMIN, "A", { items: ITEMS, schreiber: s2 }, tag(15));
+  assert.match(r.wert.text, /left alone: eBay shows “Von jemand anderem geändert”/);
+  assert.equal(s2.ebay.titel, "Von jemand anderem geändert", "nothing is overwritten");
+  assert.equal(leiter.titelZurueckOffen(d2, zeile(d2, "A")), null, "and it is not tried again and again");
+});
+
+test("Title back: without writing it is a dry run that records nothing; if eBay cannot be read the next step does not start", async () => {
+  let aus = true;
+  const s = merkEbay({ schreiben: false }), d = neueDb();
+  // the title was written while writing was on (a row in the history says so), now writing is off
+  leiter.nimmAuf(d, shop(), { ...E, leiterMax: 1 }, T0);
+  leiter.setzeTitelVorschlag(d, ADMIN, "A", titelVorschlag, T0);
+  await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: merkEbay(), impTag: impVon() }, T0);
+  leiter.werteAus(d, daten({}, "2026-12-04", { fuer: () => ({ kanaele: ITEMS, varianten: [] }) }), tag(15));
+  const p = await leiter.setzeTitelZurueck(d, ADMIN, "A", { items: ITEMS, schreiber: s }, tag(15));
+  assert.equal(p.wert.ausgang, "probelauf"); assert.match(p.wert.text, /would be set back to “Halter A”/);
+  assert.ok(leiter.titelZurueckOffen(d, zeile(d, "A")), "still open: it is done with the next click when writing is on");
+
+  const kaputt = merkEbay({ lesenKaputt: () => aus }); kaputt.ebay.titel = "Wandhalter passend für A";
+  const f = await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: kaputt, impTag: impVon() }, tag(15));
+  assert.equal(f.status, 409); assert.match(f.fehler, /title was not set back.*Nothing was changed/);
+  assert.equal(zeile(d, "A").phase, "vorschlag", "the ads step did not start"); assert.deepEqual(kaputt.auf, []);
+  aus = false;
+  assert.equal((await leiter.gibFrei(d, ADMIN, "A", { items: ITEMS, schreiber: kaputt, impTag: impVon() }, tag(15))).wert.ausgang, "angewendet");
+  assert.deepEqual(kaputt.ebay, { titel: "Halter A", preis: 9.99, werbung: 0.1 });
 });
