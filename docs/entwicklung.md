@@ -40,7 +40,7 @@ Without `daten/pm.db` the app uses the team copy `daten-team/pm.db` (catalogue, 
 ```
 
 Rules:
-- **Never push directly to `main`.** (GitHub enforces this only with branch protection; until then it is an agreement.)
+- **Never push directly to `main`.** (Enforced by branch protection on GitHub since 23 Nov 2026; before that it was an agreement.)
 - **`vorschau` is a playground.** It is overwritten hard when needed (force push). Two people pushing there at the same time overwrite each other: agree briefly ("I have the preview right now"). Whatever should stay belongs in a pull request to `main`.
 - One change per pull request, with a test if it changes logic (tests are in `app/test*.mjs`, `node:test`).
 - No `.env`, no `.db` (except `daten-team/pm.db`), no `node_modules`, no passwords, tokens or eBay data in commits, issues, pull requests or chats.

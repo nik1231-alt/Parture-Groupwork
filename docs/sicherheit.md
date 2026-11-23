@@ -66,4 +66,4 @@ Setup and probe from outside: `docs/server-checkliste.md` (B11, C1 to C8, F5) an
 - The log can only be appended to inside the app (a trigger in the database). Whoever reaches `daten/app.db` directly could remove the triggers: it is evidence, not tamper-proof proof.
 - Settings (diagnosis thresholds, test size) may also be changed and reset by builders. They change nothing on eBay, but they change the app's suggestions.
 - The JWT check does not check an issuer (`iss`); the `aud` is unique per Access application and the signature comes from the keys of the own team domain.
-- Branch protection on GitHub is not enforced yet, only agreed (`docs/entwicklung.md`).
+- Branch protection on `main` is enforced since the hand-in (23 Nov 2026): pull request with one approval, the check `tests` must pass, no force push, also for admins. Before that it was an agreement (`docs/entwicklung.md`).

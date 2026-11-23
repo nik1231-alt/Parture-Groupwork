@@ -145,7 +145,7 @@ The rule check allows no new brands, numbers, sizes, colours or English words; b
 restore. No second machine (README *Limits*).
 
 **"A bad commit goes straight live?"** Only through a pull request with green CI, and the server tests again before it deploys.
-Branch protection on GitHub follows once the repository is public (free then).
+Branch protection on GitHub is active since the repository became public on 23 Nov 2026.
 
 **"How is access protected?"** Cloudflare Access (e-mail code) plus the app login: scrypt passwords, lock after 5 failed
 attempts per name and 20 per address, HttpOnly + SameSite=Strict cookie, foreign origins rejected, roles checked in the server.
