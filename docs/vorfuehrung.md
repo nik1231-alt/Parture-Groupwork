@@ -87,11 +87,14 @@ If something breaks during the demo: say in one sentence what happened, and go o
 
 - **Group:** the idea and the subject core: the problem analysis, the diagnosis rules, the funnel with a control group, the
   approval path, the results pages, the eBay-only scope, the interface texts.
-- **AI agents** (allowed in this course; in Git as "Parture Server-KI" or recognisable by `Co-Authored-By`): the server
-  operation (two environments, watcher, backup; specified and directed by Niko, including the access through Cloudflare), the hourly data export, a large part of the tests and the documentation, and
-  the fixes from our own review (`docs/fix-checkliste.md`).
-- Commits on `main` at the hand-in: see `git shortlog -sn`. Most commits come from Niko and the server agent; the other
-  three members contributed through their own pull requests (#3, #45, #47, #48/#55, #54 and those after this page was written).
+- **One coding agent for the whole group** (allowed in this course; in Git as "Parture Server-KI" or recognisable by
+  `Co-Authored-By`): we worked in shared sessions at one machine with one agent on one subscription, so that it kept the
+  context of the whole project. What it wrote there was decided and checked by the group: the server operation (two
+  environments, watcher, backup; specified and directed by Niko, including the access through Cloudflare), the hourly data
+  export, a large part of the tests and the documentation, and the fixes from our own review (`docs/fix-checkliste.md`).
+- Commits on `main` at the hand-in: see `git shortlog -sn`. Most commits carry the name of the shared agent or of Niko, on
+  whose machine the sessions ran; they are not the work of one member. All four members also contributed through pull requests
+  under their own accounts (#3, #45, #47, #48/#55, #54, #72, #73).
 - **Reviews:** until the hand-in almost every pull request was merged by its author without a review recorded on GitHub. CI
   (tests and secret scan) ran on each one, and the server tests again before it deploys. From the hand-in on, a pull request is
   merged only after another member approved it, and `main` is protected.
