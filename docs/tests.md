@@ -1,7 +1,7 @@
 # What the tests check, and what they do not
 
-`npm test` runs every file below with Node's built-in test runner: **193 tests, all green on `main`**, about 40 seconds
-(measured 20.11.2026). CI runs the same command on every pull request. No test talks to the real eBay or Gemini, and no
+`npm test` runs every file below with Node's built-in test runner: **272 tests, all green on `main`**, about 40 seconds
+(measured 23.11.2026). CI runs the same command on every pull request. No test talks to the real eBay or Gemini, and no
 test touches `pm.db` or `app.db`: each one builds a throwaway database in memory or in a temp folder.
 
 ## Which test checks which module
@@ -12,6 +12,7 @@ test touches `pm.db` or `app.db`: each one builds a throwaway database in memory
 | `titel-regeln.mjs`, `ki-titel.mjs` | `test-titel-regeln.mjs` (8) | superlatives, "Original", new brands, new numbers, keyword lists are refused; all 745 real titles checked; Gemini answer parsed from a fake `fetch` |
 | `ebay-schreiben.mjs`, `freigabe.mjs` | `test-freigabe.mjs` (26) | four locks before writing (keys, switch, admin, expected title); eBay errors keep the step open; approvals of at most 50 listings |
 | `login.mjs`, `rollen.mjs` | `test-http.mjs`, `test-rollen-http.mjs`, `test.mjs` | wrong password, lockout after failed tries, expired session, changing your own password, there is always one admin |
+| `demo-check.mjs` (`npm run demo-check`) | `test-demo-check.mjs` (4) | the check before the demo: all facts in order gives seven green lines; every single failure (app down, other version than `main`, no network, watcher silent or rejected, data two days behind, backup too old, eBay read failed, no AI key) turns its own line red; one day behind is still green; the `.env` reader keeps a `#` inside a value (eBay tokens contain it) |
 | `listing-lock.mjs` (lock in `server.mjs`) | `test-listing-lock.mjs` (4) | one eBay write per listing at a time: a second approval during a slow eBay call gets 409 and does not write, other listings are not blocked, the lock is free again afterwards, also after an error |
 | `server.mjs` (all routes) | `test-routen-schutz.mjs` (11) | **every** route is read from the source code: without login 401, builder on an admin route 403 (new routes are covered automatically) |
 | `server.mjs` (browser safety) | `test-xss.mjs`, `test-fehlerbilder-http.mjs`, `test-betrieb-http.mjs`, `test-durchlauf.mjs` | no `innerHTML`, strict CSP, foreign origin refused, broken JSON refused, a full run from builder to admin through the real server; builder cannot change settings (403) |
