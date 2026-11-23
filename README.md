@@ -52,6 +52,7 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 |---|---|
 | `npm test` | all tests (Node's built-in test runner), about 40 seconds; must be green before every pull request |
 | `npm run dev` | start with reload on every change |
+| `npm run demo-check` | on the server: is the app up, on the version of `main`, with fresh data, a backup and a working eBay access? Reads only; red lines name the fallback |
 | `npm run scan` | secret scan over all files (`npm run scan -- --historie` also scans the whole git history) |
 | `npm run benutzer -- liste` / `passwort <name>` / `rolle <name> <admin\|builder>` | manage users |
 | `npm run sicherung` / `-- liste` / `-- wiederherstellen <file>` | back up or restore `daten/app.db` |
@@ -69,6 +70,9 @@ The app then uses the team copy of the catalogue in `daten-team/pm.db` (about 1,
 | **Log** | everyone | the append-only log and the operating status (environment, version, write switches, backup, data age) |
 | **Settings** | everyone (save: admin) | every rule value: limits, waiting times, ad rate, price step |
 | **Account** | everyone | change your own password |
+
+A builder (also the account for the teaching staff) sees a short tour on top: what the role may do and a good order of the pages
+(Problem → Funnel → Results → Log). It can be hidden.
 
 ## The funnel
 
@@ -171,6 +175,8 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
 - **`pm.db`** holds only public or technical fields: products, their eBay listing (no other marketplaces), images, 30/90-day traffic sums, daily traffic, the
   block list of a running shop experiment. **Never** costs, fees, margins, revenue, customers or addresses: the export checks
   column names and texts before it swaps the file.
+- **The team copy `daten-team/pm.db` is part of this public repository** so that the app runs locally without any key. It shows,
+  per listing of a real shop, units sold, average price and impressions; nothing about customers, costs or revenue.
 - **`app.db`** belongs to the app and lives on the machine that runs it, never in the repository.
 - **Data delay:** on PROD the traffic comes from the company hub, which fetches every eBay day **once, on the day after**, and
   not again later; so the newest day is yesterday (header: "traffic up to …", the tooltip says where it comes from). Whether eBay
@@ -202,6 +208,9 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
   unnoticed for up to a day. *With more time:* read the listings on the ladder from eBay directly once a day.
 - **One server:** PROD and PREVIEW run on one Windows laptop of the company, with a watcher, daily backups and a tested restore,
   but no second machine. *With more time:* a second machine or a hosted database.
+- **Two older pages are still in the code:** *Tests* and *Approvals* were the first version of the control group and the
+  approval path. Both now happen inside the Funnel; the old pages are out of the menu but still open at `#tests` and
+  `#approvals`, with their routes and tests. *With more time:* remove them once no saved test depends on them.
 - Only eBay. Sales and traffic from other marketplaces (shop, Amazon, Etsy) are out of scope on purpose: the hub does not export
   them in new exports. Older catalogues may still show other channels as labelled reference details; these never enter analysis. All performance metrics use eBay only.
 
