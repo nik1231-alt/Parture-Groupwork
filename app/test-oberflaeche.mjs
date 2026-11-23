@@ -141,7 +141,9 @@ test("Log: every action the server writes has an English label in the interface"
 
 // Two-step button (public/app.js): the second click executes, and until the action is done further clicks do nothing.
 test("Two-step button: asks first, runs once, is locked while the action runs, is usable again afterwards", async () => {
-  const app = fs.readFileSync(path.join(WURZEL, "public", "app.js"), "utf8");
+  // Line ends made equal first: on the Windows server the file is checked out with CRLF, and the end of the function was not found
+  // (the server refused the rollout of e46dfe8 for this test, while CI on Linux was green).
+  const app = fs.readFileSync(path.join(WURZEL, "public", "app.js"), "utf8").replace(/\r\n/g, "\n");
   const start = app.indexOf("function zweiStufig("), teil = app.slice(start, app.indexOf("\n}\n", start) + 3);
   const zweiStufig = new Function(teil + "; return zweiStufig;")();
   let klick; const knopf = { textContent: "Next phase", dataset: {}, disabled: false, addEventListener: (_, f) => { klick = () => { if (!knopf.disabled) f(); }; } };
