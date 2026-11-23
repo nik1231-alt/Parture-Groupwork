@@ -15,7 +15,7 @@ Every fix below is done, merged and live.
 **Question:** "eBay corrects the last days afterwards. Do you measure with uncorrected numbers? Your README says 3 days of
 delay, the app header says traffic up to yesterday."
 
-Today: README, `docs/architektur.md`, `docs/server-einrichtung.md`, `docs/server-checkliste.md` and `docs/entwicklung.md`
+Today: README, `docs/architektur.md`, `docs/server-einrichtung.md` and `docs/entwicklung.md`
 say "3 days delay". On PROD the app uses the hub export, whose traffic ends **yesterday** (`stand.traffic_bis`, 1 day).
 The app's own import (`app/traffic.mjs`, `VERZOEGERUNG_STANDARD`) is not what PROD uses.
 
@@ -31,8 +31,8 @@ The app's own import (`app/traffic.mjs`, `VERZOEGERUNG_STANDARD`) is not what PR
 - [x] Every evaluation stores the data day it used (`datenBis` in the details of `ausgewertet`), so a result can be
       reproduced later even if corrected numbers arrive.
 - [x] Header and Log say the rule in one sentence ("traffic up to 20 Nov · the last N days can still change").
-- [x] All five docs and the walkthrough say the same. *(README, architektur, server-einrichtung changed; server-checkliste
-      and entwicklung describe the app's own import and stay correct; walkthrough follows in F9.)*
+- [x] All docs and the walkthrough say the same. *(README, architektur, server-einrichtung changed; entwicklung
+      describes the app's own import and stays correct; walkthrough follows in F9.)*
 - [x] Test: an evaluation records `datenBis`; if a delay constant is introduced, the effective end day respects it.
       *(test-leiter: automatic and by hand; test-betrieb-http: data age with the hub export.)*
 
