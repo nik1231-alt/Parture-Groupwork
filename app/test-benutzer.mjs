@@ -90,3 +90,13 @@ test("rolle with an unknown role is refused and the role stays", () => {
   assert.match(r.fehler, /Unknown role/);
   assert.match(liste(db), /erste \[admin\]/);
 });
+
+test("anlegen with an unknown role is refused before anything is created", () => {
+  const db = neueDb();
+  cli(db, ["anlegen", "erste"], `${PW}\n${PW}\n`);
+  const r = cli(db, ["anlegen", "zweite", "root"], `${PW}\n${PW}\n`);
+  assert.equal(r.code, 1);
+  assert.match(r.fehler, /Unknown role: root/);
+  assert.doesNotMatch(liste(db), /zweite/, "the user was not created");
+  assert.match(liste(db), /1 user/);
+});

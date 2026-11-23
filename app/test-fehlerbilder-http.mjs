@@ -64,3 +64,37 @@ test("Session expired: data answers 401 (the interface then loads the login page
   assert.equal(seite.status, 200); assert.match(await seite.text(), /Sign in/, "the login page comes instead of the app");
   assert.equal((await (await fetch(basis + "/api/ich", { headers: { Cookie: cookie } })).json()).daten.angemeldet, false);
 });
+
+// Found by attacking a copy of the app on 23 Nov 2026: each of these ended the process, froze it or showed raw database text.
+test("An address that cannot be read (//) is answered with 400 without a login, and the server keeps running", async () => {
+  for (const p of ["//", "////", "//?x"]) {
+    const r = await fetch(basis + p);
+    assert.equal(r.status, 400, p);
+    assert.equal((await r.json()).error, "Bad request.");
+  }
+  assert.equal((await fetch(basis + "/healthz")).status, 200, "the process is still there");
+});
+
+test("pm.db unreadable (garbage instead of a database): 503 with a clear text, no SQLite wording; fine again when the file is gone", async () => {
+  const c = await anmelden();
+  fs.mkdirSync(path.dirname(fehltPm), { recursive: true });
+  fs.writeFileSync(fehltPm, "this is not a database, only text that is long enough to look like a file");
+  try {
+    for (const p of ["/api/bewertung", "/api/stand", "/api/produkte"]) {
+      const r = await fetch(basis + p, { headers: { Cookie: c } });
+      assert.equal(r.status, 503, p);
+      const j = await r.json();
+      assert.equal(j.error, "The data cannot be read right now. Please try again in a few minutes.");
+      assert.ok(!/sqlite|database|malformed/i.test(j.error), "no database wording for the user");
+    }
+    assert.equal((await fetch(basis + "/api/protokoll", { headers: { Cookie: c } })).status, 200, "what does not need pm.db keeps working");
+  } finally { fs.rmSync(path.dirname(fehltPm), { recursive: true, force: true }); }
+  assert.match((await (await fetch(basis + "/api/stand", { headers: { Cookie: c } })).json()).error, /is not available/, "back to the message for a missing file");
+});
+
+test("Files of the app answer GET and HEAD only", async () => {
+  const c = await anmelden();
+  for (const m of ["PUT", "DELETE", "PATCH"]) assert.equal((await fetch(basis + "/app.js", { method: m, headers: { Cookie: c, Origin: basis } })).status, 405, m);
+  assert.equal((await fetch(basis + "/app.js", { headers: { Cookie: c } })).status, 200);
+  assert.equal((await fetch(basis + "/app.js", { method: "HEAD", headers: { Cookie: c } })).status, 200);
+});

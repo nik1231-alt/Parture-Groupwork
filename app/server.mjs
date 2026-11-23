@@ -44,6 +44,8 @@ function appDb() {
   fs.mkdirSync(path.dirname(APPDB_PFAD), { recursive: true });
   const d = new Database(APPDB_PFAD);
   d.pragma("journal_mode = WAL");
+  // Wait at most 1 s for a lock (the default is 5 s): the wait is synchronous and stops every other request
+  d.pragma("busy_timeout = 1000");
   einstellungen.bereiteVor(d);
   experimente.bereiteVor(d);
   login.bereiteVor(d);
@@ -332,7 +334,8 @@ function pruefeSicherung() {
   fuehreSicherungAus("system");
 }
 function sicherungStatus() {
-  const k = sicherung.konfiguration(); const alle = sicherung.liste(k.ziel);
+  const k = sicherung.konfiguration(); let alle = [];
+  try { alle = sicherung.liste(k.ziel); } catch (e) { console.error("Backup folder unreadable:", e.message); }
   return { automatisch: SICH_AUTO, uhrzeit: SICH_UHR, letzte: alle[0]?.geaendert ?? null, anzahl: alle.length, zweiterOrt: !!k.ziel2, laeuft: sicherungLaeuft };
 }
 // How old is the traffic data compared with the target? Target: today minus the delay of the data source (LA time):
@@ -611,8 +614,11 @@ const POST_ROUTEN = {
 };
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, "http://x");
   const json = (code, body) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(body)); };
+  // An address that cannot be read ("//", "/\\") is answered with 400. Until 23 Nov 2026 it was read outside the try below,
+  // and one such request without any login ended the whole process.
+  let url;
+  try { url = new URL(req.url, "http://x"); } catch { return json(400, { ok: false, error: "Bad request." }); }
   // Protective headers for every response: no embedding in foreign pages, no guessing of the file type, scripts only from the app itself.
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -662,7 +668,8 @@ const server = http.createServer(async (req, res) => {
     if (route && (req.method === "GET" || req.method === "HEAD")) return json(200, { ok: true, daten: await route(url.searchParams, ctx) });
     if (route) return json(405, { ok: false, error: "GET only." });
     if (Object.hasOwn(POST_ROUTEN, url.pathname)) return json(405, { ok: false, error: "POST only." });
-    // static files from public/
+    // static files from public/ (reading only)
+    if (req.method !== "GET" && req.method !== "HEAD") return json(405, { ok: false, error: "GET only." });
     const rel = url.pathname === "/" ? "/index.html" : url.pathname;
     const datei = path.join(WURZEL, "public", path.normalize(rel).replace(/^(\.\.[/\\])+/, ""));
     if (datei.startsWith(path.join(WURZEL, "public")) && fs.existsSync(datei) && fs.statSync(datei).isFile()) {
@@ -675,7 +682,14 @@ const server = http.createServer(async (req, res) => {
       return fs.createReadStream(datei).pipe(res);
     }
     json(404, { ok: false, error: "Not found." });
-  } catch (e) { json(e.status || 500, { ok: false, error: e.message }); }
+  } catch (e) {
+    // A database that cannot be read or is busy (pm.db half written or broken, app.db locked by a backup) is "try again later",
+    // not an error of the request: 503 and a message for people. The SQLite text goes to the console only.
+    const code = String(e.code || "");
+    if (!e.status && /^SQLITE_(BUSY|LOCKED)/.test(code)) { console.error("Database busy:", e.message); return json(503, { ok: false, error: "The app is busy right now. Please try again in a moment." }); }
+    if (!e.status && /^SQLITE_(NOTADB|CORRUPT|CANTOPEN|IOERR|READONLY|ERROR)/.test(code)) { console.error("Database unreadable:", e.message); return json(503, { ok: false, error: "The data cannot be read right now. Please try again in a few minutes." }); }
+    json(e.status || 500, { ok: false, error: e.message });
+  }
 });
 
 server.listen(PORT, "127.0.0.1", () => {

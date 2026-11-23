@@ -46,6 +46,8 @@ if (befehl === "liste") {
   for (const b of rollen.liste(db)) console.log(b.name, `[${b.rolle}]`, "(created", b.erstellt_at + ")");
   console.log(login.anzahlBenutzer(db) + " users");
 } else if ((befehl === "anlegen" || befehl === "passwort") && name) {
+  // Check the role first: before, "anlegen x wrongrole" said "Unknown role" and had created x as a builder anyway
+  if (befehl === "anlegen" && drittes !== undefined && !["admin", "builder"].includes(drittes)) { console.error("Unknown role: " + drittes + " (admin or builder)."); process.exit(1); }
   const pw = await frageVerdeckt("Password (at least " + login.PASSWORT_MIN + " characters): ");
   const pw2 = await frageVerdeckt("Repeat the password: ");
   if (pw !== pw2) { console.error("The passwords do not match."); process.exit(1); }
