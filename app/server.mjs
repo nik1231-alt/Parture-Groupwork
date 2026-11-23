@@ -501,7 +501,21 @@ const POST_ROUTEN = {
     protokoll.schreibe(appDb(), { benutzer: ctx.name, rolle: ctx.rolle, aktion: "test_created", objekt: "test " + r.id, details: { seed: r.seed, test: r.test, kontrolle: r.kontrolle, gesperrt: r.gesperrt } });
     return r;
   },
-  "/api/experiment/titel": async (req) => antwort(experimente.setzeTitel(appDb(), await leseJson(req))),
+  // The older test page checks a typed title with the same rules as the funnel (no "Original", no new brands or sizes, no claims).
+  // Until 23 Nov 2026 only the funnel did; here any text within the length limit was accepted.
+  "/api/experiment/titel": async (req) => {
+    const b = await leseJson(req);
+    // Only where the module itself would accept the title (test still open, length fine, not the old title):
+    // every other refusal keeps its own message and status.
+    const alt = b && typeof b === "object" && Number.isInteger(b.id) && typeof b.number === "string"
+      ? appDb().prepare("SELECT a.alt FROM experiment_angebot a JOIN experiment e ON e.id = a.experiment_id WHERE a.experiment_id = ? AND a.number = ? AND a.gruppe = 'test' AND e.status = 'vorbereitet'").get(b.id, b.number)?.alt : null;
+    const neu = typeof b?.neu === "string" ? b.neu.replace(/\s+/g, " ").trim() : "";
+    if (alt != null && neu && neu.length <= TITEL_MAX_ZEICHEN && neu !== alt.replace(/\s+/g, " ").trim()) {
+      const pruefung = pruefeTitel(neu, alt);
+      if (!pruefung.ok) throw Object.assign(new Error("The title breaks a rule: " + pruefung.verstoesse.map((v) => v.text).join(" ")), { status: 400 });
+    }
+    return antwort(experimente.setzeTitel(appDb(), b));
+  },
   // Builder and admin: send a suggestion for approval. Only an admin lets the titles be changed on eBay.
   "/api/experiment/freigabe": async (req, ctx) => {
     const b = await leseJson(req);

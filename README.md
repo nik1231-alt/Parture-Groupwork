@@ -205,6 +205,10 @@ Parture hub (company data) ──hourly, whitelist only──► pm.db ──rea
   Every evaluation stores the data day it used. *With more time:* fetch one past day again and compare.
 - **Changes from outside** are noticed through the hub's catalogue, which is updated at least once a day, so a change can stay
   unnoticed for up to a day. *With more time:* read the listings on the ladder from eBay directly once a day.
+- **The approval names the listing, not the text:** in the Funnel a builder can still enter another title after the admin has
+  looked at the suggestion and before the admin clicks *Approve*; the approval then applies to the newer title. That title has
+  passed the same rule check, and the log records who entered it and what was approved. *With more time:* send the shown
+  title along with the approval and refuse it when the two differ.
 - **One server:** PROD and PREVIEW run on one Windows laptop of the company, with a watcher, daily backups and a tested restore,
   but no second machine. *With more time:* a second machine or a hosted database.
 - **Two older pages are still in the code:** *Tests* and *Approvals* were the first version of the control group and the

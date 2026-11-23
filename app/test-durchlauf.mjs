@@ -73,7 +73,11 @@ test("Full run: builder draws a test, proposes titles, admin approves as a dry r
   assert.equal(zuLang.status, 400); assert.match(zuLang.json.error, /too long/);
   const titel = new Map();
   for (const a of testAngebote) {
-    const t = ("New " + a.alt).slice(0, TITEL_MAX_ZEICHEN);
+    // A forbidden word is refused with the reason (the same rule check as in the funnel); the valid title moves the first word to the end
+    const verboten = await post("/api/experiment/titel", anna, { id: neu.id, number: a.number, neu: ("ORIGINAL " + a.alt).slice(0, TITEL_MAX_ZEICHEN) });
+    assert.equal(verboten.status, 400); assert.match(verboten.json.error, /breaks a rule/);
+    const woerter = a.alt.split(/\s+/).filter(Boolean);
+    const t = [...woerter.slice(1), woerter[0]].join(" ").slice(0, TITEL_MAX_ZEICHEN);
     assert.equal(daten(await post("/api/experiment/titel", anna, { id: neu.id, number: a.number, neu: t })).neu, t.replace(/\s+/g, " ").trim());
     titel.set(a.number, { alt: a.alt, neu: t.replace(/\s+/g, " ").trim() });
   }

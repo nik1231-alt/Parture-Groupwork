@@ -206,7 +206,7 @@ function gefiltert() {
   const num = (v) => (v == null ? 0 : Number(v));
   const zeit = (v) => (Number.isNaN(Date.parse(v)) ? 0 : Date.parse(v));
   const sortierer = {
-    potential: (a, b) => num(b.units_90d) / (num(b.impressionen_90d) + 1) - num(a.units_90d) / (num(a.impressionen_90d) + 1) || num(b.units_total) - num(a.units_total),
+    potential: (a, b) => (a.impressionen_90d == null) - (b.impressionen_90d == null) || num(b.units_90d) / (num(b.impressionen_90d) + 1) - num(a.units_90d) / (num(a.impressionen_90d) + 1) || num(b.units_total) - num(a.units_total),
     verkaeufe: (a, b) => num(b.units_90d) - num(a.units_90d),
     impressionen_auf: (a, b) => num(a.impressionen_90d) - num(b.impressionen_90d),
     impressionen_ab: (a, b) => num(b.impressionen_90d) - num(a.impressionen_90d),
@@ -1032,7 +1032,7 @@ function steuerZeile(l) {
       el("li", { text: `Advertised on eBay: ${l.werbung?.anzahl ?? "?"} listings${l.werbung?.stand ? ` (checked ${zeitpunkt(l.werbung.stand)})` : ""}${l.werbung?.fehler ? " · check failed: " + l.werbung.fehler : ""}` })),
     el("div", { class: "aktionen", style: "margin-top:0" },
       el("button", { class: "knopf knopf-klein", type: "button", text: "Get AI titles", onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/lauf", {}, (r) => `${r.titelVorschlaege} new AI titles.`); } }),
-      behalten ? zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Start over" }), "Really reset everything not changed on eBay?", () => leiterAktion("/api/leiter/neustart", { grund: "Start over" }, (r) => `${r.zurueckgesetzt} listings are eligible again${r.behalten ? `, ${r.behalten} stay (already changed on eBay)` : ""}.`)) : null));
+      behalten ? zweiStufig(el("button", { class: "knopf knopf-klein", type: "button", text: "Start over" }), "Reset everything not changed on eBay, also the control group?", () => leiterAktion("/api/leiter/neustart", { grund: "Start over" }, (r) => `${r.zurueckgesetzt} listings are eligible again${r.behalten ? `, ${r.behalten} stay (already changed on eBay)` : ""}.`)) : null));
 }
 
 // Key figures at the top: how big the shop is, how many impressions it has and where the products stand right now
@@ -1203,10 +1203,20 @@ function titelEingabe(a, v) {
   const feld = el("input", { class: "feld", type: "text", maxlength: String(zustand.betrieb?.regeln?.titelMaxZeichen || 80), value: v?.titel || "", "aria-label": "Your own title for product " + a.number, placeholder: "Your own title" });
   const zaehler = el("span", { class: "leise klein", text: `${feld.value.length} / ${feld.maxLength}` });
   feld.addEventListener("input", () => { zaehler.textContent = `${feld.value.length} / ${feld.maxLength}`; });
+  // A refused title: the reason stays under the field and the typed text stays (before, the list was redrawn, the row
+  // closed, the text was gone and the reason showed for 4.5 seconds at the bottom of the page).
+  const grund = el("p", { class: "fehlerzeile klein", role: "alert" });
+  const speichern = async (ev) => {
+    grund.textContent = ""; ev.target.disabled = true;
+    try { await post("/api/leiter/titel", { number: a.number, titel: feld.value }); }
+    catch (e) { grund.textContent = e.message; ev.target.disabled = false; feld.setAttribute("aria-invalid", "true"); feld.focus(); return; }
+    meldung("Title saved, it passed the rule check."); await ladeLeiter(); ladeZaehler();
+  };
+  feld.addEventListener("input", () => { grund.textContent = ""; feld.removeAttribute("aria-invalid"); });
   return el("div", { class: "eigener-titel" }, el("div", { class: "leise klein", text: "Your own title (checked by the same rules) or a new AI suggestion:" }),
-    el("div", { class: "eingabezeile", style: "margin-top:6px" }, feld, zaehler),
+    el("div", { class: "eingabezeile", style: "margin-top:6px" }, feld, zaehler), grund,
     el("div", { class: "aktionen" },
-      el("button", { class: "knopf", type: "button", text: "Use my title", onclick: () => leiterAktion("/api/leiter/titel", { number: a.number, titel: feld.value }, "Title saved, it passed the rule check.") }),
+      el("button", { class: "knopf", type: "button", text: "Use my title", onclick: speichern }),
       el("button", { class: "knopf", type: "button", text: "Ask the AI again", onclick: (ev) => { ev.target.disabled = true; leiterAktion("/api/leiter/neuvorschlag", { number: a.number }, "New suggestion ready."); } })));
 }
 
@@ -1400,7 +1410,7 @@ function zeichneEinstellungen() {
       const neu = await post("/api/einstellungen", { werte });
       meldung("Settings saved. The listings are re-evaluated with the new values.");
       await ladeEinstellungen(); laden(); return neu;
-    } catch (x) { fehler.textContent = x.message; speichern.disabled = false; }
+    } catch (x) { fehler.textContent = x.message; speichern.disabled = false; fehler.scrollIntoView({ block: "center", behavior: "smooth" }); }
   });
   $("#einstellungen").replaceChildren(form);
   aktualisiereSichtbar();
