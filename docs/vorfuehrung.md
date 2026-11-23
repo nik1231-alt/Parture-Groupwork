@@ -50,6 +50,9 @@ Before the demo, each of these steps is done once on the deployed app, in this o
 
 ## If something fails (decide before, not during)
 
+On the server, `npm run demo-check` in `C:\parture\prod` asks the first rows of this table at once (app, version, watcher, data,
+backup, eBay, AI key) and prints one green or red line each. It reads only. The browser sessions and the room network stay manual.
+
 | Dependency | Check on the day | Fallback |
 |---|---|---|
 | Server laptop / app | `https://app.parture-team.com/healthz` answers, version = `main` | PREVIEW (`vorschau.parture-team.com`); if both are down, the local app on the demo laptop (`npm start`, team copy of the data, dry run) |
