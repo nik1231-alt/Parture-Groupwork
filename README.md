@@ -30,7 +30,7 @@ Everything can also be tried without any access: the local start below runs the 
 Plain **Node.js** with SQLite, not the course standard (Python with Streamlit): the shop's existing systems and its eBay
 integration run on Node.js, and this app changes real listings of that shop. The project itself, a tool built into the
 production software of Niko's own shop, was agreed orally with a professor in class early on; the programming language was not
-discussed then. We raised the language with the teaching staff in writing at the hand-in (23 Nov 2026). Reasons and the price we paid: [`docs/architektur.md`](docs/architektur.md), *Decisions*.
+discussed then. We raised the language with the teaching staff in writing on 22 Nov 2026, the day before the hand-in. Reasons and the price we paid: [`docs/architektur.md`](docs/architektur.md), *Decisions*.
 
 ## Run it locally
 
