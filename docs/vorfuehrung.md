@@ -88,7 +88,7 @@ If something breaks during the demo: say in one sentence what happened, and go o
 - **Group:** the idea and the subject core: the problem analysis, the diagnosis rules, the funnel with a control group, the
   approval path, the results pages, the eBay-only scope, the interface texts.
 - **One coding agent for the whole group** (allowed in this course; in Git as "Parture Server-KI" or recognisable by
-  `Co-Authored-By`): we worked in shared sessions at one machine with one agent on one subscription, so that it kept the
+  `Co-Authored-By`): we worked in shared sessions at one machine with one agent (Claude Code, on one shared Claude Max subscription), so that it kept the
   context of the whole project. What it wrote there was decided and checked by the group: the server operation (two
   environments, watcher, backup; specified and directed by Niko, including the access through Cloudflare), the hourly data
   export, a large part of the tests and the documentation, and the fixes from our own review (`docs/fix-checkliste.md`).

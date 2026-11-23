@@ -684,3 +684,22 @@ a.knopf { text-decoration: none; }
 @keyframes skelett-ein { from { opacity: 0; } }
 @media (max-width: 720px) { .skelett-karten { grid-template-columns: 1fr; } .skelett-zeile { grid-template-columns: 44px 1fr 60px; } .skelett-zeile .sk-kurz:nth-child(4), .skelett-zeile .sk-mittel { display: none; } }
 @media (prefers-reduced-motion: reduce) { .skelett, .skelett-teil { animation: none; } .ladebalken.an::before { animation: none; transform: none; width: 100%; opacity: .6; } }
+
+/* Funnel rows, calmer (23 Nov 2026): each listing is a card with air around it; the title comparison is the thing to read
+   first and sits in its own box; the waiting bar and its dates form one quiet line; the recommendation closes the card. */
+.lzeile { padding: 18px 20px; gap: 14px 16px; transition: background .12s; }
+.lzeile:hover { background: color-mix(in srgb, var(--akzent-weich) 35%, transparent); }
+.lzeile:last-child { border-bottom: 0; }
+.lzeile .bild { border-radius: 10px; }
+.lzeile-mitte { gap: 6px; }
+.lzeile-kopf { font-size: 15.5px; }
+.lzeile-zahlen { font-size: 13px; color: var(--leise); }
+.lzeile .diff { margin: 6px 0 2px; padding: 10px 12px; gap: 5px; background: var(--karte-leise); border-radius: var(--radius-klein); border-left: 3px solid var(--akzent-linie); }
+.lzeile .diff-neu { font-weight: 550; }
+.lzeile .fortschritt { height: 5px; margin: 10px 0 2px; }
+.lzeile .empfehlung { margin-top: 6px; padding: 8px 12px; }
+.lzeile-aktion { padding-top: 0; }
+.zeile-mehr > summary { margin-top: 2px; }
+.zeile-mehr[open] { padding: 12px 14px 14px; gap: 12px; }
+.stufe-panel > .kopf-zeile { margin-bottom: 4px; }
+@media (max-width: 700px) { .lzeile { padding: 14px 12px; } }

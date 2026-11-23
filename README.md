@@ -26,7 +26,7 @@ Everything can also be tried without any access: the local start below runs the 
 | Elias Luka Thiele | 73922 |
 
 **How we worked.** A large part of the code was written in shared working sessions: the group together at one machine, with
-one coding agent on one subscription, so that the agent kept the whole context of the project instead of four separate ones.
+one coding agent (Claude Code, on one shared Claude Max subscription), so that the agent kept the whole context of the project instead of four separate ones.
 These commits appear in Git under the name `Parture Server-KI`. They are the work of the group, not of one member. Each
 member also has pull requests under their own GitHub account, and since the hand-in every pull request needs the approval of
 another member.
