@@ -34,5 +34,3 @@ test touches `pm.db` or `app.db`: each one builds a throwaway database in memory
 | Removing an ad on eBay (undo, F7) | it would change a real campaign | tested with a recorded writer; the call (`bulk_delete_ads_by_listing_id` on the app's own campaign only) has not run against eBay yet |
 | Changes made outside the app (F6) on real data | needs someone to change a listing on eBay | probe on a copy of PROD: the first check noted 20 states and marked nothing; the marking itself is tested with recorded catalogue states |
 | Corrections eBay makes to a day afterwards | checking costs the eBay request limit | not measured; every evaluation stores its data day (`datenBis`) |
-
-`benutzer.mjs` has no test of its own: it is a thin command line over `login.mjs` and `rollen.mjs`, whose logic is tested.
