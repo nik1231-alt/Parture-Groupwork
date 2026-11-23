@@ -158,3 +158,16 @@ test("Two-step button: asks first, runs once, is locked while the action runs, i
   fertig(); await new Promise((r) => setTimeout(r, 5));
   assert.equal(knopf.disabled, false); assert.equal(knopf.textContent, "Next phase");
 });
+
+// Shop page: the first page of the app. It must say plainly what the shop built itself and what the team project is.
+test("Shop page: first in the menu, opens without an address, and keeps the shop's own systems apart from the team project", () => {
+  const seite = fs.readFileSync(path.join(WURZEL, "public", "index.html"), "utf8").replace(/\r\n/g, "\n");
+  const app = fs.readFileSync(path.join(WURZEL, "public", "app.js"), "utf8");
+  assert.ok(seite.indexOf('id="nav-shop"') > 0 && seite.indexOf('id="nav-shop"') < seite.indexOf('id="nav-listings"'), "Shop comes before Products");
+  const shop = seite.slice(seite.indexOf('<section id="ansicht-shop"'), seite.indexOf('<section id="ansicht-listings"'));
+  assert.match(shop, /Built by the shop itself[^<]*outside this course/, "what the shop built is not passed off as the project");
+  assert.match(shop, /The Listing Lab<\/strong> \(this app, the team project\)/);
+  assert.ok(!/€|revenue|turnover|orders per|customers/i.test(shop.replace(/Orders and shipping|Orders from all channels|open orders/g, "")), "no money and no customer figures on a public page");
+  assert.match(app, /seite === "" \? "shop" : "listings"/, "no address opens the shop page, an unknown one the products");
+  for (const ziel of [...shop.matchAll(/href="#([a-z]+)"/g)].map((m) => m[1])) assert.match(app + seite, new RegExp(`"${ziel}"|id="nav-${ziel}"`), `the link #${ziel} leads somewhere`);
+});

@@ -174,11 +174,17 @@ async function ladeZaehler() {
   } catch { /* wie oben */ }
 }
 
+// Shop page: the text is in index.html; only the two counts come from the data (the export's own totals)
+async function ladeShop() {
+  try { const s = await api("/api/stand"); $("#shop-produkte").textContent = zahl(s?.produkte ?? 0); $("#shop-angebote").textContent = zahl(s?.kanaele ?? 0); } catch { /* the page reads fine without the counts */ }
+}
+
 let ersterAufruf = true;
 function route() {
   const [seite, arg] = location.hash.replace(/^#/, "").split("/");
-  const ansicht = ["problem", "ergebnisse", "tests", "ladder", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : "listings";
-  for (const a of ["listings", "problem", "ergebnisse", "tests", "ladder", "settings", "approvals", "team", "log", "account"]) {
+  // Without an address the app opens on the shop page (who the shop is and what this app is for); unknown addresses go to Products
+  const ansicht = ["shop", "problem", "ergebnisse", "tests", "ladder", "settings", "approvals", "team", "log", "account"].includes(seite) ? seite : seite === "" ? "shop" : "listings";
+  for (const a of ["shop", "listings", "problem", "ergebnisse", "tests", "ladder", "settings", "approvals", "team", "log", "account"]) {
     $("#ansicht-" + a).hidden = a !== ansicht;
     $("#nav-" + a).setAttribute("aria-current", a === ansicht ? "page" : "false");
   }
@@ -189,6 +195,7 @@ function route() {
   // Always load the listings fresh: tests and settings change which listings are where
   if (ansicht === "listings" && !ersterAufruf) laden();
   ersterAufruf = false;
+  if (ansicht === "shop") ladeShop();
   if (ansicht === "problem") ladeProblem();
   if (ansicht === "ergebnisse") ladeErgebnisse();
   if (ansicht === "tests") ladeTests(arg ? Number(arg) : null);
@@ -1444,5 +1451,6 @@ function zeigeRundgang() {
 }
 ichGeladen.then(zeigeRundgang);
 
-skelett($("#liste"), "zeilen"); // the first screen: rows are on their way
+if (!location.hash) { $("#ansicht-listings").hidden = true; $("#ansicht-shop").hidden = false; }
+else skelett($("#liste"), "zeilen"); // the first screen: rows are on their way
 ichGeladen.then(laden).then(route); // first know the role, then draw
