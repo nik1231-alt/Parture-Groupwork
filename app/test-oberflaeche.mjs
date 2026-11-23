@@ -79,6 +79,10 @@ test("Loading indicator: bar after 150 ms, stays across chained requests, placeh
   assert.equal(klassen.has("an"), false, "a fast answer shows no bar");
   assert.equal(platzhalter, 0, "placeholders are removed when the request is done");
 
+  antwort = Promise.resolve(1);                       // two fast answers directly after each other: still no bar, also later
+  await api("/a1"); await api("/a2"); await warte(250);
+  assert.equal(klassen.has("an"), false, "fast answers in a row leave no bar behind");
+
   platzhalter = 1; antwort = warte(250).then(() => 2); // slow answer: bar on, and it stays for the request that follows directly
   const erste = api("/b"); await warte(200);
   assert.equal(klassen.has("an"), true, "a slow answer shows the bar");
@@ -96,6 +100,13 @@ test("Loading indicator: bar after 150 ms, stays across chained requests, placeh
 
 test("Loading indicator: the page has the bar, and motion is switched off for people who asked for less of it", () => {
   assert.match(fs.readFileSync(path.join(WURZEL, "public", "index.html"), "utf8"), /id="ladebalken"/);
+  // The tour for builders: its place is in the page, admins never get it, and every page it names exists in the menu.
+  const seite = fs.readFileSync(path.join(WURZEL, "public", "index.html"), "utf8"), skript = fs.readFileSync(path.join(WURZEL, "public", "app.js"), "utf8");
+  assert.match(seite, /id="rundgang"[^>]*hidden/);
+  assert.match(skript, /if \(!ort \|\| istAdmin\(\) \|\| versteckt\) return;/);
+  const ziele = [...skript.match(/const RUNDGANG = (\[\[.*\]\]);/)[1].matchAll(/\["#([a-z]+)"/g)].map((m) => m[1]);
+  assert.equal(ziele.length, 4);
+  for (const z of ziele) assert.match(seite, new RegExp(`href="#${z}"`), `the tour names #${z}, which is not in the menu`);
   const css = fs.readFileSync(path.join(WURZEL, "public", "app.css"), "utf8");
   assert.ok(css.includes("prefers-reduced-motion: reduce) { .skelett, .skelett-teil { animation: none"));
 });

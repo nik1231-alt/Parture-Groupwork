@@ -47,8 +47,12 @@ const entwurf = {
 // fast answers do not flicker). A page that has nothing to show yet gets placeholders (skelett) in the shape of its
 // content, so nobody wonders whether to reload. When the last request is done, leftover placeholders are removed.
 let offeneAnfragen = 0, balkenTimer;
+// One timer only: a fast request followed directly by another one used to leave the first timer behind, and it switched
+// the bar on after everything was done, where it stayed (seen on 23 Nov 2026 with answers under 150 ms).
 function anfrageBeginnt() {
-  if (++offeneAnfragen === 1) balkenTimer = setTimeout(() => $("#ladebalken")?.classList.add("an"), 150);
+  if (++offeneAnfragen !== 1) return;
+  clearTimeout(balkenTimer);
+  balkenTimer = setTimeout(() => { if (offeneAnfragen > 0) $("#ladebalken")?.classList.add("an"); }, 150);
 }
 function anfrageEndet() {
   if (--offeneAnfragen > 0) return;
@@ -1400,6 +1404,22 @@ $("#abmelden").addEventListener("click", async () => {
   location.replace("/");
 });
 const ichGeladen = api("/api/ich").then((d) => { zustand.ich = { name: d.name || "", rolle: d.rolle || "builder" }; $("#benutzer").textContent = d.name ? `${d.name} (${d.rolle === "admin" ? "admin" : "builder"})` : ""; $("#nav-team").hidden = d.rolle !== "admin"; }).catch(() => {});
+
+// Short tour for builders (also the account of the teaching staff): what the role may do and a good order of the pages.
+// Shown until it is hidden; the choice stays in this browser. Admins know the app and do not get it.
+const RUNDGANG = [["#problem", "Problem", "why the app exists"], ["#ladder", "Funnel", "which listings are tested, and how"], ["#ergebnisse", "Results", "what each step did against the control group"], ["#log", "Log", "who approved and changed what"]];
+function zeigeRundgang() {
+  const ort = $("#rundgang");
+  let versteckt = false;
+  try { versteckt = localStorage.getItem("rundgang") === "aus"; } catch { /* storage blocked: show it */ }
+  if (!ort || istAdmin() || versteckt) return;
+  ort.replaceChildren(
+    el("span", {}, el("strong", { text: "New here? " }), "You are signed in as a builder: you can open every page, and nothing changes on eBay until an admin approves it. A good order: ",
+      ...RUNDGANG.flatMap(([ziel, name, was], i) => [i ? " → " : "", el("a", { href: ziel, text: name }), ` (${was})`]), "."),
+    el("button", { class: "knopf knopf-klein", type: "button", text: "Hide", onclick: () => { ort.hidden = true; try { localStorage.setItem("rundgang", "aus"); } catch { /* then it shows again next time */ } } }));
+  ort.hidden = false;
+}
+ichGeladen.then(zeigeRundgang);
 
 skelett($("#liste"), "zeilen"); // the first screen: rows are on their way
 ichGeladen.then(laden).then(route); // first know the role, then draw

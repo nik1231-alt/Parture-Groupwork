@@ -262,6 +262,8 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
 .umgebung { font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 3px 8px; border-radius: 5px; background: var(--akzent-weich); color: var(--akzent); }
 .umgebung.vorschau { background: var(--warn-weich); color: var(--warn); }
 .umgebung.prod { background: var(--gut-weich); color: var(--gut); }
+.rundgang { margin: 0 0 18px; justify-content: space-between; line-height: 1.5; }
+.rundgang a { font-weight: 600; }
 .hinweis-warnung { background: var(--warn-weich); color: var(--text); border-color: var(--warn); border-left-width: 4px; }
 #nav-account { text-decoration: none; color: var(--text); font-weight: 550; }
 #nav-account[aria-current="page"] { text-decoration: underline; }
