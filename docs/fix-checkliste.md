@@ -1,19 +1,15 @@
-# Fix checklist before the submission
+# Our own review and its fixes
 
 Written on 21 Nov 2026 from a "how would the professor attack this?" review (method, data, real money, AI, operations,
 security, tests, team). Each fix names the question it answers, what changes, where, how we know it is done, and its tests.
 Items are ticked one after the other in the pull request that does them; the PR number stands next to the tick.
 
-**Deadline:** commits after **Mon 23 Nov 2026, 23:59** are not graded. Every code fix below must be merged and live on PROD
-before then. The presentation is on 4 Dec.
-
-Legend: `[ ]` open · `[x]` done · **Who:** Server-KI (code, docs, deploy) or Niko (decisions and anything only the team can do).
-Order = the order they are worked on: small and certain first, the large eBay write (undo) last, the walkthrough at the end
-so that it describes the final state.
+Every fix below is done, merged and live.
 
 ---
 
-## A. Code and docs (Server-KI)
+## The fixes
+
 
 ### F1 · One truth about the data delay ✅ (PR #59)
 **Question:** "eBay corrects the last days afterwards. Do you measure with uncorrected numbers? Your README says 3 days of
@@ -185,28 +181,3 @@ title tests had one), so two clicks during the eBay call could both write.
 - [x] `mitSperre` in `app/server.mjs`: Approve, Approve all and Undo share one lock per listing; a second request gets 409.
 - [x] Walkthrough answer corrected.
 - [x] Test: `app/test-listing-lock.mjs` holds the first eBay call open (a promise the test resolves) and proves the 409, that a different listing is not blocked and that the lock is free again afterwards, also after an error. The lock moved to `app/listing-lock.mjs` for this (issue #70).
-
----
-
-## B. Only the team can do these (Niko)
-
-- [ ] **S1 Repo public.** Decide about the old history (an early team copy of `pm.db` had units of all channels; no costs
-      or personal data; the secret scan is clean). **Decided 22 Nov: the history stays as it is** (all four old versions checked: no customers, no e-mail addresses, no costs). Settings → Danger zone → Change visibility.
-- [ ] **S2 Branch protection** once public (free then): main requires a pull request and the `tests` check, no force push.
-      Server-KI can set it with the API after S1.
-- [ ] **S3 Access for the teaching staff:** Cloudflare Zero Trust → Access → "Groupwork PROD (parture)" → policy
-      "Parture Groupwork" → Include → *Emails ending in* `@novasbe.pt`. Plus a demo account with role builder
-      (Server-KI can create it; the password goes into the Moodle comment, never into the repo).
-- [ ] **S4 Moodle:** one member submits the repository link before Mon 23 Nov, 23:59.
-- [ ] **S5 Elias' git identity:** `git config user.name` / `user.email` set to his GitHub account before his next commit.
-- [ ] **S6 Access files:** delete `C:\parture\zugang-*.txt` on the server once the three members have their passwords.
-- [ ] **S7 Everyone reads F9** and can explain data path, net effect, control group and the approval path without notes.
-
-## C. Running the funnel until 4 Dec (admin in the app)
-
-- [ ] **Tue 25 Nov:** Phase 1 is due → "Next phase →" for all, then "Approve all" for ads (or price for listings that are
-      already advertised). Check prices against costs before approving.
-- [ ] **Sun 30 Nov:** Phase 2 is due → "Next phase →", check and approve the prices.
-- [ ] **Optional now:** a second tranche (10 + 10) for more listings per phase.
-- [ ] **3 Dec:** dry run of the demo on PROD (read only) and on VORSCHAU (clicks), following `docs/vorfuehrung.md`.
-- [ ] **4 Dec:** Phase 1 and 2 measured, Phase 3 live with its interim.
