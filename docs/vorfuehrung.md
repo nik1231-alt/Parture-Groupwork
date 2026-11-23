@@ -101,15 +101,7 @@ If something breaks during the demo: say in one sentence what happened, and go o
 
 **The group checks this section before the demo: what is written here must be true.**
 
-## Speaker roles (to be filled in by the group)
+## Walkthrough
 
-| Step | Who speaks | Who clicks |
-|---|---|---|
-| 1–2 Problem, Products | … | … |
-| 3–4 Funnel tree, AI title and rule check | … | … |
-| 5–6 Builder refused, admin approves, eBay | Niko (admin) | … |
-| 7 Results | … | … |
-| 8–10 Log, invalid input, PREVIEW and teamwork | … | … |
-
-Walkthrough: every member takes one block of [`walkthrough.md`](walkthrough.md) (*How is it built · Why that way · Limits ·
+Every member takes one block of [`walkthrough.md`](walkthrough.md) (*How is it built · Why that way · Limits ·
 How could it change*) and can answer the other three as well.
