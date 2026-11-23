@@ -72,7 +72,8 @@ If something breaks during the demo: say in one sentence what happened, and go o
 - The first tranche (20 Nov) was split before the lot drew in pairs; its balance at the draw is shown in Results.
 - The app knows no costs. The price floor is a guard, the admin checks the margin.
 - Removing an ad on eBay (part of *Undo*) is tested with a recorded writer and has not run against eBay yet.
-- Stack: plain Node.js instead of Python with Streamlit; say why (`docs/architektur.md`) and what it cost us.
+- Stack: plain Node.js instead of Python with Streamlit, confirmed by the teaching staff by e-mail on 23 Nov 2026; say why
+  (`docs/architektur.md`) and what it cost us.
 
 ## Before and during the real run
 
