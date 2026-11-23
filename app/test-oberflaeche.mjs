@@ -165,9 +165,14 @@ test("Shop page: first in the menu, opens without an address, and keeps the shop
   const app = fs.readFileSync(path.join(WURZEL, "public", "app.js"), "utf8");
   assert.ok(seite.indexOf('id="nav-shop"') > 0 && seite.indexOf('id="nav-shop"') < seite.indexOf('id="nav-listings"'), "Shop comes before Products");
   const shop = seite.slice(seite.indexOf('<section id="ansicht-shop"'), seite.indexOf('<section id="ansicht-listings"'));
-  assert.match(shop, /Built by the shop itself[^<]*outside this course/, "what the shop built is not passed off as the project");
-  assert.match(shop, /The Listing Lab<\/strong> \(this app, the team project\)/);
-  assert.ok(!/€|revenue|turnover|orders per|customers/i.test(shop.replace(/Orders and shipping|Orders from all channels|open orders/g, "")), "no money and no customer figures on a public page");
+  assert.match(shop, /built by the shop, outside this course/, "what the shop built is not passed off as the project");
+  assert.match(shop, /this app, the team project/);
+  // The scale is given as an order of magnitude, not as an amount (decided by Niko, 23 Nov 2026). No amounts, nothing about customers.
+  assert.ok(!/€|\d\s?k\b|\d{3}[.,]\d{3}/.test(shop), "no amount of money on a public page");
+  assert.match(shop, /6-figure<\/strong><span>revenue in the first year of building the company/);
+  assert.ok(!/margin of|profit|cost of|customers|orders per/i.test(shop), "no costs, profit or customer figures");
+  assert.equal((shop.match(/class="shop-karte"/g) || []).length, 8);
+  for (const p of shop.matchAll(/class="shop-karte">.*?<p>(.*?)<\/p>/g)) assert.ok(p[1].split(" ").length <= 8, "a card says it in a few words: " + p[1]);
   assert.match(app, /seite === "" \? "shop" : "listings"/, "no address opens the shop page, an unknown one the products");
   for (const ziel of [...shop.matchAll(/href="#([a-z]+)"/g)].map((m) => m[1])) assert.match(app + seite, new RegExp(`"${ziel}"|id="nav-${ziel}"`), `the link #${ziel} leads somewhere`);
 });
