@@ -262,6 +262,17 @@ rect.d-kontrolle, circle.d-kontrolle { fill: var(--g-warten); }
 .umgebung { font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 3px 8px; border-radius: 5px; background: var(--akzent-weich); color: var(--akzent); }
 .umgebung.vorschau { background: var(--warn-weich); color: var(--warn); }
 .umgebung.prod { background: var(--gut-weich); color: var(--gut); }
+.shop-zahlen { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 0 0 26px; }
+.shop-zahl { background: var(--karte); border: 1px solid var(--linie); border-radius: var(--radius); padding: 16px 18px; display: grid; gap: 2px; }
+.shop-zahl strong { font-size: 30px; line-height: 1.1; font-weight: 700; }
+.shop-zahl span { font-size: 14px; color: var(--leise); }
+.shop-titel { margin: 0 0 4px; }
+.shop-hinweis { margin: 0 0 14px; }
+.shop-karten { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin: 0 0 26px; }
+.shop-karten .panel { margin: 0; }
+.shop-karten h3 { margin: 0 0 6px; font-size: 16px; }
+.shop-karten p, .shop-projekt p { margin: 0; font-size: 14.5px; line-height: 1.5; }
+.shop-projekt { display: grid; gap: 10px; max-width: 90ch; }
 .rundgang { margin: 0 0 18px; justify-content: space-between; line-height: 1.5; }
 .rundgang a { font-weight: 600; }
 .hinweis-warnung { background: var(--warn-weich); color: var(--text); border-color: var(--warn); border-left-width: 4px; }
